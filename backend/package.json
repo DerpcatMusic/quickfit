@@ -1,0 +1,18 @@
+{
+  "name": "quickfit-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "logs": "convex logs"
+  },
+  "dependencies": {
+    "@convex-dev/geospatial": "^0.2.1",
+    "convex": "^1.31.5",
+    "h3-js": "^4.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "150915747323",
+    "project_id": "quickfit-4f71f",
+    "storage_bucket": "quickfit-4f71f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:150915747323:android:477523f6f7051fb6020f5e",
+        "android_client_info": {
+          "package_name": "com.example.quickfit"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNDr2ICjCvBpF_Sdt3vPNhCVmehlqixm0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:150915747323:android:1ff41b935d920ba4020f5e",
+        "android_client_info": {
+          "package_name": "com.quickfit.a"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNDr2ICjCvBpF_Sdt3vPNhCVmehlqixm0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,2 @@
+[warning] Unused import: 'package:flutter/foundation.dart' (C:\Users\djder\quickfit\apps\mobile\lib\core\services\map_style_service.dart:11:8)
+[info] Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check (C:\Users\djder\quickfit\apps\mobile\lib\features\profile\presentation\profile_screen.dart:843:28)

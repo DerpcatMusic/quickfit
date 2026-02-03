@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="quickfit">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <!-- Google Sign-In Web Client ID -->
+  <meta name="google-signin-client_id" content="150915747323-ki5cdfrdb5fnmcq09rtpb2itu0evh7gc.apps.googleusercontent.com">
+
+  <title>quickfit</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Local Config (gitignored) -->
+  <script src="config.js"></script>
+  
+  <!-- MapLibre GL JS for web maps -->
+  <script src="https://unpkg.com/maplibre-gl@^4.3/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@^4.3/dist/maplibre-gl.css" rel="stylesheet" />
+  
+  <!-- PMTiles protocol for single-file tile archives -->
+  <script src="https://unpkg.com/pmtiles@^4.0/dist/pmtiles.js"></script>
+  
+  <!-- Protomaps basemaps for dark/light themes -->
+  <script src="https://unpkg.com/@protomaps/basemaps@5/dist/basemaps.js"></script>
+</head>
+<body>
+  <!-- QuickFit map initialization (PMTiles + dark theme) -->
+  <script src="quickfit_map.js"></script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

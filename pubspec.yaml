@@ -1,0 +1,42 @@
+name: quickfit_root
+description: A hyper-local marketplace app for fitness studios to find substitute instructors in real-time
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Convex real-time backend
+  convex_flutter: ^3.0.0
+  
+  # State management
+  provider: ^6.1.1
+  
+  # Location services
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
+  
+  # Auth
+  firebase_auth: ^6.1.4
+  
+  # UI
+  cupertino_icons: ^1.0.6
+  intl: ^0.20.2
+  
+  # HTTP
+  http: ^1.2.0
+  
+  # Calendar integration placeholders
+  device_calendar: ^4.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

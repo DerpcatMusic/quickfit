@@ -1,0 +1,61 @@
+// convex/backfill.ts
+// One-time migration script to populate geospatial indexes
+
+import { mutation } from "./_generated/server";
+import { syncInstructorLocation, syncJobLocation } from "./geo";
+
+/**
+ * Migration: Move all users and jobs into geospatial indexes.
+ */
+export const runGeospatialMigration = mutation({
+  handler: async (ctx) => {
+    // 1. Migrate Instructors
+    const instructors = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("role"), "instructor"))
+      .collect();
+    
+    let instructorsSynced = 0;
+    for (const instructor of instructors) {
+      if (instructor.latitude && instructor.longitude) {
+        await syncInstructorLocation(
+          ctx,
+          instructor._id,
+          { latitude: instructor.latitude, longitude: instructor.longitude },
+          instructor.primaryCategory ?? instructor.categories?.[0] ?? "general",
+          instructor.isVerified,
+          instructor.notificationsEnabled ?? true,
+          instructor.radiusKm ?? 5
+        );
+        instructorsSynced++;
+      }
+    }
+    
+    // 2. Migrate Open Jobs
+    const jobs = await ctx.db
+      .query("jobs")
+      .filter((q) => q.eq(q.field("status"), "open"))
+      .collect();
+    
+    let jobsSynced = 0;
+    for (const job of jobs) {
+      await syncJobLocation(
+        ctx,
+        job._id,
+        { latitude: job.latitude, longitude: job.longitude },
+        job.category,
+        job.status,
+        job.requiresVerification,
+        job.currentRate
+      );
+      jobsSynced++;
+    }
+    
+    return {
+      instructorsSynced,
+      jobsSynced,
+      totalInstructors: instructors.length,
+      totalJobs: jobs.length,
+    };
+  },
+});

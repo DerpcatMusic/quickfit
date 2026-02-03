@@ -1,0 +1,84 @@
+name: quickfit
+description: Israeli fitness instructor marketplace - find sub instructors fast
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # ============ STATE MANAGEMENT ============
+  flutter_riverpod: ^3.1.0
+  riverpod_annotation: ^4.0.0
+  
+  # ============ ROUTING ============
+  go_router: ^17.0.1
+  
+  # ============ UI COMPONENTS ============
+  lucide_icons: ^0.257.0
+  
+  # ============ BACKEND ============
+  convex_flutter: ^3.0.0
+  
+  # ============ AUTH ============
+  firebase_core: ^4.4.0
+  firebase_auth: ^6.1.4
+  google_sign_in: ^7.2.0
+  google_sign_in_web: ^1.1.0
+  sign_in_with_apple: ^7.0.1
+  
+  # ============ PUSH NOTIFICATIONS ============
+  firebase_messaging: ^16.1.1
+  flutter_local_notifications: ^19.5.0
+  
+  # ============ LOCATION & MAPS ============
+  geolocator: ^14.0.2
+  maplibre_gl: ^0.25.0
+  
+  # ============ FILE HANDLING ============
+  image_picker: ^1.1.0
+  file_picker: ^10.3.8
+  
+  # ============ UTILITIES ============
+  intl: ^0.20.2
+  timeago: ^3.7.0
+  cached_network_image: ^3.4.0
+  shimmer: ^3.0.0
+  flutter_animate: ^4.5.0
+  uuid: ^4.5.0
+  
+  # ============ STORAGE ============
+  shared_preferences: ^2.3.0
+  flutter_secure_storage: ^10.0.0
+  logger: ^2.6.2
+  material_color_utilities: ^0.11.1
+  time: ^2.1.6
+  dynamic_color: ^1.8.1
+  google_fonts: ^7.0.2
+  # google_maps_flutter: REMOVED - using maplibre_gl instead (free tiles)
+  flutter_localizations:
+    sdk: flutter
+  http: ^1.6.0
+  flutter_typeahead: 5.2.0
+  flutter_keyboard_visibility: ^6.0.0
+  path_provider: ^2.1.5
+  liquid_glass_widgets: ^0.2.1-dev.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  riverpod_generator: ^4.0.0+1
+  build_runner: ^2.4.0
+  custom_lint: ^0.8.1
+  riverpod_lint: ^3.1.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
