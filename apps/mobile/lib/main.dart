@@ -12,6 +12,7 @@ import 'firebase_options.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/hive_service.dart';
 import 'core/services/offline_queue_manager.dart';
+import 'core/services/background_sync_service.dart';
 import 'core/constants/app_constants.dart';
 
 // Background message handler
@@ -52,6 +53,9 @@ void main() async {
 
   // Initialize offline queue manager
   OfflineQueueManager().initialize();
+
+  // Initialize lightweight background sync (for urgent notifications)
+  BackgroundSyncService().initialize().ignore();
 
   // Non-blocking background initialization
   // We fire-and-forget these so they don't block the initial render.
