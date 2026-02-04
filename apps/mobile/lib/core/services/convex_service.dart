@@ -250,4 +250,18 @@ class ConvexService {
       rethrow;
     }
   }
+
+  /// Generic mutation call for offline queue.
+  Future<dynamic> mutate(String mutationName, Map<String, dynamic> args) async {
+    try {
+      final result = await ConvexClient.instance.mutation(
+        name: mutationName,
+        args: args,
+      );
+      return result;
+    } catch (e) {
+      debugPrint('mutate $mutationName failed: $e');
+      rethrow;
+    }
+  }
 }

@@ -10,6 +10,8 @@ import 'package:convex_flutter/convex_flutter.dart';
 import 'app.dart';
 import 'firebase_options.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/hive_service.dart';
+import 'core/services/offline_queue_manager.dart';
 import 'core/constants/app_constants.dart';
 
 // Background message handler
@@ -44,7 +46,12 @@ void main() async {
         clientId: 'quickfit-mobile-1.0',
       ),
     ),
+    // Initialize Hive for offline queue storage
+    HiveService().init(),
   ]);
+
+  // Initialize offline queue manager
+  OfflineQueueManager().initialize();
 
   // Non-blocking background initialization
   // We fire-and-forget these so they don't block the initial render.
