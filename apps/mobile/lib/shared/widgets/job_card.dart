@@ -26,6 +26,7 @@ class JobCard extends StatefulWidget {
     this.onDismiss,
     this.onTap,
     this.isLoading = false,
+    this.pendingStatus, // 'pending' | 'syncing' | 'completed' | 'failed'
   });
 
   final Job job;
@@ -33,6 +34,7 @@ class JobCard extends StatefulWidget {
   final VoidCallback? onDismiss;
   final VoidCallback? onTap;
   final bool isLoading;
+  final String? pendingStatus;
 
   @override
   State<JobCard> createState() => _JobCardState();
@@ -44,6 +46,69 @@ class _JobCardState extends State<JobCard> {
   static const _claimThreshold = 100.0;
 
   bool get _isIOS => !kIsWeb && Platform.isIOS;
+
+  /// Build status indicator based on pending status
+  Widget _buildStatusIndicator(AppColors colors) {
+    if (widget.pendingStatus == 'pending') {
+      return Icon(
+        LucideIcons.cloudOff,
+        color: colors.urgentText,
+        size: 32,
+      );
+    } else if (widget.pendingStatus == 'syncing') {
+      return const CircularProgressIndicator.adaptive();
+    } else if (widget.pendingStatus == 'completed') {
+      return Icon(
+        LucideIcons.checkCircle,
+        color: colors.successText,
+        size: 32,
+      );
+    } else if (widget.pendingStatus == 'failed') {
+      return Icon(
+        LucideIcons.xCircle,
+        color: colors.urgentText,
+        size: 32,
+      );
+    }
+    return const CircularProgressIndicator.adaptive();
+  }
+
+  /// Build status text based on pending status
+  Widget _buildStatusText(AppColors colors) {
+    String text;
+    Color color;
+
+    switch (widget.pendingStatus) {
+      case 'pending':
+        text = 'Waiting for connection...';
+        color = colors.urgentText;
+        break;
+      case 'syncing':
+        text = 'Syncing...';
+        color = colors.cobaltAccent;
+        break;
+      case 'completed':
+        text = 'Synced!';
+        color = colors.successText;
+        break;
+      case 'failed':
+        text = 'Failed - will retry';
+        color = colors.urgentText;
+        break;
+      default:
+        text = 'Loading...';
+        color = colors.cobaltAccent;
+    }
+
+    return Text(
+      text,
+      style: TextStyle(
+        color: color,
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+      ),
+    );
+  }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
     setState(() {
@@ -126,16 +191,23 @@ class _JobCardState extends State<JobCard> {
           ),
         ),
 
-        // Loading overlay
-        if (widget.isLoading)
+        // Loading / Pending overlay
+        if (widget.isLoading || widget.pendingStatus != null)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
-                color: colors.cardBackground.withValues(alpha: 0.8),
+                color: colors.cardBackground.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Center(
-                child: CircularProgressIndicator.adaptive(),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildStatusIndicator(colors),
+                    const SizedBox(height: 12),
+                    _buildStatusText(colors),
+                  ],
+                ),
               ),
             ),
           ),

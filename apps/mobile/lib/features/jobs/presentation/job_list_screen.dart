@@ -371,6 +371,7 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                   child: JobCard(
                     job: job,
                     isLoading: _claimingJobId == job.id,
+                    pendingStatus: jobsState.getPendingOperation(job.id)?.status,
                     onClaim: () => _claimJob(job),
                     onTap: () => context
                         .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
@@ -393,6 +394,7 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                   child: JobCard(
                     job: job,
                     isLoading: _claimingJobId == job.id,
+                    pendingStatus: jobsState.getPendingOperation(job.id)?.status,
                     onClaim: () => _claimJob(job),
                     onTap: () => context
                         .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
