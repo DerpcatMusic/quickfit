@@ -1,11 +1,10 @@
 // convex/notifications.ts
 // Push notification handling
-// Uses Haversine for meter-accurate radius matching
+// Uses H3 hex-based matching (O(1) vs O(n) geospatial)
 
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { findInstructorsForJob, isWithinRadius } from "./geo";
 
 // ==========================================
 // NOTIFICATION DISPATCH
@@ -14,12 +13,12 @@ import { findInstructorsForJob, isWithinRadius } from "./geo";
 /**
  * Dispatch notifications to all matching instructors.
  * Filters by:
- * 1. Precise Haversine distance (meter-level accuracy)
+ * 1. H3 hex intersection (O(1) lookup!)
  * 2. Category match (skill-based)
  * 3. Verification requirements
  * 4. Notification preferences (opt-in by default)
  * 
- * Example: 2.95km job WILL notify an instructor with 3km radius!
+ * H3 Resolution 11 = ~50m precision
  */
 export const dispatchJobNotifications = internalAction({
   args: { jobId: v.id("jobs") },
@@ -27,45 +26,41 @@ export const dispatchJobNotifications = internalAction({
     const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
     if (!job || job.status !== "open") return;
     
-    // 2026 GEOSPATIAL QUERY (REVERSE RADIUS)
-    // Find instructors whose radius covers this job location
-    const matchedResults = await ctx.runQuery(internal.geo.findInstructorsForJobQuery, {
-      jobPoint: { latitude: job.latitude, longitude: job.longitude },
-      jobCategory: job.category,
-      requiresVerification: job.requiresVerification,
-    });
-    
-    // Fetch full instructor docs for matched IDs (to get FCM tokens)
-    const matchedInstructors: Array<{ instructor: any; distanceKm: number }> = [];
-    
-    for (const match of matchedResults) {
-      const instructor = await ctx.runQuery(internal.users.getUserById, { userId: match.instructorId });
-      if (instructor?.fcmToken) {
-        matchedInstructors.push({ 
-          instructor, 
-          distanceKm: match.distanceMeters / 1000 
-        });
-      }
+    // H3 HEX-BASED MATCHING (O(1) - FAST!)
+    // Find instructors whose work area contains this job's hex
+    if (!job.locationHex11) {
+      console.log("[dispatchJobNotifications] Job has no H3 hex, skipping");
+      return;
     }
     
-    if (matchedInstructors.length === 0) return;
+    // Query instructors using H3 hex intersection
+    const matchingInstructors = await ctx.db
+      .query("users")
+      .withIndex("by_role", q => q.eq("role", "instructor"))
+      .filter(q => q.eq(q.field("isVerified"), true))
+      .filter(q => q.eq(q.field("notificationsEnabled"), true))
+      .filter(q => q.contains(q.field("workAreaHexes11"), job.locationHex11))
+      .filter(q => q.contains(q.field("categories"), job.category))
+      .collect();
     
-    // Sort by distance (closest first)
-    matchedInstructors.sort((a, b) => a.distanceKm - b.distanceKm);
+    console.log(`[dispatchJobNotifications] Found ${matchingInstructors.length} matching instructors via H3`);
+    
+    if (matchingInstructors.length === 0) return;
     
     const sosPrefix = job.sosBoostApplied ? "🚨 SOS " : "";
     const title = `${sosPrefix}New ${job.category} job nearby!`;
     const body = `₪${job.currentRate.toFixed(0)} • ${job.address}`;
     
-    for (const { instructor, distanceKm } of matchedInstructors) {
+    for (const instructor of matchingInstructors) {
+      if (!instructor.fcmToken) continue;
+      
       await ctx.runAction(internal.actions.sendPush.send, {
-        fcmToken: instructor.fcmToken!,
+        fcmToken: instructor.fcmToken,
         title,
         body,
         data: { 
           type: "new_job", 
           jobId: job._id,
-          distanceKm: distanceKm.toString(),
         },
       });
       
@@ -80,7 +75,7 @@ export const dispatchJobNotifications = internalAction({
     
     await ctx.runMutation(internal.jobs.markNotified, {
       jobId,
-      instructorIds: matchedInstructors.map(({ instructor }) => instructor._id),
+      instructorIds: matchingInstructors.map(i => i._id),
     });
   },
 });
