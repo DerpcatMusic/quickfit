@@ -63,6 +63,11 @@ dependencies:
   logger: ^2.6.2
   material_color_utilities: ^0.11.1
   time: ^2.1.6
+  
+  # ============ BACKGROUND SYNC ============
+  flutter_background_service: ^5.0.0
+  flutter_background_service_android: ^6.0.0
+  
   dynamic_color: ^1.8.1
   google_fonts: ^7.0.2
   # google_maps_flutter: REMOVED - using maplibre_gl instead (free tiles)
