@@ -91,12 +91,17 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     }
 
     final auth = ref.read(authProvider);
+    
+    // For studios, we MUST have a location set during onboarding
+    // Check both lat/lng from auth state
     if (auth.latitude == null || auth.longitude == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content:
-                Text('Studio location not found. Please update your profile.')),
+            content: Text(
+                'Studio address not set. Please complete onboarding first.')),
       );
+      // Navigate to onboarding/profile setup
+      context.push(AppRoutes.onboarding);
       return;
     }
 
