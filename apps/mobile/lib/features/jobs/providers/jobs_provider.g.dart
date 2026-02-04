@@ -41,7 +41,7 @@ final class JobsNotifierProvider
   }
 }
 
-String _$jobsNotifierHash() => r'1da77fa1449d4f602bc1c639ffde2eb21dd3bfee';
+String _$jobsNotifierHash() => r'4eb72e72a1178e743b467a41b3e41947694a5d50';
 
 abstract class _$JobsNotifier extends $Notifier<JobsState> {
   JobsState build();
@@ -88,7 +88,7 @@ final class StudioJobsNotifierProvider
 }
 
 String _$studioJobsNotifierHash() =>
-    r'6da4eefe57b086eda8485091f3fb7cb947c8faba';
+    r'43cbee99eb51ff2be13d5d3464726be964eadb64';
 
 abstract class _$StudioJobsNotifier extends $Notifier<JobsState> {
   JobsState build();

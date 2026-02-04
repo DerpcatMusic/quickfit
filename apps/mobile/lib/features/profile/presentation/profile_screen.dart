@@ -11,7 +11,7 @@ import 'package:quickfit/core/constants/categories.dart';
 import 'package:quickfit/core/router/app_router.dart';
 import 'package:quickfit/core/services/location_service.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:quickfit/core/theme/app_colors.dart';
 
@@ -65,6 +65,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _saveProfile() async {
     setState(() => _isSaving = true);
     try {
+      // 2026 FIX: Geocode if location is missing (fixes broken onboarding profiles)
+      if (_lat == null && _addressController.text.trim().isNotEmpty) {
+        final pos = await LocationService.instance
+            .getLatLngFromAddress(_addressController.text.trim());
+        if (pos != null) {
+          _lat = pos.latitude;
+          _lng = pos.longitude;
+        }
+      }
+
       await ref.read(authProvider.notifier).updateProfile(
             name: _nameController.text.trim(),
             phone: _phoneController.text.trim(),
@@ -298,7 +308,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildAccountSection(User? user, String? role, ThemeData theme) {
+  Widget _buildAccountSection(
+      firebase_auth.User? user, String? role, ThemeData theme) {
     return _buildSection(
       title: 'Account',
       children: [
@@ -382,7 +393,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             icon: LucideIcons.keyRound,
             title: 'Add Password',
             subtitle: 'Enable email login',
-            onTap: () => _showAddPasswordDialog(context),
+            onTap: () => _showAddPasswordDialog(),
           ),
         _buildMenuItem(
             icon: LucideIcons.bell, title: 'Notifications', onTap: () {}),
@@ -761,7 +772,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   /// Show dialog to add password for Google-only users.
-  Future<void> _showAddPasswordDialog(BuildContext context) async {
+  Future<void> _showAddPasswordDialog() async {
     final passwordController = TextEditingController();
     final confirmController = TextEditingController();
     final formKey = GlobalKey<FormState>();

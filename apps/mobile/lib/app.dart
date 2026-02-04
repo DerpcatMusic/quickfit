@@ -3,16 +3,17 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:convex_flutter/convex_flutter.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:quickfit/core/router/app_router.dart';
 import 'package:quickfit/core/theme/app_theme.dart';
 import 'package:quickfit/core/constants/app_constants.dart';
+import 'package:quickfit/core/providers/zone_provider.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 
 /// Root widget for the QuickFit app.
+/// Convex is already initialized in main.dart before this widget mounts.
 class QuickfitApp extends ConsumerStatefulWidget {
   const QuickfitApp({super.key});
 
@@ -21,24 +22,12 @@ class QuickfitApp extends ConsumerStatefulWidget {
 }
 
 class _QuickfitAppState extends ConsumerState<QuickfitApp> {
-  bool _initialized = false;
-
   @override
   void initState() {
     super.initState();
-    _initializeConvex();
-  }
-
-  Future<void> _initializeConvex() async {
-    await ConvexClient.initialize(
-      const ConvexConfig(
-        deploymentUrl: AppConstants.convexUrl,
-        clientId: 'quickfit-mobile-1.0',
-        // The convex_flutter package has verbose logging by default.
-        // Update package or check documentation for debug flag if logs become too noisy.
-      ),
-    );
-    setState(() => _initialized = true);
+    // Preload zones in background so they're ready when needed
+    // Convex is already initialized in main.dart
+    ref.read(zonesProvider);
   }
 
   @override
@@ -62,18 +51,6 @@ class _QuickfitAppState extends ConsumerState<QuickfitApp> {
           themeMode: ThemeMode.system,
           routerConfig: router,
           debugShowCheckedModeBanner: false,
-
-          // Show a simple loading screen if not initialized
-          builder: (context, child) {
-            if (!_initialized) {
-              return const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            }
-            return child!;
-          },
 
           // Localization
           locale: const Locale('he', 'IL'),

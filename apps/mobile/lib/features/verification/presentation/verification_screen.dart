@@ -2,12 +2,14 @@
 // lib/features/verification/presentation/verification_screen.dart
 
 // Note: Using XFile instead of dart:io File for cross-platform compatibility
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-// import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
+import 'package:convex_flutter/convex_flutter.dart';
+import 'package:http/http.dart' as http;
 
 class VerificationScreen extends ConsumerStatefulWidget {
   const VerificationScreen({super.key});
@@ -58,9 +60,51 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
     setState(() => _isUploading = true);
 
     try {
-      // TODO: Implement actual upload to Convex storage
-      // Then trigger Gemini verification action
-      await Future.delayed(const Duration(seconds: 2)); // Simulated upload
+      // 1. Get an upload URL from Convex
+      final uploadUrlResult = await ConvexClient.instance.mutation(
+        name: 'storage:generateUploadUrl',
+        args: {},
+      );
+
+      final uploadUrl = uploadUrlResult.replaceAll('"', '');
+      if (uploadUrl.isEmpty || uploadUrl == 'null') {
+        throw Exception('Failed to get upload URL');
+      }
+
+      // 2. Read file bytes
+      final bytes = await _selectedFile!.readAsBytes();
+      final mimeType = _selectedFile!.mimeType ?? 'image/jpeg';
+
+      // 3. Upload to Convex storage
+      final uploadResponse = await http.post(
+        Uri.parse(uploadUrl),
+        headers: {'Content-Type': mimeType},
+        body: bytes,
+      );
+
+      if (uploadResponse.statusCode != 200) {
+        throw Exception('Upload failed: ${uploadResponse.statusCode}');
+      }
+
+      final uploadResult = json.decode(uploadResponse.body);
+      final storageId = uploadResult['storageId'] as String;
+
+      // 4. Get the actual storage URL
+      final storageUrlResult = await ConvexClient.instance.query(
+        'storage:getUrl',
+        {'storageId': storageId},
+      );
+      final docUrl = storageUrlResult.replaceAll('"', '');
+
+      // 5. Create verification record (triggers Gemini AI verification)
+      await ConvexClient.instance.mutation(
+        name: 'verifications:uploadCertificate',
+        args: {
+          'docUrl': docUrl,
+          'docType': mimeType,
+          'originalFilename': _selectedFile!.name,
+        },
+      );
 
       if (mounted) {
         setState(() {
@@ -74,7 +118,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
               children: [
                 Icon(LucideIcons.checkCircle2, color: Colors.white),
                 SizedBox(width: 8),
-                Text('Certificate uploaded! Verification in progress...'),
+                Text('Certificate uploaded! AI verification in progress...'),
               ],
             ),
             backgroundColor: Colors.green,
@@ -82,6 +126,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
         );
       }
     } catch (e) {
+      debugPrint('Upload error: $e');
       if (mounted) {
         setState(() => _isUploading = false);
         ScaffoldMessenger.of(context).showSnackBar(

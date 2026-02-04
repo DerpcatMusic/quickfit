@@ -75,14 +75,18 @@ export const completeOnboarding = mutation({
     role: v.union(v.literal("studio"), v.literal("instructor")),
     name: v.string(),
     categories: v.string(), // comma separated list
-    radiusKm: v.optional(v.float64()),
-    latitude: v.optional(v.float64()),
-    longitude: v.optional(v.float64()),
+    // Accept both number and string due to convex_flutter serialization quirk
+    radiusKm: v.optional(v.union(v.float64(), v.string())),
+    latitude: v.optional(v.union(v.float64(), v.string())),
+    longitude: v.optional(v.union(v.float64(), v.string())),
     address: v.optional(v.string()),
+    selectedZones: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+
+    console.log("[completeOnboarding] Called with args:", JSON.stringify(args));
     
     const user = await ctx.db
       .query("users")
@@ -96,25 +100,59 @@ export const completeOnboarding = mutation({
     const categoriesArray = args.categories.split(',').map(c => c.trim()).filter(c => c.length > 0);
     const primaryCategory = categoriesArray.length > 0 ? categoriesArray[0] : "general";
 
+    // Validate zone IDs if provided - they should be valid Convex IDs
+    let validZoneIds: any[] | undefined = undefined;
+    if (args.selectedZones && args.selectedZones.length > 0) {
+      validZoneIds = [];
+      for (const zoneId of args.selectedZones) {
+        try {
+          // Try to fetch the zone to validate it exists
+          const zone = await ctx.db.get(zoneId as any);
+          if (zone) {
+            validZoneIds.push(zoneId);
+          } else {
+            console.warn(`[completeOnboarding] Zone not found: ${zoneId}`);
+          }
+        } catch (e) {
+          console.warn(`[completeOnboarding] Invalid zone ID format: ${zoneId}`);
+        }
+      }
+      console.log(`[completeOnboarding] Valid zones: ${validZoneIds.length}/${args.selectedZones.length}`);
+    }
+
+    // Helper to parse numbers
+    const parseNum = (val: number | string | undefined): number | undefined => {
+      if (val === undefined) return undefined;
+      const parsed = typeof val === 'string' ? parseFloat(val) : val;
+      return isNaN(parsed) ? undefined : parsed;
+    };
+
+    const lat = parseNum(args.latitude);
+    const lng = parseNum(args.longitude);
+    const rad = parseNum(args.radiusKm);
+
     await ctx.db.patch(user._id, {
       role: args.role,
       name: args.name,
       categories: categoriesArray,
       primaryCategory,
-      radiusKm: args.radiusKm ?? user.radiusKm ?? 5,
-      latitude: args.latitude ?? user.latitude,
-      longitude: args.longitude ?? user.longitude,
-      homeLatitude: args.latitude ?? user.homeLatitude,
-      homeLongitude: args.longitude ?? user.homeLongitude,
+      radiusKm: rad ?? user.radiusKm ?? 5,
+      latitude: lat ?? user.latitude,
+      longitude: lng ?? user.longitude,
+      homeLatitude: lat ?? user.homeLatitude,
+      homeLongitude: lng ?? user.homeLongitude,
       homeAddress: args.address ?? user.homeAddress,
+      selectedZones: validZoneIds ?? user.selectedZones,
       hasCompletedOnboarding: true,
       updatedAt: now,
     });
 
+    console.log("[completeOnboarding] Successfully updated user:", user._id);
+
     // GEOSPATIAL SYNC
-    const finalLat = args.latitude ?? user.latitude;
-    const finalLng = args.longitude ?? user.longitude;
-    const finalRadiusKm = args.radiusKm ?? user.radiusKm ?? 5;
+    const finalLat = lat ?? user.latitude;
+    const finalLng = lng ?? user.longitude;
+    const finalRadiusKm = rad ?? user.radiusKm ?? 5;
 
     if (args.role === "instructor" && finalLat && finalLng) {
       await syncInstructorLocation(
@@ -130,6 +168,8 @@ export const completeOnboarding = mutation({
         finalRadiusKm
       );
     }
+
+    return { success: true, userId: user._id };
   },
 });
 
@@ -482,3 +522,27 @@ export const updateNotificationPreferences = mutation({
   },
 });
 
+
+/**
+ * Update instructor's selected zones.
+ * Called from the map screen zone selector.
+ */
+export const updateZones = mutation({
+  args: { zoneIds: v.array(v.string()) }, // Accept strings for flexibility
+  handler: async (ctx, { zoneIds }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    
+    if (!user) throw new Error("User not found");
+    
+    await ctx.db.patch(user._id, {
+      selectedZones: zoneIds,
+      updatedAt: Date.now(),
+    });
+  },
+});

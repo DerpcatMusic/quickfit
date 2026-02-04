@@ -15,6 +15,7 @@ import type * as claims from "../claims.js";
 import type * as geo from "../geo.js";
 import type * as jobs from "../jobs.js";
 import type * as notifications from "../notifications.js";
+import type * as seed from "../seed.js";
 import type * as seedZones from "../seedZones.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as users from "../users.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   geo: typeof geo;
   jobs: typeof jobs;
   notifications: typeof notifications;
+  seed: typeof seed;
   seedZones: typeof seedZones;
   subscriptions: typeof subscriptions;
   users: typeof users;

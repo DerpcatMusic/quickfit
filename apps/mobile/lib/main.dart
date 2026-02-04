@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-// import 'package:google_sign_in/google_sign_in.dart';
+import 'package:convex_flutter/convex_flutter.dart';
 
 import 'app.dart';
 import 'firebase_options.dart';
 import 'core/services/notification_service.dart';
+import 'core/constants/app_constants.dart';
 
 // Background message handler
 @pragma('vm:entry-point')
@@ -32,19 +33,26 @@ void main() async {
     originalDebugPrint(message, wrapWidth: wrapWidth);
   };
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Core initialization that must happen before runApp
+  await Future.wait([
+    Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ),
+    ConvexClient.initialize(
+      const ConvexConfig(
+        deploymentUrl: AppConstants.convexUrl,
+        clientId: 'quickfit-mobile-1.0',
+      ),
+    ),
+  ]);
 
-  // Initialize Google Sign-In
-  // Note: No explicit initialization needed for mobile on version 7.x unless using specific scopes
+  // Non-blocking background initialization
+  // We fire-and-forget these so they don't block the initial render.
+  // Notification permissions can take 10s+ if the user is slow to click "Allow."
+  NotificationService.instance.initialize().ignore();
 
-  // Setup FCM background handler
+  // Setup FCM background handler (non-blocker)
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  // Initialize notifications
-  await NotificationService.instance.initialize();
 
   runApp(
     const ProviderScope(

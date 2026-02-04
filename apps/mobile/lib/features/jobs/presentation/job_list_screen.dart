@@ -3,14 +3,18 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../../../core/router/app_router.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/job_card.dart';
 import '../../../shared/widgets/sos_badge.dart';
 import '../providers/jobs_provider.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../../core/constants/categories.dart';
 
 /// Main screen for instructors to browse available jobs.
 class JobListScreen extends ConsumerStatefulWidget {
@@ -23,6 +27,95 @@ class JobListScreen extends ConsumerStatefulWidget {
 class _JobListScreenState extends ConsumerState<JobListScreen> {
   final _scrollController = ScrollController();
   String? _claimingJobId;
+  String? _selectedCategory;
+  double _minRate = 0;
+
+  void _showFilters() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 48),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Filter Jobs',
+                        style: Theme.of(context).textTheme.titleLarge),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedCategory = null;
+                          _minRate = 0;
+                        });
+                        this.setState(() {
+                          _selectedCategory = null;
+                          _minRate = 0;
+                        });
+                      },
+                      child: const Text('Reset'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text('Category',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: FitnessCategory.values.map((cat) {
+                    final isSelected = _selectedCategory == cat.id;
+                    return ChoiceChip(
+                      label: Text(cat.nameEn),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setState(
+                            () => _selectedCategory = selected ? cat.id : null);
+                        this.setState(
+                            () => _selectedCategory = selected ? cat.id : null);
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 24),
+                Text('Minimum Rate: ₪${_minRate.toInt()}',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Slider(
+                  value: _minRate,
+                  min: 0,
+                  max: 300,
+                  divisions: 6,
+                  label: '₪${_minRate.toInt()}',
+                  onChanged: (val) {
+                    setState(() => _minRate = val);
+                    this.setState(() => _minRate = val);
+                  },
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Apply Filters'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -89,6 +182,7 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
 
   Widget _buildAppBar(BuildContext context) {
     final colors = context.colors;
+    final theme = Theme.of(context);
 
     return SliverAppBar(
       floating: true,
@@ -102,10 +196,13 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
           },
         ),
         IconButton(
-          icon: Icon(LucideIcons.sliders, color: colors.mutedText),
-          onPressed: () {
-            // TODO: Open filters
-          },
+          icon: Icon(
+            LucideIcons.sliders,
+            color: (_selectedCategory != null || _minRate > 0)
+                ? theme.colorScheme.primary
+                : colors.mutedText,
+          ),
+          onPressed: _showFilters,
         ),
       ],
     );
@@ -236,8 +333,24 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
   }
 
   Widget _buildJobsList(BuildContext context, JobsState jobsState) {
-    final sosJobs = jobsState.sosJobs;
-    final regularJobs = jobsState.regularJobs;
+    var filteredJobs = jobsState.jobs;
+
+    if (_selectedCategory != null) {
+      filteredJobs =
+          filteredJobs.where((j) => j.category == _selectedCategory).toList();
+    }
+
+    if (_minRate > 0) {
+      filteredJobs =
+          filteredJobs.where((j) => j.currentRate >= _minRate).toList();
+    }
+
+    final sosJobs = filteredJobs.where((j) => j.isSos).toList();
+    final regularJobs = filteredJobs.where((j) => !j.isSos).toList();
+
+    if (filteredJobs.isEmpty) {
+      return _buildEmptyFiltersState(context);
+    }
 
     return SliverPadding(
       padding: const EdgeInsets.all(16),
@@ -259,6 +372,8 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                     job: job,
                     isLoading: _claimingJobId == job.id,
                     onClaim: () => _claimJob(job),
+                    onTap: () => context
+                        .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
                   ),
                 )),
             const SizedBox(height: 24),
@@ -279,6 +394,8 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                     job: job,
                     isLoading: _claimingJobId == job.id,
                     onClaim: () => _claimJob(job),
+                    onTap: () => context
+                        .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
                   ),
                 )),
           ],
@@ -339,6 +456,32 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyFiltersState(BuildContext context) {
+    return SliverFillRemaining(
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(LucideIcons.searchX, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text('No jobs match your filters',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _selectedCategory = null;
+                  _minRate = 0;
+                });
+              },
+              child: const Text('Clear Filters'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

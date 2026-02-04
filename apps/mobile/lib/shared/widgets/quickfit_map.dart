@@ -38,6 +38,7 @@ class QuickFitMap extends StatefulWidget {
     this.radiusCenter,
     this.showUserLocation = true,
     this.showRadius = true,
+    this.showHomePin = false,
     this.jobs = const [],
     this.onMapCreated,
     this.onJobTapped,
@@ -64,6 +65,9 @@ class QuickFitMap extends StatefulWidget {
 
   /// Whether to show the radius circle.
   final bool showRadius;
+
+  /// Whether to show a home pin marker at the radius center.
+  final bool showHomePin;
 
   /// List of jobs to display as markers.
   final List<QuickFitJobMarker> jobs;
@@ -200,6 +204,11 @@ class QuickFitMapState extends State<QuickFitMap>
     // Add radius visualization if enabled
     if (widget.showRadius && widget.radiusKm != null) {
       await _addRadiusCircle();
+    }
+
+    // Add home pin marker at radius center if enabled
+    if (widget.showHomePin) {
+      await _addHomePin();
     }
 
     // Add job markers
@@ -399,6 +408,26 @@ class QuickFitMapState extends State<QuickFitMap>
         ),
       );
     }
+  }
+
+  /// Add a home pin marker at the radius center.
+  Future<void> _addHomePin() async {
+    final center = widget.radiusCenter ?? widget.initialCenter;
+    if (center == null) return;
+
+    final controller = await _controllerCompleter.future;
+    if (!mounted) return;
+
+    // Add a prominent marker at the home location
+    await controller.addSymbol(
+      SymbolOptions(
+        geometry: center,
+        iconSize: 1.5,
+        textField: '🏠',
+        textSize: 24,
+        textOffset: const Offset(0, 0),
+      ),
+    );
   }
 
   /// Create a GeoJSON polygon representing a circle.

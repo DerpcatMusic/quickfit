@@ -11,9 +11,12 @@ import 'package:quickfit/features/auth/presentation/login_screen.dart';
 import 'package:quickfit/features/auth/presentation/onboarding_screen.dart';
 import 'package:quickfit/features/jobs/presentation/job_list_screen.dart';
 import 'package:quickfit/features/jobs/presentation/post_job_screen.dart';
+import 'package:quickfit/features/jobs/presentation/job_detail_screen.dart';
 import 'package:quickfit/features/profile/presentation/profile_screen.dart';
 import 'package:quickfit/features/verification/presentation/verification_screen.dart';
 import 'package:quickfit/features/instructor/screens/instructor_map_screen.dart';
+import 'package:quickfit/features/instructor/screens/instructor_schedule_screen.dart';
+import 'package:quickfit/features/studio/presentation/screens/studio_jobs_screen.dart';
 import 'package:quickfit/shared/layouts/app_scaffold.dart';
 
 part 'app_router.g.dart';
@@ -40,6 +43,7 @@ abstract class AppRoutes {
   // Shared routes
   static const String verification = '/verification';
   static const String settings = '/settings';
+  static const String jobDetail = '/jobs/:id';
 }
 
 // Auth state change notifier for GoRouter refresh
@@ -135,7 +139,7 @@ GoRouter router(Ref ref) {
             path: AppRoutes.instructorSchedule,
             pageBuilder: (context, state) => MaterialPage(
               key: state.pageKey,
-              child: const _PlaceholderScreen(title: 'Schedule'),
+              child: const InstructorScheduleScreen(),
             ),
           ),
           GoRoute(
@@ -170,7 +174,7 @@ GoRouter router(Ref ref) {
             path: AppRoutes.studioJobs,
             pageBuilder: (context, state) => MaterialPage(
               key: state.pageKey,
-              child: const _StudioJobsScreen(),
+              child: const StudioJobsScreen(),
             ),
           ),
           GoRoute(
@@ -194,6 +198,13 @@ GoRouter router(Ref ref) {
       GoRoute(
         path: AppRoutes.verification,
         builder: (context, state) => const VerificationScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.jobDetail,
+        builder: (context, state) {
+          final jobId = state.pathParameters['id']!;
+          return JobDetailScreen(jobId: jobId);
+        },
       ),
     ],
     errorBuilder: (context, state) => _ErrorScreen(error: state.error),
@@ -222,36 +233,6 @@ class _SplashScreen extends StatelessWidget {
             CircularProgressIndicator(),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// Placeholder for screens not yet implemented
-class _PlaceholderScreen extends StatelessWidget {
-  final String title;
-
-  const _PlaceholderScreen({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Text(title),
-      ),
-    );
-  }
-}
-
-// Studio jobs list (different from instructor view)
-class _StudioJobsScreen extends StatelessWidget {
-  const _StudioJobsScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('My Posted Jobs'),
       ),
     );
   }

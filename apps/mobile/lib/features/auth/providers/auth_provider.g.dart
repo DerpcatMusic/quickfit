@@ -9,27 +9,28 @@ part of 'auth_provider.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 
-@ProviderFor(Auth)
-final authProvider = AuthProvider._();
+@ProviderFor(AuthNotifier)
+final authProvider = AuthNotifierProvider._();
 
-final class AuthProvider extends $NotifierProvider<Auth, AuthState> {
-  AuthProvider._()
+final class AuthNotifierProvider
+    extends $NotifierProvider<AuthNotifier, AuthState> {
+  AuthNotifierProvider._()
       : super(
           from: null,
           argument: null,
           retry: null,
           name: r'authProvider',
-          isAutoDispose: true,
+          isAutoDispose: false,
           dependencies: null,
           $allTransitiveDependencies: null,
         );
 
   @override
-  String debugGetCreateSourceHash() => _$authHash();
+  String debugGetCreateSourceHash() => _$authNotifierHash();
 
   @$internal
   @override
-  Auth create() => Auth();
+  AuthNotifier create() => AuthNotifier();
 
   /// {@macro riverpod.override_with_value}
   Override overrideWithValue(AuthState value) {
@@ -40,9 +41,9 @@ final class AuthProvider extends $NotifierProvider<Auth, AuthState> {
   }
 }
 
-String _$authHash() => r'0501f57f2b068f2f4a71c6de61182e4f25cee199';
+String _$authNotifierHash() => r'7a484d5c72d292420962a23d9368e2eb70d743a3';
 
-abstract class _$Auth extends $Notifier<AuthState> {
+abstract class _$AuthNotifier extends $Notifier<AuthState> {
   AuthState build();
   @$mustCallSuper
   @override
@@ -57,8 +58,10 @@ abstract class _$Auth extends $Notifier<AuthState> {
 @ProviderFor(currentUser)
 final currentUserProvider = CurrentUserProvider._();
 
-final class CurrentUserProvider extends $FunctionalProvider<User?, User?, User?>
-    with $Provider<User?> {
+final class CurrentUserProvider extends $FunctionalProvider<
+    firebase_auth.User?,
+    firebase_auth.User?,
+    firebase_auth.User?> with $Provider<firebase_auth.User?> {
   CurrentUserProvider._()
       : super(
           from: null,
@@ -75,24 +78,25 @@ final class CurrentUserProvider extends $FunctionalProvider<User?, User?, User?>
 
   @$internal
   @override
-  $ProviderElement<User?> $createElement($ProviderPointer pointer) =>
+  $ProviderElement<firebase_auth.User?> $createElement(
+          $ProviderPointer pointer) =>
       $ProviderElement(pointer);
 
   @override
-  User? create(Ref ref) {
+  firebase_auth.User? create(Ref ref) {
     return currentUser(ref);
   }
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(User? value) {
+  Override overrideWithValue(firebase_auth.User? value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<User?>(value),
+      providerOverride: $SyncValueProvider<firebase_auth.User?>(value),
     );
   }
 }
 
-String _$currentUserHash() => r'136a4c18c102e18ca31daa576123c775047eded3';
+String _$currentUserHash() => r'abcdebcb1a2f91007823d821a7ff73c8ff43965d';
 
 @ProviderFor(isLoggedIn)
 final isLoggedInProvider = IsLoggedInProvider._();
@@ -132,7 +136,7 @@ final class IsLoggedInProvider extends $FunctionalProvider<bool, bool, bool>
   }
 }
 
-String _$isLoggedInHash() => r'f66cc22fa1eb28081c0a9b1c612b8143d86f6baa';
+String _$isLoggedInHash() => r'834d50731cdf445de374097b9a567b1ec8ca277f';
 
 @ProviderFor(userRole)
 final userRoleProvider = UserRoleProvider._();

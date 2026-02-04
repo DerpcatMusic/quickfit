@@ -13,7 +13,9 @@ import 'package:quickfit/core/constants/app_constants.dart';
 import 'package:quickfit/core/services/location_service.dart';
 import 'package:quickfit/core/theme/app_theme.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
+import 'package:quickfit/shared/widgets/zone_selection_map.dart';
 import 'package:quickfit/shared/widgets/quickfit_map.dart';
+import 'package:quickfit/core/providers/zone_provider.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -26,6 +28,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _pageController = PageController();
   final GlobalKey<QuickFitMapState> _mapKey = GlobalKey();
   int _currentPage = 0;
+  bool _isMapVisible = false;
+  Timer? _mapVisibilityTimer;
 
   // Form state
   String? _selectedRole;
@@ -36,12 +40,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   LatLng? _currentLocation;
   bool _isSubmitting = false;
 
+  // Zone selection state (default to zones mode)
+  bool _useZoneMode = true; // true = select zones, false = use radius
+  final Set<String> _selectedZoneIds = {};
+
   final _storageKey = const PageStorageKey('onboarding_form');
 
   @override
   void initState() {
     super.initState();
     _initLocation();
+    // Start loading zones in background so they act "instantly" availability later
+    ref.read(zonesProvider);
   }
 
   Future<void> _initLocation() async {
@@ -106,6 +116,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOutCubic,
       );
+
+      // Delay map visibility to avoid lag during transition
+      _mapVisibilityTimer?.cancel();
+      _mapVisibilityTimer = Timer(const Duration(milliseconds: 600), () {
+        if (mounted) setState(() => _isMapVisible = true);
+      });
     }
   }
 
@@ -123,15 +139,68 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      await ref.read(authProvider.notifier).completeOnboarding(
+      // 2026 FIX: Ensure studio address has coordinates
+      if (_currentLocation == null && _addressController.text.trim().isNotEmpty) {
+        final pos = await LocationService.instance
+            .getLatLngFromAddress(_addressController.text.trim());
+        
+        if (pos != null) {
+          _currentLocation = LatLng(pos.latitude, pos.longitude);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not find location. Please select from the list or use GPS.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            setState(() => _isSubmitting = false);
+            return;
+          }
+        }
+      }
+
+      // 2026 FIX: Prevent studios from onboarding without location
+      if (_selectedRole == 'studio' && _currentLocation == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Studio location required. Please enter a valid address.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() => _isSubmitting = false);
+          return;
+        }
+      }
+
+      final success = await ref.read(authProvider.notifier).completeOnboarding(
             role: _selectedRole!,
             name: _nameController.text.trim(),
             categories: _selectedCategories.toList(),
-            radiusKm: _selectedRole == 'instructor' ? _radiusKm : null,
+            radiusKm: _selectedRole == 'instructor' && !_useZoneMode
+                ? _radiusKm
+                : null,
             latitude: _currentLocation?.latitude,
             longitude: _currentLocation?.longitude,
             address: _addressController.text.trim(),
+            selectedZones: _selectedRole == 'instructor' && _useZoneMode
+                ? _selectedZoneIds.toList()
+                : null,
           );
+
+      if (!success && mounted) {
+        // Show error to user - don't navigate away
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to complete setup. Please try again.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      // If success, router will automatically redirect based on hasCompletedOnboarding
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -142,9 +211,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case 0:
         return _selectedRole != null;
       case 1:
-        return _nameController.text.trim().isNotEmpty &&
+        final baseValid = _nameController.text.trim().isNotEmpty &&
             _addressController.text.trim().isNotEmpty &&
             _selectedCategories.isNotEmpty;
+
+        // For instructors, validate zone or radius selection
+        if (_selectedRole == 'instructor') {
+          if (_useZoneMode) {
+            // Zone mode: require at least 1 zone selected
+            return baseValid && _selectedZoneIds.isNotEmpty;
+          } else {
+            // Radius mode: require location
+            return baseValid && _currentLocation != null;
+          }
+        }
+        return baseValid;
       default:
         return false;
     }
@@ -502,6 +583,32 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               }
             },
           ),
+          const SizedBox(height: 12),
+          // GPS Location Button
+          OutlinedButton.icon(
+            onPressed: () async {
+              await _findMyLocation();
+              // Reverse geocode to fill address field if possible
+              if (_currentLocation != null) {
+                final address =
+                    await LocationService.instance.getAddressFromLatLng(
+                  _currentLocation!.latitude,
+                  _currentLocation!.longitude,
+                );
+
+                if (address != null && mounted) {
+                  setState(() {
+                    _addressController.text = address;
+                  });
+                }
+              }
+            },
+            icon: const Icon(LucideIcons.crosshair),
+            label: const Text('Use Current Location'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+            ),
+          ),
           const SizedBox(height: 32),
           Text('Your Expertise',
               style: theme.textTheme.titleSmall
@@ -529,38 +636,71 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
           if (_selectedRole == 'instructor') ...[
             const SizedBox(height: 32),
-            Text('Search Radius',
+            Text(_useZoneMode ? 'Coverage Zones' : 'Search Radius',
                 style: theme.textTheme.titleSmall
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Slider(
-                    value: _radiusKm,
-                    min: 1,
-                    max: 50,
-                    divisions: 49,
-                    onChanged: (v) => setState(() => _radiusKm = v),
+            if (_useZoneMode)
+              // Zone mode: show zones count and hint
+              Card(
+                color: theme.colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.map, color: theme.colorScheme.primary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_selectedZoneIds.length} zones selected',
+                              style: theme.textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              'Tap zones on the map to select your coverage areas',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${_radiusKm.round()} km',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onPrimaryContainer,
+              )
+            else
+              // Radius mode: show slider
+              Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: _radiusKm,
+                      min: 1,
+                      max: 50,
+                      divisions: 49,
+                      onChanged: (v) => setState(() => _radiusKm = v),
                     ),
                   ),
-                ),
-              ],
-            ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_radiusKm.round()} km',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
           ],
         ],
       ),
@@ -620,11 +760,154 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   // ==============================================================================
 
   Widget _buildMapPanel(ThemeData theme) {
-    // Show helpful prompt when no location set yet
-    if (_currentLocation == null) {
-      return Container(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        child: Center(
+    return Directionality(
+      textDirection: isHebrew ? TextDirection.rtl : TextDirection.ltr,
+      child: Stack(
+        children: [
+          // Map content - zone or radius based on toggle
+          _useZoneMode ? _buildZoneMap(theme) : _buildRadiusMap(theme),
+
+          // Mode toggle at top
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 16,
+            child: Card(
+              color: theme.colorScheme.surface.withValues(alpha: 0.95),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildModeButton(
+                      theme,
+                      icon: LucideIcons.map,
+                      label: 'Zones',
+                      isSelected: _useZoneMode,
+                      onTap: () => setState(() => _useZoneMode = true),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildModeButton(
+                      theme,
+                      icon: LucideIcons.circle,
+                      label: 'Radius',
+                      isSelected: !_useZoneMode,
+                      onTap: () => setState(() => _useZoneMode = false),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Selection info at bottom
+          Positioned(
+            bottom: 16,
+            left: 16,
+            right: 16,
+            child: Card(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.95),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(
+                      _useZoneMode ? LucideIcons.mapPin : LucideIcons.circle,
+                      size: 20,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _useZoneMode
+                            ? '${_selectedZoneIds.length} zones selected'
+                            : '${_radiusKm.round()} km radius',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                    if (!_useZoneMode)
+                      FloatingActionButton.small(
+                        heroTag: 'findLocation',
+                        onPressed: _findMyLocation,
+                        tooltip: 'Find My Location',
+                        child: const Icon(LucideIcons.crosshair, size: 18),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeButton(
+    ThemeData theme, {
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: isSelected
+            ? theme.colorScheme.primary
+            : theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: isSelected
+                      ? theme.colorScheme.onPrimary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isSelected
+                        ? theme.colorScheme.onPrimary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildZoneMap(ThemeData theme) {
+    final zonesAsync = ref.watch(zonesProvider);
+
+    return zonesAsync.when(
+      loading: () => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text('Loading zones...', style: theme.textTheme.bodyMedium),
+          ],
+        ),
+      ),
+      error: (err, stack) => Center(
+        child: SingleChildScrollView(
           child: Card(
             margin: const EdgeInsets.all(24),
             child: Padding(
@@ -632,93 +915,91 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(LucideIcons.mapPin,
-                      size: 48, color: theme.colorScheme.primary),
+                  Icon(LucideIcons.alertCircle,
+                      size: 48, color: theme.colorScheme.error),
                   const SizedBox(height: 16),
-                  Text('Set Your Location',
+                  Text('Could not load zones',
                       style: theme.textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('Enter your address in the form, or use GPS:',
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      textAlign: TextAlign.center),
+                  Text('Try radius mode instead',
+                      style: theme.textTheme.bodyMedium),
                   const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _findMyLocation,
-                    icon: const Icon(LucideIcons.crosshair),
-                    label: const Text('Find My Location'),
+                  OutlinedButton(
+                    onPressed: () => ref.refresh(zonesProvider),
+                    child: const Text('Retry'),
                   ),
                 ],
               ),
             ),
           ),
         ),
+      ),
+      data: (zones) => AnimatedOpacity(
+        duration: const Duration(milliseconds: 400),
+        opacity: _isMapVisible ? 1.0 : 0.0,
+        child: _isMapVisible
+            ? ZoneSelectionMap(
+                zones: zones,
+                initialSelectedZones: _selectedZoneIds,
+                onSelectionChanged: (ids) =>
+                    setState(() => _selectedZoneIds.addAll(ids)),
+                topPadding: 80,
+              )
+            : Container(color: theme.colorScheme.surface),
+      ),
+    );
+  }
+
+  Widget _buildRadiusMap(ThemeData theme) {
+    if (!_isMapVisible) return Container(color: theme.colorScheme.surface);
+    // Show helpful prompt when no location set yet
+    if (_currentLocation == null) {
+      return Center(
+        child: Card(
+          margin: const EdgeInsets.all(24),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(LucideIcons.mapPin,
+                    size: 48, color: theme.colorScheme.primary),
+                const SizedBox(height: 16),
+                Text('Set Your Location',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('Enter your address in the form, or use GPS:',
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _findMyLocation,
+                  icon: const Icon(LucideIcons.crosshair),
+                  label: const Text('Find My Location'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
-    return Directionality(
-      textDirection: isHebrew ? TextDirection.rtl : TextDirection.ltr,
-      child: Stack(
-        children: [
-          QuickFitMap(
-            key: _mapKey,
-            initialCenter: _currentLocation,
-            initialZoom: 12,
-            radiusKm: _radiusKm,
-            radiusCenter: _currentLocation,
-            showUserLocation: true,
-            showRadius: true,
-            interactionEnabled: true, // Allow panning/zooming
-            onMapTap: _onMapTap, // Drop pin on tap
-          ),
-          // Radius label
-          Positioned(
-            top: 24,
-            right: 24,
-            child: Card(
-              color: theme.colorScheme.surface.withValues(alpha: 0.9),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text('${_radiusKm.round()} km radius',
-                    style: theme.textTheme.labelLarge
-                        ?.copyWith(fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ),
-          // Find My Location button
-          Positioned(
-            bottom: 24,
-            right: 24,
-            child: FloatingActionButton.small(
-              heroTag: 'findLocation',
-              onPressed: _findMyLocation,
-              tooltip: 'Find My Location',
-              child: const Icon(LucideIcons.crosshair),
-            ),
-          ),
-          // Hint text
-          Positioned(
-            bottom: 24,
-            left: 24,
-            right: 80,
-            child: Card(
-              color: theme.colorScheme.surfaceContainerHighest
-                  .withValues(alpha: 0.9),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Text(
-                  'Tap the map to set your home location',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(top: 80, bottom: 80),
+      child: QuickFitMap(
+        key: _mapKey,
+        initialCenter: _currentLocation,
+        initialZoom: 12,
+        radiusKm: _radiusKm,
+        radiusCenter: _currentLocation,
+        showUserLocation: true,
+        showRadius: true,
+        showHomePin: true,
+        interactionEnabled: true,
+        onMapTap: _onMapTap,
       ),
     );
   }

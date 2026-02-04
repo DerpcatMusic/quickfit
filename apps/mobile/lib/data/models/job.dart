@@ -12,13 +12,15 @@ class Job {
     required this.id,
     required this.studioId,
     required this.studioName,
+    required this.title,
     required this.category,
     required this.startTime,
     required this.endTime,
-    required this.rateIls,
-    required this.boostedRateIls,
-    required this.lat,
-    required this.lng,
+    required this.baseRate,
+    required this.currentRate,
+    required this.latitude,
+    required this.longitude,
+    required this.address,
     required this.status,
     required this.isSos,
     required this.distanceKm,
@@ -35,6 +37,9 @@ class Job {
   /// Display name of the studio.
   final String studioName;
 
+  /// Job title/title of the class.
+  final String title;
+
   /// Fitness category ID (e.g., 'yoga', 'pilates').
   final String category;
 
@@ -45,19 +50,22 @@ class Job {
   final DateTime endTime;
 
   /// Base pay rate in ILS (₪).
-  final int rateIls;
+  final double baseRate;
 
   /// Current rate including any SOS boost.
-  final int boostedRateIls;
+  final double currentRate;
 
   /// Optional notes from the studio.
   final String? notes;
 
   /// Studio latitude.
-  final double lat;
+  final double latitude;
 
   /// Studio longitude.
-  final double lng;
+  final double longitude;
+
+  /// Studio address.
+  final String address;
 
   /// Job status: 'open', 'claimed', 'confirmed', 'completed', 'cancelled', 'expired'.
   final String status;
@@ -77,16 +85,19 @@ class Job {
       id: json['_id'] as String,
       studioId: json['studioId'] as String,
       studioName: json['studioName'] as String? ?? 'Unknown Studio',
+      title: json['title'] as String? ?? 'Untitled Class',
       category: json['category'] as String,
       startTime: DateTime.fromMillisecondsSinceEpoch(json['startTime'] as int),
       endTime: DateTime.fromMillisecondsSinceEpoch(json['endTime'] as int),
-      rateIls: json['rateIls'] as int,
-      boostedRateIls: json['boostedRateIls'] as int? ?? json['rateIls'] as int,
+      baseRate: (json['baseRate'] as num).toDouble(),
+      currentRate:
+          (json['currentRate'] as num? ?? json['baseRate'] as num).toDouble(),
       notes: json['notes'] as String?,
-      lat: (json['latitude'] as num).toDouble(),
-      lng: (json['longitude'] as num).toDouble(),
+      latitude: (json['latitude'] as num).toDouble(),
+      longitude: (json['longitude'] as num).toDouble(),
+      address: json['address'] as String? ?? 'No address',
       status: json['status'] as String,
-      isSos: json['isSos'] as bool? ?? false,
+      isSos: json['sosBoostApplied'] as bool? ?? false,
       distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0.0,
       createdAt:
           DateTime.fromMillisecondsSinceEpoch(json['_creationTime'] as int),
@@ -100,7 +111,7 @@ class Job {
   Duration get timeUntilStart => startTime.difference(DateTime.now());
 
   /// Formatted rate with currency symbol.
-  String get formattedRate => '₪$boostedRateIls';
+  String get formattedRate => '₪${currentRate.round()}';
 
   /// Formatted distance (meters if < 1km, km otherwise).
   String get formattedDistance => distanceKm < 1
@@ -108,7 +119,7 @@ class Job {
       : '${distanceKm.toStringAsFixed(1)}km';
 
   /// Whether the rate was boosted from the base.
-  bool get isBoosted => boostedRateIls > rateIls;
+  bool get isBoosted => currentRate > baseRate;
 
   /// Duration of the class in minutes.
   int get durationMinutes => endTime.difference(startTime).inMinutes;

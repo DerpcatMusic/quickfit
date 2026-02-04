@@ -8,6 +8,7 @@ import 'package:convex_flutter/convex_flutter.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../data/models/job.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/utils/logger.dart';
 
@@ -54,14 +55,30 @@ class JobsNotifier extends _$JobsNotifier {
 
   @override
   JobsState build() {
+    final userId = ref.watch(currentUserProvider)?.uid;
+    final hasCompletedOnboarding = ref.watch(hasCompletedOnboardingProvider);
+
     ref.onDispose(() {
       _subscription?.cancel();
+      _subscription = null;
     });
 
-    // Start subscription
-    _subscribeToJobs();
+    if (userId != null && hasCompletedOnboarding) {
+      // Logic safety: don't subscribe if we already have a handle.
+      if (_subscription == null) {
+        Future.microtask(() => _subscribeToJobs());
+        return const JobsState(isLoading: true);
+      }
+      // If we already have a subscription, keep the current state to prevent "bouncing" UI.
+      return state;
+    }
 
-    return const JobsState(isLoading: true);
+    // Reset subscription if user logs out or onboarding is revoked
+    if (_subscription != null) {
+      _subscription?.cancel();
+      _subscription = null;
+    }
+    return const JobsState(isLoading: false);
   }
 
   Future<void> _subscribeToJobs() async {
@@ -83,8 +100,6 @@ class JobsNotifier extends _$JobsNotifier {
     _subscription = await ConvexClient.instance.subscribe(
       name: 'jobs:getNearbyJobs',
       args: {
-        'latitude': lat.toString(),
-        'longitude': lng.toString(),
         'limit': AppConstants.jobsPageSize.toString(),
       },
       onUpdate: (data) {
@@ -147,6 +162,19 @@ class JobsNotifier extends _$JobsNotifier {
       return false;
     }
   }
+
+  Future<bool> withdrawClaim(String jobId) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'jobs:withdrawClaim',
+        args: {'jobId': jobId},
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
 }
 
 // Provider for studio's posted jobs
@@ -156,12 +184,23 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
 
   @override
   JobsState build() {
+    final userId = ref.watch(currentUserProvider)?.uid;
+    final role = ref.watch(userRoleProvider);
+
     ref.onDispose(() {
       _subscription?.cancel();
     });
 
-    _subscribeToStudioJobs();
-    return const JobsState(isLoading: true);
+    // Only subscribe for studios.
+    if (userId != null && role == 'studio') {
+      if (_subscription == null) {
+        Future.microtask(() => _subscribeToStudioJobs());
+        return const JobsState(isLoading: true);
+      }
+      return state;
+    }
+
+    return const JobsState(isLoading: false);
   }
 
   Future<void> _subscribeToStudioJobs() async {
@@ -210,31 +249,31 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
   }
 
   Future<String?> postJob({
+    required String title,
     required String category,
     required DateTime startTime,
     required DateTime endTime,
-    required int rateIls,
-    String? notes,
+    required double baseRate,
+    required String address,
+    required double latitude,
+    required double longitude,
+    String? description,
+    bool requiresVerification = true,
   }) async {
-    final lat = LocationService.instance.latitude;
-    final lng = LocationService.instance.longitude;
-
-    if (lat == null || lng == null) {
-      state = state.copyWith(error: 'Location not available');
-      return null;
-    }
-
     try {
       final result = await ConvexClient.instance.mutation(
         name: 'jobs:postJob',
         args: {
+          'title': title,
           'category': category,
-          'startTime': startTime.millisecondsSinceEpoch.toString(),
-          'endTime': endTime.millisecondsSinceEpoch.toString(),
-          'rateIls': rateIls.toString(),
-          'latitude': lat.toString(),
-          'longitude': lng.toString(),
-          if (notes != null) 'notes': notes,
+          'startTime': startTime.millisecondsSinceEpoch,
+          'endTime': endTime.millisecondsSinceEpoch,
+          'baseRate': baseRate,
+          'address': address,
+          'latitude': latitude,
+          'longitude': longitude,
+          'requiresVerification': requiresVerification,
+          if (description != null) 'description': description,
         },
       );
       return result;

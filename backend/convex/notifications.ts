@@ -24,7 +24,7 @@ import { findInstructorsForJob, isWithinRadius } from "./geo";
 export const dispatchJobNotifications = internalAction({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, { jobId }) => {
-    const job = await ctx.runQuery(internal.jobs.getJobById, { jobId });
+    const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
     if (!job || job.status !== "open") return;
     
     // 2026 GEOSPATIAL QUERY (REVERSE RADIUS)
@@ -92,7 +92,7 @@ export const notifyStudioOfClaim = internalAction({
     claimId: v.id("claims"),
   },
   handler: async (ctx, { jobId, claimId }) => {
-    const job = await ctx.runQuery(internal.jobs.getJobById, { jobId });
+    const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
     if (!job) return;
     
     const studio = await ctx.runQuery(internal.users.getUserById, { 
@@ -138,7 +138,7 @@ export const notifyClaimAccepted = internalAction({
     });
     if (!instructor?.fcmToken) return;
     
-    const job = await ctx.runQuery(internal.jobs.getJobById, { jobId: claim.jobId });
+    const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId: claim.jobId });
     if (!job) return;
     
     const title = "Claim accepted! 🎉";
@@ -172,7 +172,7 @@ export const notifyClaimRejected = internalAction({
     });
     if (!instructor?.fcmToken) return;
     
-    const job = await ctx.runQuery(internal.jobs.getJobById, { jobId: claim.jobId });
+    const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId: claim.jobId });
     if (!job) return;
     
     const title = "Claim not accepted";
@@ -206,7 +206,7 @@ export const notifyJobCancelled = internalAction({
     });
     if (!instructor?.fcmToken) return;
     
-    const job = await ctx.runQuery(internal.jobs.getJobById, { jobId });
+    const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
     if (!job) return;
     
     const title = "Job cancelled";

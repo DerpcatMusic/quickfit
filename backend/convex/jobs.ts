@@ -28,10 +28,39 @@ export const CATEGORIES = [
 // QUERIES
 // ==========================================
 
-export const getJobById = internalQuery({
+export const getJobInternal = internalQuery({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, { jobId }) => {
     return await ctx.db.get(jobId);
+  },
+});
+
+export const getJobById = query({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return null;
+
+    const studio = await ctx.db.get(job.studioId);
+    let claimedInstructor = null;
+    
+    if (job.claimedBy) {
+      const instructor = await ctx.db.get(job.claimedBy);
+      if (instructor) {
+        claimedInstructor = {
+          _id: instructor._id,
+          name: instructor.name,
+          photoUrl: instructor.avatarUrl,
+          isVerified: instructor.isVerified,
+        };
+      }
+    }
+
+    return {
+      ...job,
+      studioName: studio?.businessName || studio?.name || "Studio",
+      claimedInstructor,
+    };
   },
 });
 
@@ -398,6 +427,66 @@ export const claimJob = mutation({
     });
     
     return claimId;
+  },
+});
+
+export const withdrawClaim = mutation({
+  args: {
+    jobId: v.id("jobs"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    
+    if (!user || user.role !== "instructor") {
+      throw new Error("Only instructors can withdraw claims");
+    }
+    
+    const job = await ctx.db.get(args.jobId);
+    if (!job) throw new Error("Job not found");
+    
+    // Find the pending claim
+    const claim = await ctx.db
+      .query("claims")
+      .withIndex("by_job_status", (q) => q.eq("jobId", args.jobId).eq("status", "pending"))
+      .filter((q) => q.eq(q.field("instructorId"), user._id))
+      .first();
+    
+    if (!claim) throw new Error("No pending claim found to withdraw");
+    
+    const now = Date.now();
+    
+    // Mark claim as withdrawn
+    await ctx.db.patch(claim._id, {
+      status: "withdrawn",
+      respondedAt: now,
+    });
+    
+    // Set job back to open if it was claimed by this user
+    if (job.claimedBy === user._id) {
+      await ctx.db.patch(args.jobId, {
+        status: "open",
+        claimedBy: undefined,
+        claimedAt: undefined,
+        updatedAt: now,
+      });
+
+      // 2026 GEOSPATIAL RE-ADD
+      await syncJobLocation(
+        ctx,
+        args.jobId,
+        { latitude: job.latitude, longitude: job.longitude },
+        job.category,
+        "open",
+        job.requiresVerification,
+        job.currentRate
+      );
+    }
   },
 });
 

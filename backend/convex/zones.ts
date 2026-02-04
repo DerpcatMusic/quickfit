@@ -30,6 +30,30 @@ export const getAllZones = query({
   },
 });
 
+export const getAllZonesPaginated = query({
+  args: { paginationOpts: v.any() }, // Using v.any() or specific shape for pagination options
+  handler: async (ctx, args) => {
+    let opts = args.paginationOpts;
+    if (typeof opts === "string") {
+      opts = JSON.parse(opts);
+    }
+    const result = await ctx.db.query("zones").paginate(opts);
+    
+    return {
+      ...result,
+      page: result.page.map((z) => ({
+        _id: z._id,
+        orefId: z.orefId,
+        name: z.name,
+        nameHebrew: z.nameHebrew,
+        city: z.city,
+        centroid: z.centroid,
+        polygon: z.polygon,
+      })),
+    };
+  },
+});
+
 /**
  * Get zones by city (for filtered selection)
  */

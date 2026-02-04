@@ -70,7 +70,7 @@ class AppTheme {
       outlineVariant: appColors.divider,
     );
 
-    final textTheme = GoogleFonts.heeboTextTheme(
+    final textTheme = GoogleFonts.notoSansHebrewTextTheme(
       isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
     ).apply(
       bodyColor: scheme.onSurface,

@@ -209,23 +209,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           SizedBox(
             width: double.infinity,
             height: 56,
-            child: FilledButton(
+            child: FilledButton.icon(
               onPressed: isLoading
                   ? null
                   : () => ref.read(authProvider.notifier).signInWithApple(),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(LucideIcons.apple, size: 20),
-                  SizedBox(width: 12),
-                  Text(
-                    'Continue with Apple',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+              icon: const Icon(LucideIcons.apple, size: 20),
+              label: const Text(
+                'Continue with Apple',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
@@ -233,15 +227,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         const SizedBox(height: 24),
 
-        // Divider
+        // Divider - using fixed-width container for RTL compatibility
         Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Expanded(child: Divider(color: colors.divider)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                'or',
-                style: TextStyle(color: colors.mutedText),
+            SizedBox(
+              width: 48,
+              child: Center(
+                child: Text(
+                  'or',
+                  style: TextStyle(color: colors.mutedText),
+                ),
               ),
             ),
             Expanded(child: Divider(color: colors.divider)),
@@ -254,21 +251,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         SizedBox(
           width: double.infinity,
           height: 56,
-          child: OutlinedButton(
+          child: OutlinedButton.icon(
             onPressed: _toggleEmailForm,
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(LucideIcons.mail, size: 20),
-                SizedBox(width: 12),
-                Text(
-                  'Continue with Email',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            icon: const Icon(LucideIcons.mail, size: 20),
+            label: const Text(
+              'Continue with Email',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),

@@ -24,12 +24,14 @@ class JobCard extends StatefulWidget {
     required this.job,
     this.onClaim,
     this.onDismiss,
+    this.onTap,
     this.isLoading = false,
   });
 
   final Job job;
   final VoidCallback? onClaim;
   final VoidCallback? onDismiss;
+  final VoidCallback? onTap;
   final bool isLoading;
 
   @override
@@ -115,6 +117,7 @@ class _JobCardState extends State<JobCard> {
           onHorizontalDragUpdate:
               widget.isLoading ? null : _onHorizontalDragUpdate,
           onHorizontalDragEnd: widget.isLoading ? null : _onHorizontalDragEnd,
+          onTap: widget.onTap,
           child: AnimatedValues(
             duration:
                 _isDragging ? Duration.zero : const Duration(milliseconds: 200),
@@ -328,8 +331,8 @@ class _JobCardState extends State<JobCard> {
                 children: [
                   if (widget.job.isBoosted)
                     BoostedRateBadge(
-                      originalRate: widget.job.rateIls,
-                      boostedRate: widget.job.boostedRateIls,
+                      originalRate: widget.job.baseRate.toInt(),
+                      boostedRate: widget.job.currentRate.toInt(),
                     ),
                   Text(
                     widget.job.formattedRate,

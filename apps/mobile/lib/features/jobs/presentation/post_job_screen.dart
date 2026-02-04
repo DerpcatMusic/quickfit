@@ -10,6 +10,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../core/constants/categories.dart';
 import '../../../core/router/app_router.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../providers/jobs_provider.dart';
 
 class PostJobScreen extends ConsumerStatefulWidget {
@@ -26,6 +27,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = TimeOfDay.now();
   TimeOfDay _endTime = TimeOfDay(hour: TimeOfDay.now().hour + 1, minute: 0);
+  final _titleController = TextEditingController();
   final _rateController = TextEditingController();
   final _notesController = TextEditingController();
   bool _isSubmitting = false;
@@ -40,6 +42,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   @override
   void dispose() {
+    _titleController.dispose();
     _rateController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -64,6 +67,14 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   }
 
   Future<void> _submit() async {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a class title')),
+      );
+      return;
+    }
+
     if (_selectedCategory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a category')),
@@ -71,10 +82,20 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       return;
     }
 
-    final rate = int.tryParse(_rateController.text);
+    final rate = double.tryParse(_rateController.text);
     if (rate == null || rate <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid rate')),
+      );
+      return;
+    }
+
+    final auth = ref.read(authProvider);
+    if (auth.latitude == null || auth.longitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text('Studio location not found. Please update your profile.')),
       );
       return;
     }
@@ -99,11 +120,15 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     setState(() => _isSubmitting = true);
 
     final jobId = await ref.read(studioJobsProvider.notifier).postJob(
+          title: title,
           category: _selectedCategory!.id,
           startTime: startDateTime,
           endTime: endDateTime,
-          rateIls: rate,
-          notes: _notesController.text.trim().isEmpty
+          baseRate: rate,
+          address: auth.homeAddress ?? 'Studio Location',
+          latitude: auth.latitude!,
+          longitude: auth.longitude!,
+          description: _notesController.text.trim().isEmpty
               ? null
               : _notesController.text.trim(),
         );
@@ -152,6 +177,12 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Title
+              _buildSectionTitle('Class Title'),
+              const SizedBox(height: 12),
+              _buildTitleInput(),
+              const SizedBox(height: 24),
+
               // Category selection
               _buildSectionTitle('Class Type'),
               const SizedBox(height: 12),
@@ -203,6 +234,27 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         fontSize: 14,
         fontWeight: FontWeight.w600,
         color: Colors.black87,
+      ),
+    );
+  }
+
+  Widget _buildTitleInput() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: TextField(
+        controller: _titleController,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          hintText: 'e.g. Morning Vinyasa Flow',
+          hintStyle:
+              TextStyle(color: Colors.grey[400], fontWeight: FontWeight.normal),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.all(16),
+        ),
       ),
     );
   }

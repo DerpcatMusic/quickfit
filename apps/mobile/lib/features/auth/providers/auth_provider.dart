@@ -3,7 +3,7 @@
 
 import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:convex_flutter/convex_flutter.dart';
@@ -13,73 +13,15 @@ import 'dart:convert';
 import 'package:quickfit/core/services/notification_service.dart';
 import 'package:quickfit/core/services/location_service.dart';
 import 'package:quickfit/core/utils/logger.dart';
+import 'package:quickfit/features/auth/models/auth_state.dart';
+
+export 'package:quickfit/features/auth/models/auth_state.dart';
 
 part 'auth_provider.g.dart';
 
-// Auth state model
-class AuthState {
-  final User? user;
-  final String? convexUserId;
-  final String? role;
-  final bool hasCompletedOnboarding;
-  final String? phone;
-  final String? homeAddress;
-  final List<String>? categories;
-  final double? radiusKm;
-  final bool isVerified;
-  final bool isLoading;
-  final String? error;
-
-  const AuthState({
-    this.user,
-    this.convexUserId,
-    this.role,
-    this.hasCompletedOnboarding = false,
-    this.phone,
-    this.homeAddress,
-    this.categories,
-    this.radiusKm,
-    this.isVerified = false,
-    this.isLoading = false,
-    this.error,
-  });
-
-  AuthState copyWith({
-    User? user,
-    String? convexUserId,
-    String? role,
-    bool? hasCompletedOnboarding,
-    String? phone,
-    String? homeAddress,
-    List<String>? categories,
-    double? radiusKm,
-    bool? isVerified,
-    bool? isLoading,
-    String? error,
-  }) {
-    return AuthState(
-      user: user ?? this.user,
-      convexUserId: convexUserId ?? this.convexUserId,
-      role: role ?? this.role,
-      hasCompletedOnboarding:
-          hasCompletedOnboarding ?? this.hasCompletedOnboarding,
-      phone: phone ?? this.phone,
-      homeAddress: homeAddress ?? this.homeAddress,
-      categories: categories ?? this.categories,
-      radiusKm: radiusKm ?? this.radiusKm,
-      isVerified: isVerified ?? this.isVerified,
-      isLoading: isLoading ?? this.isLoading,
-      error: error,
-    );
-  }
-
-  bool get isInstructor => role == 'instructor';
-  bool get isStudio => role == 'studio';
-}
-
-@riverpod
-class Auth extends _$Auth {
-  final _auth = FirebaseAuth.instance;
+@Riverpod(keepAlive: true)
+class AuthNotifier extends _$AuthNotifier {
+  final _auth = firebase_auth.FirebaseAuth.instance;
   // GoogleSignIn is now a singleton in v7
   // We should initialize it before use.
   // Assuming GoogleSignIn.instance exists and initialize takes scopes?
@@ -95,7 +37,7 @@ class Auth extends _$Auth {
 
   // ...
 
-  StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<firebase_auth.User?>? _authSubscription;
   StreamSubscription<GoogleSignInAuthenticationEvent>? _gsiSubscription;
 
   @override
@@ -140,6 +82,103 @@ class Auth extends _$Auth {
     }
   }
 
+  void _onAuthStateChanged(firebase_auth.User? user) {
+    if (user != null) {
+      _syncWithConvex(user);
+    } else {
+      state = const AuthState();
+    }
+  }
+
+  /// Debouncing flag to prevent multiple simultaneous syncs
+  bool _isSyncing = false;
+
+  /// Simplified sync flow: wait for WebSocket connection, then sync
+  Future<void> _syncWithConvex(firebase_auth.User user) async {
+    // Debounce - prevent multiple simultaneous syncs
+    if (_isSyncing) {
+      log.w('Sync already in progress, skipping duplicate call');
+      return;
+    }
+    _isSyncing = true;
+
+    try {
+      final stopwatch = Stopwatch()..start();
+      log.i('Starting Convex sync for user: ${user.email}');
+
+      // Step 1: Set up Convex auth with Firebase token
+      await ConvexClient.instance.setAuthWithRefresh(
+        fetchToken: () async {
+          final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+          return await currentUser?.getIdToken();
+        },
+      );
+      log.d('Auth fetcher registered in ${stopwatch.elapsedMilliseconds}ms');
+
+      // Step 2: Wait for WebSocket connection
+      if (!ConvexClient.instance.isConnected) {
+        log.i('Waiting for WebSocket connection...');
+        await ConvexClient.instance.connectionState
+            .firstWhere((s) => s == WebSocketConnectionState.connected)
+            .timeout(
+              const Duration(seconds: 30),
+            );
+      }
+      log.i('WebSocket ready in ${stopwatch.elapsedMilliseconds}ms');
+
+      // Step 3: Global sync
+      await ConvexClient.instance.mutation(
+        name: 'users:syncUser',
+        args: {
+          'firebaseUid': user.uid,
+          'email': user.email ?? '',
+          'name': user.displayName ?? '',
+          'photoUrl': user.photoURL ?? '',
+        },
+      );
+      log.i(
+          'Server-side user sync complete in ${stopwatch.elapsedMilliseconds}ms');
+
+      // Step 4: Fetch user profile
+      final resultJson = await ConvexClient.instance.query(
+        'users:getCurrentUser',
+        {},
+      );
+      log.i('Profile data retrieved in ${stopwatch.elapsedMilliseconds}ms');
+      final decoded = json.decode(resultJson);
+      final userData = decoded as Map<String, dynamic>?;
+
+      if (userData != null) {
+        state = state.copyWith(
+          user: user,
+          convexUserId: userData['_id']?.toString(),
+          role: userData['role']?.toString(),
+          hasCompletedOnboarding: userData['hasCompletedOnboarding'] ?? false,
+          phone: userData['phone']?.toString(),
+          homeAddress: userData['homeAddress']?.toString(),
+          latitude: (userData['latitude'] as num?)?.toDouble(),
+          longitude: (userData['longitude'] as num?)?.toDouble(),
+          categories: userData['categories'] != null
+              ? List<String>.from(userData['categories'] as List)
+              : null,
+          radiusKm: (userData['radiusKm'] as num?)?.toDouble(),
+          isVerified: userData['isVerified'] ?? false,
+          isLoading: false,
+          error: null,
+        );
+        log.i(
+            'Auth sync complete: role=${userData['role']}, onboarding=${userData['hasCompletedOnboarding']}');
+      } else {
+        state = AuthState(user: user, isLoading: false);
+      }
+    } catch (e) {
+      log.e('Sync error: $e');
+      state = AuthState(user: user, error: e.toString(), isLoading: false);
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
   Future<void> _processGoogleUser(GoogleSignInAccount googleUser) async {
     try {
       state = state.copyWith(isLoading: true);
@@ -156,7 +195,7 @@ class Auth extends _$Auth {
         throw Exception('Failed to get ID token from Google');
       }
 
-      final credential = GoogleAuthProvider.credential(
+      final credential = firebase_auth.GoogleAuthProvider.credential(
         accessToken: accessToken,
         idToken: idToken,
       );
@@ -165,78 +204,6 @@ class Auth extends _$Auth {
     } catch (e) {
       log.e('Failed to process Google user: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
-    }
-  }
-
-  void _onAuthStateChanged(User? user) {
-    if (user != null) {
-      _syncWithConvex(user);
-    } else {
-      state = const AuthState();
-    }
-  }
-
-  Future<void> _syncWithConvex(User user) async {
-    try {
-      await _retryWithBackoff(() async {
-        // Set up Convex auth with Firebase token refresh
-        await ConvexClient.instance.setAuthWithRefresh(
-          fetchToken: () async {
-            final u = FirebaseAuth.instance.currentUser;
-            return await u?.getIdToken(true);
-          },
-          onAuthChange: (isAuthenticated) {
-            // Use logger or handled silence
-          },
-        );
-
-        // Sync user to Convex
-        await ConvexClient.instance.mutation(
-          name: 'users:syncUser',
-          args: {
-            'firebaseUid': user.uid,
-            'email': user.email ?? '',
-            'name': user.displayName ?? '',
-            'photoUrl': user.photoURL ?? '',
-          },
-        );
-
-        // Get user data from Convex - positional arguments, all strings
-        final resultJson = await ConvexClient.instance.query(
-          'users:getCurrentUser',
-          {},
-        );
-
-        // Handle null/empty response from Convex
-        if (resultJson.isEmpty || resultJson == 'null') {
-          state = AuthState(user: user, isLoading: false);
-          return;
-        }
-
-        final decoded = json.decode(resultJson);
-        final userData = decoded as Map<String, dynamic>?;
-
-        if (userData != null) {
-          state = state.copyWith(
-            user: user,
-            convexUserId: userData['_id']?.toString(),
-            role: userData['role']?.toString(),
-            hasCompletedOnboarding: userData['hasCompletedOnboarding'] ?? false,
-            phone: userData['phone']?.toString(),
-            homeAddress: userData['homeAddress']?.toString(),
-            categories: userData['categories'] != null
-                ? List<String>.from(userData['categories'] as List)
-                : null,
-            radiusKm: (userData['radiusKm'] as num?)?.toDouble(),
-            isVerified: userData['isVerified'] ?? false,
-            isLoading: false,
-          );
-        } else {
-          state = AuthState(user: user, isLoading: false);
-        }
-      });
-    } catch (e) {
-      state = AuthState(user: user, error: e.toString(), isLoading: false);
     }
   }
 
@@ -287,7 +254,8 @@ class Auth extends _$Auth {
         ],
       );
 
-      final oauthCredential = OAuthProvider('apple.com').credential(
+      final oauthCredential =
+          firebase_auth.OAuthProvider('apple.com').credential(
         idToken: credential.identityToken,
         accessToken: credential.authorizationCode,
       );
@@ -321,7 +289,7 @@ class Auth extends _$Auth {
       }
 
       // Auth state change listener will handle Convex sync
-    } on FirebaseAuthException catch (e) {
+    } on firebase_auth.FirebaseAuthException catch (e) {
       log.e('Email sign-up error: $e');
 
       // Handle account-exists-with-different-credential
@@ -359,7 +327,7 @@ class Auth extends _$Auth {
     }
 
     try {
-      final credential = EmailAuthProvider.credential(
+      final credential = firebase_auth.EmailAuthProvider.credential(
         email: email,
         password: password,
       );
@@ -367,7 +335,7 @@ class Auth extends _$Auth {
       await user.linkWithCredential(credential);
       log.i('Successfully linked email/password to account');
       return true;
-    } on FirebaseAuthException catch (e) {
+    } on firebase_auth.FirebaseAuthException catch (e) {
       log.e('Link email error: $e');
       if (e.code == 'provider-already-linked') {
         state = state.copyWith(
@@ -446,7 +414,7 @@ class Auth extends _$Auth {
 
   /// Convert Firebase auth errors to user-friendly messages.
   String _getFirebaseAuthErrorMessage(dynamic error) {
-    if (error is FirebaseAuthException) {
+    if (error is firebase_auth.FirebaseAuthException) {
       switch (error.code) {
         case 'email-already-in-use':
           return 'An account already exists with this email';
@@ -472,7 +440,7 @@ class Auth extends _$Auth {
   }
 
   // Complete onboarding
-  Future<void> completeOnboarding({
+  Future<bool> completeOnboarding({
     required String role,
     required String name,
     required List<String> categories,
@@ -480,37 +448,59 @@ class Auth extends _$Auth {
     double? latitude,
     double? longitude,
     String? address,
+    List<String>? selectedZones, // Zone IDs for coverage
   }) async {
     try {
-      final mutationArgs = {
+      final mutationArgs = <String, dynamic>{
         'role': role,
         'name': name,
         'categories': categories.join(','),
-        if (radiusKm != null) 'radiusKm': radiusKm as num,
-        if (latitude != null) 'latitude': latitude as num,
-        if (longitude != null) 'longitude': longitude as num,
-        if (address != null) 'address': address,
       };
 
-      log.i('Completing onboarding with args: $mutationArgs');
-      for (final key in mutationArgs.keys) {
-        log.i(
-            'Arg $key: ${mutationArgs[key]} (type: ${mutationArgs[key].runtimeType})');
+      // Explicitly add numeric values with proper type (num, not dynamic)
+      if (radiusKm != null) {
+        mutationArgs['radiusKm'] = radiusKm as num;
+      }
+      if (latitude != null) {
+        mutationArgs['latitude'] = latitude as num;
+      }
+      if (longitude != null) {
+        mutationArgs['longitude'] = longitude as num;
+      }
+      if (address != null) {
+        mutationArgs['address'] = address;
+      }
+      if (selectedZones != null && selectedZones.isNotEmpty) {
+        // Cast to List<dynamic> to ensure proper JSON array serialization
+        mutationArgs['selectedZones'] = List<dynamic>.from(selectedZones);
       }
 
-      await _retryWithBackoff(() async {
-        await ConvexClient.instance.mutation(
-          name: 'users:completeOnboarding',
-          args: mutationArgs,
-        );
+      log.i('🔴 COMPLETING ONBOARDING - args: $mutationArgs');
 
-        state = state.copyWith(
-          role: role,
-          hasCompletedOnboarding: true,
-        );
-      });
+      final result = await ConvexClient.instance.mutation(
+        name: 'users:completeOnboarding',
+        args: mutationArgs,
+      );
+
+      log.i('🟢 ONBOARDING MUTATION COMPLETED - result: $result');
+
+      // Check if result contains "Server Error" or "ArgumentValidationError"
+      if (result.toString().contains('Error')) {
+        throw Exception(result.toString());
+      }
+
+      // Only update local state AFTER confirmed mutation success
+      state = state.copyWith(
+        role: role,
+        hasCompletedOnboarding: true,
+        error: null,
+      );
+
+      return true; // Success!
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      log.e('completeOnboarding FAILED: $e');
+      state = state.copyWith(error: 'Failed to save profile: $e');
+      return false; // Failure - caller should show error to user
     }
   }
 
@@ -602,51 +592,16 @@ class Auth extends _$Auth {
       log.e('Failed to reset onboarding: $e');
     }
   }
-
-  /// Helper to retry operations that might fail due to connection issues
-  Future<T> _retryWithBackoff<T>(
-    Future<T> Function() operation, {
-    int maxAttempts = 5,
-    Duration initialDelay = const Duration(milliseconds: 500),
-  }) async {
-    int attempts = 0;
-    Duration delay = initialDelay;
-
-    while (true) {
-      try {
-        attempts++;
-        return await operation();
-      } catch (e) {
-        if (attempts >= maxAttempts) rethrow;
-
-        // Check for specific connection/socket errors
-        final errorStr = e.toString().toLowerCase();
-        final isConnectionError = errorStr.contains('websocket') ||
-            errorStr.contains('connection') ||
-            errorStr.contains('socket');
-
-        if (isConnectionError) {
-          log.w(
-              'Operation failed (attempt $attempts/$maxAttempts): $e. Retrying in ${delay.inMilliseconds}ms...');
-          await Future.delayed(delay);
-          delay *= 2; // Exponential backoff
-        } else {
-          rethrow; // Don't retry for non-connection errors
-        }
-      }
-    }
-  }
 }
 
-// Convenience providers
 @riverpod
-User? currentUser(Ref ref) {
+firebase_auth.User? currentUser(Ref ref) {
   return ref.watch(authProvider).user;
 }
 
 @riverpod
 bool isLoggedIn(Ref ref) {
-  return ref.watch(currentUserProvider) != null;
+  return ref.watch(authProvider).user != null;
 }
 
 @riverpod

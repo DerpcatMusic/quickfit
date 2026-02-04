@@ -52,7 +52,8 @@ export default defineSchema({
     radiusKm: v.optional(v.float64()),
     
     // INSTRUCTOR-SPECIFIC: Selected Pikud HaOref zones (preferred dispatch areas)
-    selectedZones: v.optional(v.array(v.id("zones"))),
+    // Stored as string IDs for flexibility (validated server-side)
+    selectedZones: v.optional(v.array(v.string())),
     
     // STUDIO-SPECIFIC: Auto-detected zone based on address
     zoneId: v.optional(v.id("zones")),
