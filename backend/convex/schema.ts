@@ -48,6 +48,11 @@ export default defineSchema({
     latitude: v.optional(v.float64()),
     longitude: v.optional(v.float64()),
     
+    // H3 HEX SPATIAL INDEXING (Resolution 11 = ~50m precision)
+    // One-time calculation per address change, O(1) lookups forever
+    homeHex11: v.optional(v.string()),              // Home location hex
+    workAreaHexes11: v.optional(v.array(v.string())), // All hexes within work radius
+    
     // INSTRUCTOR-SPECIFIC: How far they're willing to travel (in km)
     radiusKm: v.optional(v.float64()),
     
@@ -78,7 +83,8 @@ export default defineSchema({
     .index("by_firebaseUid", ["firebaseUid"])
     .index("by_role", ["role"])
     .index("by_verified", ["isVerified", "role"])
-    .index("by_category", ["primaryCategory", "role"]),
+    .index("by_category", ["primaryCategory", "role"])
+    .index("by_homeHex11", ["homeHex11"]),
 
   // ==========================================
   // JOBS - Substitute requests from studios
@@ -107,6 +113,9 @@ export default defineSchema({
     latitude: v.float64(),
     longitude: v.float64(),
     address: v.string(),
+    
+    // H3 HEX SPATIAL INDEXING (Resolution 11 = ~50m precision)
+    locationHex11: v.optional(v.string()),  // Job location hex for fast matching
     
     // Status flow
     status: v.union(
@@ -139,7 +148,8 @@ export default defineSchema({
     .index("by_status", ["status", "startTime"])
     .index("by_category_status", ["category", "status"])
     .index("by_claimedBy", ["claimedBy"])
-    .index("by_startTime", ["startTime"]),
+    .index("by_startTime", ["startTime"])
+    .index("by_locationHex11", ["locationHex11"]),
 
   // ==========================================
   // CLAIMS - Instructor claims on jobs
