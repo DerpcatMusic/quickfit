@@ -43,7 +43,13 @@ export const getPendingReview = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
     
-    // TODO: Add admin check
+    // Admin check: Only admins can view pending reviews
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    
+    if (!user?.isAdmin) return [];
     
     return await ctx.db
       .query("verifications")
@@ -142,13 +148,14 @@ export const manualReview = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
     
-    // TODO: Add admin check
+    // Admin check: Only admins can review certificates
     const reviewer = await ctx.db
       .query("users")
       .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
       .first();
     
     if (!reviewer) throw new Error("Reviewer not found");
+    if (!reviewer.isAdmin) throw new Error("Unauthorized: Admin access required");
     
     const verification = await ctx.db.get(args.verificationId);
     if (!verification) throw new Error("Verification not found");

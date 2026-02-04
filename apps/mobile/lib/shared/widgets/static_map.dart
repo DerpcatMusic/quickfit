@@ -30,12 +30,8 @@ class StaticMap extends StatelessWidget {
   final bool showPin;
   final VoidCallback? onTap;
 
-  // Stadia Maps Alidade Smooth Dark style
-  static const _tileUrl =
-      'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png';
-  
-  // TODO: Move to environment config
-  static const _apiKey = 'YOUR_STADIA_API_KEY'; 
+  // OpenStreetMap - Free, no API key needed
+  static const _tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'; 
 
   @override
   Widget build(BuildContext context) {
@@ -59,12 +55,10 @@ class StaticMap extends StatelessWidget {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: '$_tileUrl?api_key={api_key}',
-                  additionalOptions: const {
-                    'api_key': _apiKey,
-                  },
+                  urlTemplate: _tileUrl,
                   tileProvider: _CachedTileProvider(),
-                  maxZoom: 20,
+                  maxZoom: 19,
+                  userAgentPackageName: 'com.quickfit.app',
                 ),
                 if (showPin)
                   MarkerLayer(
