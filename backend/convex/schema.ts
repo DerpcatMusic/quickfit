@@ -117,20 +117,41 @@ export default defineSchema({
     // H3 HEX SPATIAL INDEXING (Resolution 11 = ~50m precision)
     locationHex11: v.optional(v.string()),  // Job location hex for fast matching
     
-    // Status flow
+    // Status flow (with backup support)
     status: v.union(
-      v.literal("open"),
-      v.literal("claimed"),
-      v.literal("confirmed"),
+      v.literal("open"),              // No claims yet
+      v.literal("claimed"),           // Primary instructor claimed
+      v.literal("backup_claimed"),    // Primary + backup instructor claimed
+      v.literal("confirmed"),         // Studio confirmed primary
       v.literal("completed"),
       v.literal("cancelled"),
       v.literal("expired")
     ),
     
-    // Who claimed (if any)
+    // PRIMARY CLAIM
     claimedBy: v.optional(v.id("users")),
     claimedAt: v.optional(v.number()),
     confirmedAt: v.optional(v.number()),
+    
+    // BACKUP CLAIM (second instructor)
+    backupClaimedBy: v.optional(v.id("users")),
+    backupClaimedAt: v.optional(v.number()),
+    
+    // BACKUP QUEUE (second instructor as backup)
+    backupClaimedBy: v.optional(v.id("users")),     // Second instructor
+    backupClaimedAt: v.optional(v.number()),
+    backupAutoPromoted: v.optional(v.boolean()),    // True if backup was auto-promoted
+    
+    // Status with backup support
+    status: v.union(
+      v.literal("open"),
+      v.literal("claimed"),           // Has primary claim
+      v.literal("backup_claimed"),    // Has primary + backup
+      v.literal("confirmed"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("expired")
+    ),
     
     // Requirements
     requiresVerification: v.boolean(),

@@ -224,6 +224,109 @@ export const notifyJobCancelled = internalAction({
   },
 });
 
+// BACKUP QUEUE NOTIFICATIONS
+
+export const notifyStudioOfBackupClaim = internalAction({
+  args: {
+    jobId: v.id("jobs"),
+    backupClaimId: v.id("claims"),
+    primaryInstructorId: v.id("users"),
+    backupInstructorId: v.id("users"),
+  },
+  handler: async (ctx, { jobId, backupClaimId, primaryInstructorId, backupInstructorId }) => {
+    const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
+    if (!job) return;
+    
+    const studio = await ctx.runQuery(internal.users.getUserById, { 
+      userId: job.studioId 
+    });
+    if (!studio?.fcmToken) return;
+    
+    const primaryInstructor = await ctx.runQuery(internal.users.getUserById, {
+      userId: primaryInstructorId,
+    });
+    
+    const backupInstructor = await ctx.runQuery(internal.users.getUserById, {
+      userId: backupInstructorId,
+    });
+    
+    const title = "🛡️ Backup instructor available!";
+    const body = `${primaryInstructor?.name || "Primary"} claimed, ${backupInstructor?.name || "Backup"} as backup for "${job.title}"`;
+    
+    await ctx.runAction(internal.actions.sendPush.send, {
+      fcmToken: studio.fcmToken,
+      title,
+      body,
+      data: { 
+        type: "backup_claimed", 
+        jobId, 
+        backupClaimId,
+        primaryInstructorId,
+        backupInstructorId,
+      },
+    });
+    
+    await ctx.runMutation(internal.notifications.logNotification, {
+      userId: studio._id,
+      jobId,
+      type: "backup_claimed",
+      title,
+      body,
+    });
+  },
+});
+
+export const notifyBackupPromoted = internalAction({
+  args: {
+    jobId: v.id("jobs"),
+    newPrimaryInstructorId: v.id("users"),
+  },
+  handler: async (ctx, { jobId, newPrimaryInstructorId }) => {
+    const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
+    if (!job) return;
+    
+    const instructor = await ctx.runQuery(internal.users.getUserById, {
+      userId: newPrimaryInstructorId,
+    });
+    if (!instructor?.fcmToken) return;
+    
+    const title = "🎉 You're now the primary instructor!";
+    const body = `The original instructor withdrew. You're now confirmed for "${job.title}"`;
+    
+    await ctx.runAction(internal.actions.sendPush.send, {
+      fcmToken: instructor.fcmToken,
+      title,
+      body,
+      data: { 
+        type: "backup_promoted", 
+        jobId,
+      },
+    });
+    
+    await ctx.runMutation(internal.notifications.logNotification, {
+      userId: newPrimaryInstructorId,
+      jobId,
+      type: "backup_promoted",
+      title,
+      body,
+    });
+    
+    // Also notify studio
+    const studio = await ctx.runQuery(internal.users.getUserById, { 
+      userId: job.studioId 
+    });
+    
+    if (studio?.fcmToken) {
+      await ctx.runAction(internal.actions.sendPush.send, {
+        fcmToken: studio.fcmToken,
+        title: "🔄 Backup instructor promoted",
+        body: `${instructor.name} is now your primary instructor for "${job.title}"`,
+        data: { type: "backup_promoted_studio", jobId, newPrimaryInstructorId },
+      });
+    }
+  },
+});
+
 // ==========================================
 // LOGGING
 // ==========================================

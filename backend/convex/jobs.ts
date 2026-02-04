@@ -388,50 +388,108 @@ export const claimJob = mutation({
     
     const job = await ctx.db.get(args.jobId);
     if (!job) throw new Error("Job not found");
-    if (job.status !== "open") throw new Error("Job is no longer available");
     
-    if (job.requiresVerification && !user.isVerified) {
-      throw new Error("This job requires a verified instructor");
-    }
-    
-    // Use Haversine for precise distance
-    const distanceKm = user.latitude && user.longitude
-      ? Math.round(haversineDistanceKm(
-          user.latitude,
-          user.longitude,
-          job.latitude,
-          job.longitude
-        ) * 100) / 100
-      : 0;
-    
+    // BACKUP QUEUE LOGIC
+    // First instructor becomes primary, second becomes backup
     const now = Date.now();
     
-    const claimId = await ctx.db.insert("claims", {
-      jobId: args.jobId,
-      instructorId: user._id,
-      status: "pending",
-      distanceKm,
-      message: args.message,
-      createdAt: now,
-    });
-    
-    await ctx.db.patch(args.jobId, {
-      status: "claimed",
-      claimedBy: user._id,
-      claimedAt: now,
-      updatedAt: now,
-    });
+    if (job.status === "open") {
+      // FIRST CLAIM - Primary instructor
+      if (job.requiresVerification && !user.isVerified) {
+        throw new Error("This job requires a verified instructor");
+      }
+      
+      // Use Haversine for precise distance
+      const distanceKm = user.latitude && user.longitude
+        ? Math.round(haversineDistanceKm(
+            user.latitude,
+            user.longitude,
+            job.latitude,
+            job.longitude
+          ) * 100) / 100
+        : 0;
+      
+      const claimId = await ctx.db.insert("claims", {
+        jobId: args.jobId,
+        instructorId: user._id,
+        status: "pending",
+        distanceKm,
+        message: args.message,
+        createdAt: now,
+      });
+      
+      await ctx.db.patch(args.jobId, {
+        status: "claimed",
+        claimedBy: user._id,
+        claimedAt: now,
+        updatedAt: now,
+      });
 
-    // 2026 GEOSPATIAL REMOVE
-    await removeJobLocation(ctx, args.jobId);
-    
-    // Notify studio
-    await ctx.scheduler.runAfter(0, internal.notifications.notifyStudioOfClaim, {
-      jobId: args.jobId,
-      claimId,
-    });
-    
-    return claimId;
+      // 2026 GEOSPATIAL REMOVE
+      await removeJobLocation(ctx, args.jobId);
+      
+      // Notify studio
+      await ctx.scheduler.runAfter(0, internal.notifications.notifyStudioOfClaim, {
+        jobId: args.jobId,
+        claimId,
+      });
+      
+      return { claimId, role: "primary" };
+      
+    } else if (job.status === "claimed" && job.claimedBy !== user._id) {
+      // SECOND CLAIM - Backup instructor (race condition prevention!)
+      // Only allow backup if primary is different user
+      
+      // Check if already has backup
+      if (job.backupClaimedBy) {
+        throw new Error("Job already has a backup instructor");
+      }
+      
+      // Verify instructor is eligible
+      if (job.requiresVerification && !user.isVerified) {
+        throw new Error("This job requires a verified instructor");
+      }
+      
+      const distanceKm = user.latitude && user.longitude
+        ? Math.round(haversineDistanceKm(
+            user.latitude,
+            user.longitude,
+            job.latitude,
+            job.longitude
+          ) * 100) / 100
+        : 0;
+      
+      // Create backup claim
+      const backupClaimId = await ctx.db.insert("claims", {
+        jobId: args.jobId,
+        instructorId: user._id,
+        status: "pending",
+        distanceKm,
+        message: args.message,
+        createdAt: now,
+      });
+      
+      // Update job with backup
+      await ctx.db.patch(args.jobId, {
+        status: "backup_claimed",
+        backupClaimedBy: user._id,
+        backupClaimedAt: now,
+        updatedAt: now,
+      });
+      
+      // Notify studio about backup
+      await ctx.scheduler.runAfter(0, internal.notifications.notifyStudioOfBackupClaim, {
+        jobId: args.jobId,
+        backupClaimId,
+        primaryInstructorId: job.claimedBy,
+        backupInstructorId: user._id,
+      });
+      
+      return { claimId: backupClaimId, role: "backup" };
+      
+    } else {
+      throw new Error("Job is no longer available");
+    }
   },
 });
 
@@ -472,25 +530,60 @@ export const withdrawClaim = mutation({
       respondedAt: now,
     });
     
-    // Set job back to open if it was claimed by this user
+    // Handle withdrawal based on claim type (primary or backup)
     if (job.claimedBy === user._id) {
+      // PRIMARY INSTRUCTOR WITHDRAWING
+      
+      if (job.backupClaimedBy) {
+        // AUTO-PROMOTE BACKUP TO PRIMARY! 🎉
+        // This is the magic - seamless failover
+        await ctx.db.patch(args.jobId, {
+          status: "claimed",  // Back to single claim status
+          claimedBy: job.backupClaimedBy,
+          claimedAt: job.backupClaimedAt,
+          backupClaimedBy: undefined,
+          backupClaimedAt: undefined,
+          backupAutoPromoted: true,
+          updatedAt: now,
+        });
+        
+        // Notify the promoted backup
+        await ctx.scheduler.runAfter(0, internal.notifications.notifyBackupPromoted, {
+          jobId: args.jobId,
+          newPrimaryInstructorId: job.backupClaimedBy,
+        });
+        
+        console.log(`[withdrawClaim] Backup ${job.backupClaimedBy} auto-promoted to primary for job ${args.jobId}`);
+        
+      } else {
+        // No backup - job goes back to open
+        await ctx.db.patch(args.jobId, {
+          status: "open",
+          claimedBy: undefined,
+          claimedAt: undefined,
+          updatedAt: now,
+        });
+
+        // 2026 GEOSPATIAL RE-ADD
+        await syncJobLocation(
+          ctx,
+          args.jobId,
+          { latitude: job.latitude, longitude: job.longitude },
+          job.category,
+          "open",
+          job.requiresVerification,
+          job.currentRate
+        );
+      }
+      
+    } else if (job.backupClaimedBy === user._id) {
+      // BACKUP INSTRUCTOR WITHDRAWING
       await ctx.db.patch(args.jobId, {
-        status: "open",
-        claimedBy: undefined,
-        claimedAt: undefined,
+        status: "claimed",  // Back to single claim
+        backupClaimedBy: undefined,
+        backupClaimedAt: undefined,
         updatedAt: now,
       });
-
-      // 2026 GEOSPATIAL RE-ADD
-      await syncJobLocation(
-        ctx,
-        args.jobId,
-        { latitude: job.latitude, longitude: job.longitude },
-        job.category,
-        "open",
-        job.requiresVerification,
-        job.currentRate
-      );
     }
   },
 });
