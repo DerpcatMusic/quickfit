@@ -4,6 +4,7 @@
 import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { syncInstructorLocation, removeInstructorLocation } from "./geo";
+import { latLngToHex11, getHexesInRadius } from "./h3";
 
 // ==========================================
 // QUERIES
@@ -153,6 +154,24 @@ export const completeOnboarding = mutation({
     const finalLat = lat ?? user.latitude;
     const finalLng = lng ?? user.longitude;
     const finalRadiusKm = rad ?? user.radiusKm ?? 5;
+
+    // H3 HEX SPATIAL INDEXING
+    // One-time calculation per address change, O(1) lookups forever
+    let homeHex11: string | undefined;
+    let workAreaHexes11: string[] | undefined;
+    
+    if (finalLat && finalLng) {
+      homeHex11 = latLngToHex11(finalLat, finalLng);
+      workAreaHexes11 = getHexesInRadius(finalLat, finalLng, finalRadiusKm);
+      
+      console.log(`[completeOnboarding] H3 computed: home=${homeHex11}, workArea=${workAreaHexes11?.length} hexes`);
+      
+      // Store H3 fields
+      await ctx.db.patch(user._id, {
+        homeHex11,
+        workAreaHexes11,
+      });
+    }
 
     if (args.role === "instructor" && finalLat && finalLng) {
       await syncInstructorLocation(

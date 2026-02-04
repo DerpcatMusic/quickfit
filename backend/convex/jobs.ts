@@ -12,6 +12,7 @@ import {
   syncJobLocation,
   removeJobLocation,
 } from "./geo";
+import { latLngToHex11 } from "./h3";
 
 // Categories for Israeli market
 export const CATEGORIES = [
@@ -308,6 +309,9 @@ export const postJob = mutation({
     
     const durationMinutes = Math.round((args.endTime - args.startTime) / (1000 * 60));
     
+    // H3 HEX SPATIAL INDEXING
+    const locationHex11 = latLngToHex11(args.latitude, args.longitude);
+    
     const jobId = await ctx.db.insert("jobs", {
       studioId: user._id,
       title: args.title,
@@ -323,6 +327,7 @@ export const postJob = mutation({
       latitude: args.latitude,
       longitude: args.longitude,
       address: args.address,
+      locationHex11,  // H3 hex for O(1) matching
       status: "open",
       requiresVerification: args.requiresVerification ?? true,
       notificationsSent: false,
