@@ -9,11 +9,13 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:latlong2/latlong.dart';
 
 import '../../core/constants/categories.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/models/job.dart';
 import 'sos_badge.dart';
+import 'static_map.dart';
 
 /// Main job card with platform-specific "Native" rendering.
 /// - Android: Material 3 Tonal Card
@@ -224,7 +226,7 @@ class _JobCardState extends State<JobCard> {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHeader(context, category),
+        _buildMapHeader(context, category),
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -292,55 +294,92 @@ class _JobCardState extends State<JobCard> {
             width: widget.job.isSos ? 2 : 1,
           ),
         ),
+        clipBehavior: Clip.antiAlias, // Clip map to corners
         child: content,
       );
     }
   }
 
-  Widget _buildHeader(BuildContext context, FitnessCategory? category) {
+  Widget _buildMapHeader(BuildContext context, FitnessCategory? category) {
     final theme = Theme.of(context);
     final categoryColor = category?.color ?? theme.colorScheme.primary;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        // Solid top strip for category
-        color: categoryColor.withValues(alpha: 0.1),
-        borderRadius: _isIOS
-            ? const BorderRadius.vertical(
-                top: Radius.circular(0)) // PopupSurface handles radius
-            : const BorderRadius.vertical(top: Radius.circular(11)),
-      ),
-      child: Row(
+    return SizedBox(
+      height: 140,
+      child: Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: categoryColor,
-              borderRadius: BorderRadius.circular(8),
+          // Static Map Background
+          Positioned.fill(
+            child: StaticMap(
+              center: LatLng(widget.job.latitude, widget.job.longitude),
+              zoom: 14,
+              height: 140,
+              borderRadius: 0, // Clipped by parent
+              showPin: true,
             ),
+          ),
+          
+          // Gradient Overlay for text contrast
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.6),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.6],
+                ),
+              ),
+            ),
+          ),
+
+          // Header Content
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(category?.emoji ?? '🏃',
-                    style: const TextStyle(fontSize: 14)),
-                const SizedBox(width: 4),
-                Text(
-                  category?.nameEn ?? widget.job.category,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: categoryColor,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(category?.emoji ?? '🏃',
+                          style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 4),
+                      Text(
+                        category?.nameEn ?? widget.job.category,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                const Spacer(),
+                TimeRemainingBadge(timeRemaining: widget.job.timeUntilStart),
+                if (widget.job.isSos) ...[
+                  const SizedBox(width: 8),
+                  const SosBadge(),
+                ],
               ],
             ),
           ),
-          const Spacer(),
-          TimeRemainingBadge(timeRemaining: widget.job.timeUntilStart),
-          if (widget.job.isSos) ...[
-            const SizedBox(width: 8),
-            const SosBadge(),
-          ],
         ],
       ),
     );

@@ -17,10 +17,13 @@ class AppTheme {
 
   /// Role-specific seed colors (can be used for subtle tinting if needed)
   static const Color instructorSeedColor = Color(0xFF2D5BFF);
-  static const Color studioSeedColor = Color(0xFF2D5BFF);
+  static const Color studioSeedColor = Color(0xFF8F00FF); // Electric Purple
 
   static Color getSeedColor(String? role) {
-    return primarySeedColor; // Unified brand color for cleaner look
+    if (role?.toLowerCase() == 'studio') {
+      return studioSeedColor;
+    }
+    return primarySeedColor;
   }
 
   /// Strict Geometric Shape - 12px Radius (No Squircles)
@@ -38,7 +41,13 @@ class AppTheme {
     String? role,
   }) {
     final isDark = brightness == Brightness.dark;
-    final appColors = isDark ? AppColors.dark : AppColors.light;
+    var appColors = isDark ? AppColors.dark : AppColors.light;
+
+    // Determine primary color based on role
+    final primaryColor = getSeedColor(role);
+
+    // Override cobaltAccent with the role-specific primary color
+    appColors = appColors.copyWith(cobaltAccent: primaryColor) as AppColors;
 
     // Build color scheme - Force high contrast
     ColorScheme scheme;
@@ -263,6 +272,6 @@ class AppTheme {
     // Return Cobalt for everything to maintain strict brand,
     // OR return very specific desaturated functional colors.
     // For now, sticking to the "Stark" theme:
-    return const Color(0xFF2D5BFF);
+    return context.colors.cobaltAccent;
   }
 }
