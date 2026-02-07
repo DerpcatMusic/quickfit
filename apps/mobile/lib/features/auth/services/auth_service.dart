@@ -1,0 +1,143 @@
+import 'dart:async';
+import 'dart:developer' as developer;
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:google_sign_in/google_sign_in.dart' as auth_gsi;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'auth_service.g.dart';
+
+/// Service responsible for handle low-level authentication interactions.
+@Riverpod(keepAlive: true)
+AuthService authService(Ref ref) {
+  return AuthService();
+}
+
+class AuthService {
+  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+
+  // 2026: google_sign_in 7.x uses a singleton pattern.
+  final auth_gsi.GoogleSignIn _googleSignIn = auth_gsi.GoogleSignIn.instance;
+
+  Stream<firebase_auth.User?> get authStateChanges => _auth.authStateChanges();
+  firebase_auth.User? get currentUser => _auth.currentUser;
+
+  Future<void> initialize() async {
+    try {
+      await _googleSignIn.initialize();
+    } catch (e) {
+      // Ignore errors if already initialized or not needed
+    }
+  }
+
+  Future<firebase_auth.UserCredential?> signInWithGoogle() async {
+    try {
+      // 2026: initialize() before authenticate()
+      await _googleSignIn.initialize();
+      final googleUser = await _googleSignIn.authenticate();
+      return await _processGoogleAccount(googleUser);
+    } catch (e) {
+      developer.log('Google Sign-In Error', name: 'auth_service', error: e);
+      rethrow;
+    }
+  }
+
+  Future<firebase_auth.UserCredential> _processGoogleAccount(
+    auth_gsi.GoogleSignInAccount googleAccount,
+  ) async {
+    // Authentication (ID Token)
+    final googleAuth = googleAccount.authentication;
+
+    // Authorization (Access Token) - separated in v7.x
+    final authorization =
+        await googleAccount.authorizationClient.authorizeScopes([
+      'openid',
+      'email',
+      'profile',
+    ]);
+
+    final credential = firebase_auth.GoogleAuthProvider.credential(
+      accessToken: authorization.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    return await _auth.signInWithCredential(credential);
+  }
+
+  Future<firebase_auth.UserCredential> signInWithApple() async {
+    try {
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final oauthProvider = firebase_auth.OAuthProvider('apple.com');
+      final credential = oauthProvider.credential(
+        idToken: appleCredential.identityToken,
+        accessToken: appleCredential.authorizationCode,
+      );
+
+      return await _auth.signInWithCredential(credential);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<firebase_auth.UserCredential> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    return await _auth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+  }
+
+  Future<firebase_auth.UserCredential> signUpWithEmail({
+    required String email,
+    required String password,
+    String? displayName,
+  }) async {
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+
+    if (displayName != null && credential.user != null) {
+      await credential.user!.updateDisplayName(displayName);
+      await credential.user!.reload();
+    }
+
+    return credential;
+  }
+
+  Future<void> signOut() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {
+      // Ignore
+    }
+    await _auth.signOut();
+  }
+
+  Future<void> sendPasswordResetEmail(String email) async {
+    await _auth.sendPasswordResetEmail(email: email);
+  }
+
+  Future<firebase_auth.UserCredential> linkEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('Not signed in');
+
+    final credential = firebase_auth.EmailAuthProvider.credential(
+      email: email,
+      password: password,
+    );
+
+    return await user.linkWithCredential(credential);
+  }
+}

@@ -8,12 +8,15 @@ part of 'auth_provider.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
+/// Notifier that manages the application's authentication and user profile state.
 
 @ProviderFor(AuthNotifier)
 final authProvider = AuthNotifierProvider._();
 
+/// Notifier that manages the application's authentication and user profile state.
 final class AuthNotifierProvider
     extends $NotifierProvider<AuthNotifier, AuthState> {
+  /// Notifier that manages the application's authentication and user profile state.
   AuthNotifierProvider._()
       : super(
           from: null,
@@ -41,7 +44,9 @@ final class AuthNotifierProvider
   }
 }
 
-String _$authNotifierHash() => r'7a484d5c72d292420962a23d9368e2eb70d743a3';
+String _$authNotifierHash() => r'c224726e4ae998d6f6d30922fb30bb42128e84a4';
+
+/// Notifier that manages the application's authentication and user profile state.
 
 abstract class _$AuthNotifier extends $Notifier<AuthState> {
   AuthState build();

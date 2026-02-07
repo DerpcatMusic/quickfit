@@ -10,24 +10,26 @@ enum FitnessCategory {
   spinning('spinning', 'Spinning', 'ספינינג', '🚴', Color(0xFF2196F3)),
   hiit('hiit', 'HIIT', 'אינטרוולים', '🔥', Color(0xFFF44336)),
   dance('dance', 'Dance', 'ריקוד', '💃', Color(0xFF00BCD4)),
-  personalTraining('personal_training', 'Personal Training', 'אימון אישי', '🏋️', Color(0xFF4CAF50));
+  personalTraining('personal_training', 'Personal Training', 'אימון אישי',
+      '🏋️', Color(0xFF4CAF50));
 
-  const FitnessCategory(this.id, this.nameEn, this.nameHe, this.emoji, this.color);
-  
+  const FitnessCategory(
+      this.id, this.nameEn, this.nameHe, this.emoji, this.color);
+
   final String id;
   final String nameEn;
   final String nameHe;
   final String emoji;
   final Color color;
-  
+
   String displayName(String locale) {
     return locale.startsWith('he') ? nameHe : nameEn;
   }
-  
+
   String displayNameWithEmoji(String locale) {
     return '$emoji ${displayName(locale)}';
   }
-  
+
   static FitnessCategory? fromId(String id) {
     try {
       return FitnessCategory.values.firstWhere((c) => c.id == id);
@@ -35,7 +37,7 @@ enum FitnessCategory {
       return null;
     }
   }
-  
+
   static List<FitnessCategory> get all => FitnessCategory.values;
 }
 

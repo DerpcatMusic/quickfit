@@ -13,33 +13,40 @@ class AppScaffold extends StatelessWidget {
   const AppScaffold({
     super.key,
     required this.role,
-    required this.child,
+    required this.navigationShell,
   });
 
   final String role;
-  final Widget child;
+  final StatefulNavigationShell navigationShell;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: child,
-      bottomNavigationBar: _BottomNavBar(role: role),
+      body: navigationShell,
+      bottomNavigationBar: _BottomNavBar(
+        role: role,
+        navigationShell: navigationShell,
+      ),
     );
   }
 }
 
 class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar({required this.role});
+  const _BottomNavBar({
+    required this.role,
+    required this.navigationShell,
+  });
 
   final String role;
+  final StatefulNavigationShell navigationShell;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.colors;
-    final location = GoRouterState.of(context).matchedLocation;
+    // Navigation shell gives us the current index directly
+    final currentIndex = navigationShell.currentIndex;
     final items = role == 'instructor' ? _instructorNavItems : _studioNavItems;
-    final currentIndex = _getCurrentIndex(location, items);
 
     return Container(
       decoration: BoxDecoration(
@@ -63,22 +70,16 @@ class _BottomNavBar extends StatelessWidget {
                 activeIcon: item.activeIcon,
                 label: item.label,
                 isSelected: isSelected,
-                onTap: () => context.go(item.route),
+                onTap: () => navigationShell.goBranch(
+                  index,
+                  initialLocation: index == currentIndex,
+                ),
               );
             }).toList(),
           ),
         ),
       ),
     );
-  }
-
-  int _getCurrentIndex(String location, List<_NavItemData> items) {
-    for (int i = 0; i < items.length; i++) {
-      if (location.startsWith(items[i].route)) {
-        return i;
-      }
-    }
-    return 0;
   }
 }
 

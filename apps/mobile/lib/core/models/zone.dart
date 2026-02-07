@@ -39,6 +39,21 @@ class Zone {
       ),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      '_id': id,
+      'name': name,
+      'nameHebrew': nameHebrew,
+      'city': city,
+      'polygon':
+          polygon.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(),
+      'centroid': {
+        'lat': centroid.latitude,
+        'lng': centroid.longitude,
+      },
+    };
+  }
 }
 
 class CityCluster {

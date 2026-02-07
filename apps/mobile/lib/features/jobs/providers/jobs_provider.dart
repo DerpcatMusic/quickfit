@@ -2,7 +2,9 @@
 library;
 
 import 'dart:convert';
+import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:convex_flutter/convex_flutter.dart';
 
 import '../../../core/services/location_service.dart';
@@ -10,7 +12,6 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/services/offline_queue_manager.dart';
 import '../../../core/services/hive_service.dart';
 import '../../../data/models/job.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/utils/logger.dart';
 
@@ -71,10 +72,11 @@ class JobsState {
   bool isJobPending(String jobId) => pendingOperations.containsKey(jobId);
 
   // Get pending operation for a job
-  PendingOperation? getPendingOperation(String jobId) => pendingOperations[jobId];
+  PendingOperation? getPendingOperation(String jobId) =>
+      pendingOperations[jobId];
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 class JobsNotifier extends _$JobsNotifier {
   SubscriptionHandle? _subscription;
 
@@ -92,16 +94,15 @@ class JobsNotifier extends _$JobsNotifier {
     _setupOfflineQueueCallbacks();
 
     if (userId != null && hasCompletedOnboarding) {
-      // Logic safety: don't subscribe if we already have a handle.
       if (_subscription == null) {
+        // Load from cache first
+        _loadFromCache();
         Future.microtask(() => _subscribeToJobs());
-        return const JobsState(isLoading: true);
+        return state.copyWith(isLoading: true);
       }
-      // If we already have a subscription, keep the current state to prevent "bouncing" UI.
       return state;
     }
 
-    // Reset subscription if user logs out or onboarding is revoked
     if (_subscription != null) {
       _subscription?.cancel();
       _subscription = null;
@@ -109,16 +110,31 @@ class JobsNotifier extends _$JobsNotifier {
     return const JobsState(isLoading: false);
   }
 
+  void _loadFromCache() {
+    try {
+      final cached = HiveService().get('jobs_nearby');
+      if (cached != null) {
+        final jobsList = (cached as List)
+            .map((j) => Job.fromJson(Map<String, dynamic>.from(j as Map)))
+            .toList();
+        state = state.copyWith(jobs: jobsList, lastUpdated: DateTime.now());
+      }
+    } catch (e) {
+      log.e('[JobsNotifier] Cache load error: $e');
+    }
+  }
+
   void _setupOfflineQueueCallbacks() {
     OfflineQueueManager().onMutationStatusChange = (mutationId, status) {
-      // Find which job this mutation belongs to
       final entry = state.pendingOperations.entries.firstWhere(
         (e) => e.value.mutationId == mutationId,
-        orElse: () => MapEntry('', PendingOperation(mutationId: '', operation: '', status: '')),
+        orElse: () => MapEntry(
+            '', PendingOperation(mutationId: '', operation: '', status: '')),
       );
 
       if (entry.key.isNotEmpty) {
-        final updatedOps = Map<String, PendingOperation>.from(state.pendingOperations);
+        final updatedOps =
+            Map<String, PendingOperation>.from(state.pendingOperations);
         updatedOps[entry.key] = PendingOperation(
           mutationId: mutationId,
           operation: entry.value.operation,
@@ -129,7 +145,6 @@ class JobsNotifier extends _$JobsNotifier {
     };
 
     OfflineQueueManager().onShowNotification = (message) {
-      // You can integrate with your notification system here
       log.i('[OfflineQueue] Notification: $message');
     };
   }
@@ -142,58 +157,44 @@ class JobsNotifier extends _$JobsNotifier {
     final lng = LocationService.instance.longitude;
 
     if (lat == null || lng == null) {
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Location not available',
-      );
+      state = state.copyWith(isLoading: false, error: 'Location not available');
       return;
     }
 
-    log.i('Subscribing to jobs at $lat, $lng');
     _subscription = await ConvexClient.instance.subscribe(
       name: 'jobs:getNearbyJobs',
-      args: {
-        'limit': AppConstants.jobsPageSize.toString(),
-      },
-      onUpdate: (data) {
-        log.i('Jobs update received: ${data.length} bytes');
-        _handleJobsUpdate(data);
-      },
+      args: {'limit': AppConstants.jobsPageSize.toString()},
+      onUpdate: (data) => _handleJobsUpdate(data),
       onError: (message, value) {
-        log.e('Jobs subscription error: $message');
-        state = state.copyWith(
-          isLoading: false,
-          error: message,
-        );
+        state = state.copyWith(isLoading: false, error: message);
       },
     );
   }
 
   void _handleJobsUpdate(String data) {
     try {
-      final dynamic parsed = json.decode(data);
-      log.i('Parsed jobs: ${parsed is List ? parsed.length : 0} items');
-
-      if (parsed == null || (parsed is List && parsed.isEmpty)) {
+      if (data == 'null' || data.isEmpty) {
         state = state.copyWith(isLoading: false, jobs: []);
         return;
       }
 
+      final dynamic parsed = json.decode(data);
+      if (parsed == null || (parsed is List && parsed.isEmpty)) {
+        state = state.copyWith(isLoading: false, jobs: []);
+        return;
+      }
       final jobsList = (parsed as List)
           .map((j) => Job.fromJson(j as Map<String, dynamic>))
           .toList();
 
+      // Save to cache
+      HiveService().save('jobs_nearby', parsed);
+
       state = state.copyWith(
-        jobs: jobsList,
-        isLoading: false,
-        lastUpdated: DateTime.now(),
-      );
+          jobs: jobsList, isLoading: false, lastUpdated: DateTime.now());
     } catch (e) {
-      log.e('Error parsing jobs: $e');
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      log.e('[JobsNotifier] Parse error: $e');
+      state = state.copyWith(isLoading: false, error: 'Failed to load jobs');
     }
   }
 
@@ -203,104 +204,52 @@ class JobsNotifier extends _$JobsNotifier {
     await _subscribeToJobs();
   }
 
-  /// Claim a job with offline queue support and optimistic UI
   Future<bool> claimJob(String jobId) async {
     try {
-      // Optimistic UI update - mark job as "claiming" immediately
-      _optimisticallyUpdateJobStatus(jobId, 'claiming');
-
-      // Queue the mutation
       final mutationId = await OfflineQueueManager().queueMutation(
         operation: 'claimJob',
         payload: {'jobId': jobId},
-        optimisticUpdate: () {
-          // Already done above
-          log.i('[JobsNotifier] Optimistic update: Claiming job $jobId');
-        },
+        optimisticUpdate: () => log.i('[JobsNotifier] Claiming job $jobId'),
       );
 
-      // Track pending operation
-      final updatedOps = Map<String, PendingOperation>.from(state.pendingOperations);
+      final updatedOps =
+          Map<String, PendingOperation>.from(state.pendingOperations);
       updatedOps[jobId] = PendingOperation(
-        mutationId: mutationId,
-        operation: 'claimJob',
-        status: 'pending',
-      );
+          mutationId: mutationId, operation: 'claimJob', status: 'pending');
       state = state.copyWith(pendingOperations: updatedOps);
-
       return true;
     } catch (e) {
-      // Revert optimistic update on error
-      _revertOptimisticUpdate(jobId);
       state = state.copyWith(error: e.toString());
       return false;
     }
   }
 
-  /// Withdraw a claim with offline queue support
   Future<bool> withdrawClaim(String jobId) async {
     try {
-      // Optimistic UI update
-      _optimisticallyUpdateJobStatus(jobId, 'withdrawing');
-
-      // Queue the mutation
       final mutationId = await OfflineQueueManager().queueMutation(
         operation: 'withdrawClaim',
         payload: {'jobId': jobId},
-        optimisticUpdate: () {
-          log.i('[JobsNotifier] Optimistic update: Withdrawing claim for job $jobId');
-        },
+        optimisticUpdate: () =>
+            log.i('[JobsNotifier] Withdrawing claim for job $jobId'),
       );
 
-      // Track pending operation
-      final updatedOps = Map<String, PendingOperation>.from(state.pendingOperations);
+      final updatedOps =
+          Map<String, PendingOperation>.from(state.pendingOperations);
       updatedOps[jobId] = PendingOperation(
-        mutationId: mutationId,
-        operation: 'withdrawClaim',
-        status: 'pending',
-      );
+          mutationId: mutationId,
+          operation: 'withdrawClaim',
+          status: 'pending');
       state = state.copyWith(pendingOperations: updatedOps);
-
       return true;
     } catch (e) {
-      _revertOptimisticUpdate(jobId);
       state = state.copyWith(error: e.toString());
       return false;
     }
-  }
-
-  /// Optimistically update job status in the UI
-  void _optimisticallyUpdateJobStatus(String jobId, String status) {
-    // The pending operation is already tracked in state.pendingOperations
-    // The UI will read this and show appropriate loading states
-    // Actual job data comes from Convex subscription
-    log.i('[JobsNotifier] Optimistic status update: job $jobId is $status');
-  }
-
-  /// Revert optimistic update on failure
-  void _revertOptimisticUpdate(String jobId) {
-    // Remove from pending operations
-    final updatedOps = Map<String, PendingOperation>.from(state.pendingOperations);
-    updatedOps.remove(jobId);
-    state = state.copyWith(pendingOperations: updatedOps);
-
-    // Trigger a refresh to get the real state from server
-    refresh();
-  }
-
-  /// Force sync of pending mutations
-  Future<void> syncPendingOperations() async {
-    await OfflineQueueManager().syncNow();
-  }
-
-  /// Get queue stats for UI display
-  Map<String, int> getQueueStats() {
-    return OfflineQueueManager().getQueueStats();
   }
 }
 
 // Provider for studio's posted jobs
-@riverpod
+@Riverpod(keepAlive: true)
 class StudioJobsNotifier extends _$StudioJobsNotifier {
   SubscriptionHandle? _subscription;
 
@@ -309,11 +258,8 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     final userId = ref.watch(currentUserProvider)?.uid;
     final role = ref.watch(userRoleProvider);
 
-    ref.onDispose(() {
-      _subscription?.cancel();
-    });
+    ref.onDispose(() => _subscription?.cancel());
 
-    // Only subscribe for studios.
     if (userId != null && role == 'studio') {
       if (_subscription == null) {
         Future.microtask(() => _subscribeToStudioJobs());
@@ -332,41 +278,32 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     _subscription = await ConvexClient.instance.subscribe(
       name: 'jobs:getStudioJobs',
       args: {},
-      onUpdate: (data) {
-        _handleStudioJobsUpdate(data);
-      },
+      onUpdate: (data) => _handleStudioJobsUpdate(data),
       onError: (message, value) {
-        state = state.copyWith(
-          isLoading: false,
-          error: message,
-        );
+        state = state.copyWith(isLoading: false, error: message);
       },
     );
   }
 
   void _handleStudioJobsUpdate(String data) {
     try {
+      if (data == 'null' || data.isEmpty) {
+        state = state.copyWith(isLoading: false, jobs: []);
+        return;
+      }
       final dynamic parsed = json.decode(data);
-
       if (parsed == null) {
         state = state.copyWith(isLoading: false, jobs: []);
         return;
       }
-
       final jobsList = (parsed as List)
           .map((j) => Job.fromJson(j as Map<String, dynamic>))
           .toList();
-
       state = state.copyWith(
-        jobs: jobsList,
-        isLoading: false,
-        lastUpdated: DateTime.now(),
-      );
+          jobs: jobsList, isLoading: false, lastUpdated: DateTime.now());
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      log.e('[StudioJobsNotifier] Parse error: $e');
+      state = state.copyWith(isLoading: false, error: 'Failed to load jobs');
     }
   }
 
@@ -419,15 +356,51 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
   }
 }
 
-// Provider for a single job - using positional args
+// Manual StreamProvider for real-time single job updates to bypass generator issues
+final streamingJobProvider =
+    StreamProvider.family<Map<String, dynamic>?, String>((ref, jobId) {
+  final controller = StreamController<Map<String, dynamic>?>();
+  SubscriptionHandle? handle;
+
+  Future<void> start() async {
+    try {
+      handle = await ConvexClient.instance.subscribe(
+        name: 'jobs:getJobById',
+        args: {'jobId': jobId},
+        onUpdate: (data) {
+          final decoded = json.decode(data);
+          if (!controller.isClosed) {
+            controller.add(decoded as Map<String, dynamic>?);
+          }
+        },
+        onError: (err, val) {
+          if (!controller.isClosed) {
+            controller.addError(err);
+          }
+        },
+      );
+    } catch (e) {
+      if (!controller.isClosed) {
+        controller.addError(e);
+      }
+    }
+  }
+
+  start();
+
+  ref.onDispose(() {
+    handle?.cancel();
+    controller.close();
+  });
+
+  return controller.stream;
+});
+
 @riverpod
 Future<Job?> job(Ref ref, String jobId) async {
-  final resultJson = await ConvexClient.instance.query(
-    'jobs:getJob',
-    {'jobId': jobId},
-  );
-
-  final result = json.decode(resultJson);
+  final resultJson =
+      await ConvexClient.instance.query('jobs:getJobById', {'jobId': jobId});
+  final dynamic result = json.decode(resultJson);
   if (result == null) return null;
   return Job.fromJson(result as Map<String, dynamic>);
 }

@@ -8,6 +8,8 @@ import { components } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { ActionCtx, MutationCtx, QueryCtx, query, mutation, internalQuery, internalMutation } from "./_generated/server";
 
+const MVP_SKIP_CERTIFICATION = true; // Set to true to bypass verification checks for MVP
+
 // ============================================
 // GEOSPATIAL INDEX DEFINITIONS
 // ============================================
@@ -185,7 +187,7 @@ export async function findInstructorsForJob(
     
     // CRITICAL: Job must be within instructor's personal radius
     if (distanceMeters <= radiusMeters) {
-      if (requiresVerification) {
+      if (!MVP_SKIP_CERTIFICATION && requiresVerification) {
         const instructor = await ctx.db.get(result.key);
         if (!instructor?.isVerified) {
           continue;

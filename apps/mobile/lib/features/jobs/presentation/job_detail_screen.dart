@@ -3,7 +3,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:convex_flutter/convex_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
@@ -23,73 +22,29 @@ class JobDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
-  Map<String, dynamic>? _job;
-  bool _isLoading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadJobDetails();
-  }
-
-  Future<void> _loadJobDetails() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final data = await ConvexService.instance.getJobById(widget.jobId);
-
-      if (data != null) {
-        if (mounted) {
-          setState(() {
-            _job = data;
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _error = 'Job not found';
-            _isLoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
-  }
+  // 2026 STABILIZATION: Removed _loadJobDetails as we use reactive providers
 
   Future<void> _claimJob() async {
-    try {
-      await ConvexClient.instance.mutation(
-        name: 'jobs:claimJob',
-        args: {'jobId': widget.jobId},
+    final success =
+        await ref.read(jobsProvider.notifier).claimJob(widget.jobId);
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Claim request queued!')),
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job claimed successfully!')),
-        );
-        _loadJobDetails();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to claim job: $e')),
-        );
-      }
     }
   }
 
-  Future<void> _handleRespondToClaim(bool accept) async {
-    final claimId = _job?['claimId'] as String?;
+  Future<void> _withdrawClaim() async {
+    final success =
+        await ref.read(jobsProvider.notifier).withdrawClaim(widget.jobId);
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Withdrawal request queued.')),
+      );
+    }
+  }
+
+  Future<void> _handleRespondToClaim(bool accept, String? claimId) async {
     if (claimId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No active claim found.')),
@@ -107,7 +62,6 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           SnackBar(
               content: Text(accept ? 'Claim accepted!' : 'Claim rejected.')),
         );
-        _loadJobDetails();
       }
     } catch (e) {
       if (mounted) {
@@ -136,25 +90,6 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     }
   }
 
-  Future<void> _handleWithdrawClaim() async {
-    try {
-      final success =
-          await ref.read(jobsProvider.notifier).withdrawClaim(widget.jobId);
-      if (success && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Claim withdrawn.')),
-        );
-        _loadJobDetails();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to withdraw: $e')),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -162,204 +97,221 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     final authState = ref.watch(authProvider);
     final isStudio = authState.role == 'studio';
 
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    // 2026 STABILIZATION: Ensure provider name matches generated riverpod code
+    final streamingJob = ref.watch(streamingJobProvider(widget.jobId));
 
-    if (_error != null) {
-      return Scaffold(
+    return streamingJob.when(
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (err, _) => Scaffold(
         appBar: AppBar(),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(_error!, style: theme.textTheme.titleMedium),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadJobDetails,
-                child: const Text('Retry'),
-              ),
+        body: Center(child: Text('Error: $err')),
+      ),
+      data: (job) {
+        if (job == null) {
+          return const Scaffold(body: Center(child: Text('Job not found')));
+        }
+
+        final status = job['status'] as String;
+        final isSos = job['isSos'] as bool? ?? false;
+        final startTime = job['startTime'] as num;
+        final endTime = job['endTime'] as num;
+        final startDate =
+            DateTime.fromMillisecondsSinceEpoch(startTime.toInt());
+        final endDate = DateTime.fromMillisecondsSinceEpoch(endTime.toInt());
+        final duration = job['durationMinutes'] as int? ??
+            endDate.difference(startDate).inMinutes;
+        final rate = (job['currentRate'] as num).toDouble();
+
+        // Pending state for optimistic feedback
+        final jobsState = ref.watch(jobsProvider);
+        final isPending = jobsState.isJobPending(widget.jobId);
+
+        // Metadata for actions
+        final userRole = job['userRole'] as String? ?? 'viewer';
+        final canClaimAsPrimary = job['canClaimAsPrimary'] as bool? ?? false;
+        final canClaimAsBackup = job['canClaimAsBackup'] as bool? ?? false;
+        final claimId = job['claimId'] as String?;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Job Details'),
+            actions: [
+              if (isStudio &&
+                  (status == 'open' ||
+                      status == 'claimed' ||
+                      status == 'backup_claimed'))
+                IconButton(
+                  icon: const Icon(LucideIcons.trash2),
+                  onPressed: () => _confirmCancel(context),
+                ),
             ],
           ),
-        ),
-      );
-    }
-
-    final job = _job!;
-    final status = job['status'] as String;
-    final isSos = job['isSos'] as bool? ?? false;
-    final startTime = job['startTime'] as num;
-    final endTime = job['endTime'] as num;
-    final startDate = DateTime.fromMillisecondsSinceEpoch(startTime.toInt());
-    final endDate = DateTime.fromMillisecondsSinceEpoch(endTime.toInt());
-    final duration = job['durationMinutes'] as int? ??
-        endDate.difference(startDate).inMinutes;
-    final rate = (job['currentRate'] as num).toDouble();
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Job Details'),
-        actions: [
-          if (isStudio && (status == 'open' || status == 'claimed'))
-            IconButton(
-              icon: const Icon(LucideIcons.trash2),
-              onPressed: () => _confirmCancel(context),
-            ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Status Badge & SOS
-            Row(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildStatusBadge(status),
-                if (isSos) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: colors.urgentBackground,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: colors.urgentBorder),
+                // Status Badge & SOS
+                Row(
+                  children: [
+                    _buildStatusBadge(status),
+                    if (isSos) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: colors.urgentBackground,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: colors.urgentBorder),
+                        ),
+                        child: Text(
+                          'SOS BOOST',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: colors.urgentText,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  job['title'] ?? 'Fitness Class',
+                  style: theme.textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  job['studioName'] ?? 'Studio',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(color: colors.mutedText),
+                ),
+                const Divider(height: 48),
+
+                // Details Grid
+                _buildDetailRow(LucideIcons.calendar, 'Date',
+                    DateFormat('EEEE, MMM d, yyyy').format(startDate)),
+                const SizedBox(height: 16),
+                _buildDetailRow(LucideIcons.clock, 'Time',
+                    '${DateFormat.Hm().format(startDate)} ($duration min)'),
+                const SizedBox(height: 16),
+                _buildDetailRow(
+                    LucideIcons.mapPin, 'Location', job['address'] ?? 'Israel'),
+                const SizedBox(height: 16),
+                _buildDetailRow(
+                    LucideIcons.banknote, 'Rate', '₪${rate.toStringAsFixed(0)}',
+                    valueColor: colors.successText),
+                const Divider(height: 48),
+
+                // Description / Notes
+                Text('Requirements & Notes',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Text(job['notes'] ?? 'No special requirements listed.',
+                    style: theme.textTheme.bodyLarge),
+
+                // Instructor Actions
+                if (!isStudio) ...[
+                  const SizedBox(height: 48),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: FilledButton(
+                      onPressed: (isPending ||
+                              (!canClaimAsPrimary && !canClaimAsBackup))
+                          ? null
+                          : _claimJob,
+                      child: isPending
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : Text(canClaimAsBackup
+                              ? 'Claim as Backup'
+                              : 'Claim this Job'),
                     ),
+                  ),
+                  if (canClaimAsBackup) ...[
+                    const SizedBox(height: 12),
+                    Center(
+                        child: Text(
+                            'This job is claimed, but you can join as a backup.',
+                            style: theme.textTheme.labelSmall
+                                ?.copyWith(color: colors.mutedText))),
+                  ],
+                ],
+
+                // Studio Management
+                if (isStudio &&
+                    (status == 'claimed' || status == 'backup_claimed') &&
+                    job['claimedInstructor'] != null) ...[
+                  const Divider(height: 48),
+                  Text('Claimed By',
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  _buildInstructorCard(theme, colors, job['claimedInstructor']),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              _handleRespondToClaim(false, claimId),
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: theme.colorScheme.error),
+                          child: const Text('Reject Claim'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () => _handleRespondToClaim(true, claimId),
+                          child: const Text('Accept Claim'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                // Withdraw/Cancel Role Specific
+                if (!isStudio &&
+                    (userRole == 'primary' || userRole == 'backup')) ...[
+                  const SizedBox(height: 48),
+                  Center(
                     child: Text(
-                      'SOS BOOST',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: colors.urgentText,
+                      userRole == 'primary'
+                          ? 'You are the primary instructor.'
+                          : 'You are an assigned backup.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: userRole == 'primary'
+                            ? colors.successText
+                            : colors.urgentText,
                         fontWeight: FontWeight.bold,
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: isPending ? null : _withdrawClaim,
+                      child: isPending
+                          ? const Text('Processing...')
+                          : const Text('Cancel Claim'),
                     ),
                   ),
                 ],
               ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              job['title'] ?? 'Fitness Class',
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              job['studioName'] ?? 'Studio',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(color: colors.mutedText),
-            ),
-            const Divider(height: 48),
-
-            // Details Grid
-            _buildDetailRow(
-              LucideIcons.calendar,
-              'Date',
-              DateFormat('EEEE, MMM d, yyyy').format(startDate),
-            ),
-            const SizedBox(height: 16),
-            _buildDetailRow(
-              LucideIcons.clock,
-              'Time',
-              '${DateFormat.Hm().format(startDate)} ($duration min)',
-            ),
-            const SizedBox(height: 16),
-            _buildDetailRow(
-              LucideIcons.mapPin,
-              'Location',
-              job['address'] ?? 'Israel',
-            ),
-            const SizedBox(height: 16),
-            _buildDetailRow(
-              LucideIcons.banknote,
-              'Rate',
-              '₪${rate.toStringAsFixed(0)}',
-              valueColor: colors.successText,
-            ),
-            const Divider(height: 48),
-
-            // Description / Notes
-            Text(
-              'Requirements & Notes',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              job['notes'] ?? 'No special requirements listed.',
-              style: theme.textTheme.bodyLarge,
-            ),
-
-            if (!isStudio && status == 'open') ...[
-              const SizedBox(height: 48),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: FilledButton(
-                  onPressed: _claimJob,
-                  child: const Text('Claim this Job'),
-                ),
-              ),
-            ],
-
-            if (isStudio &&
-                status == 'claimed' &&
-                job['claimedInstructor'] != null) ...[
-              const Divider(height: 48),
-              Text(
-                'Claimed By',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              _buildInstructorCard(theme, colors, job['claimedInstructor']),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _handleRespondToClaim(false),
-                      style: OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.error),
-                      child: const Text('Reject Claim'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => _handleRespondToClaim(true),
-                      child: const Text('Accept Claim'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-
-            if (!isStudio &&
-                status == 'claimed' &&
-                job['claimedBy'] == authState.convexUserId) ...[
-              const SizedBox(height: 48),
-              Center(
-                child: Text(
-                  'You have claimed this job.',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: colors.mutedText),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: _handleWithdrawClaim,
-                  child: const Text('Cancel Claim'),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -371,6 +323,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         break;
       case 'claimed':
         color = Colors.orange;
+        break;
+      case 'backup_claimed':
+        color = Colors.deepOrange;
         break;
       case 'confirmed':
         color = Colors.green;
@@ -389,11 +344,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
-      child: Text(
-        status.toUpperCase(),
-        style:
-            TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
-      ),
+      child: Text(status.replaceFirst('_', ' ').toUpperCase(),
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.bold, fontSize: 12)),
     );
   }
 
@@ -411,10 +364,8 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                 style: theme.textTheme.labelSmall
                     ?.copyWith(color: Colors.grey[600])),
             Text(value,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: valueColor,
-                )),
+                style: theme.textTheme.bodyLarge
+                    ?.copyWith(fontWeight: FontWeight.w600, color: valueColor)),
           ],
         ),
       ],
@@ -447,11 +398,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  instructor['name'] ?? 'Unknown',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text(instructor['name'] ?? 'Unknown',
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.bold)),
                 if (instructor['isVerified'] == true)
                   Row(
                     children: [
@@ -464,15 +413,6 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   ),
               ],
             ),
-          ),
-          IconButton(
-            icon: const Icon(LucideIcons.chevronRight),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Instructor profile view coming soon!')),
-              );
-            },
           ),
         ],
       ),

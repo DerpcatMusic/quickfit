@@ -318,7 +318,7 @@ class _JobCardState extends State<JobCard> {
               showPin: true,
             ),
           ),
-          
+
           // Gradient Overlay for text contrast
           Positioned.fill(
             child: Container(
@@ -343,7 +343,8 @@ class _JobCardState extends State<JobCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: categoryColor,
                     borderRadius: BorderRadius.circular(8),

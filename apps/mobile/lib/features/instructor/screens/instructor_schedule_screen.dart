@@ -1,14 +1,14 @@
 // Instructor Schedule Screen - Shows confirmed jobs calendar
 // lib/features/instructor/screens/instructor_schedule_screen.dart
 
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:convex_flutter/convex_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 
 import 'package:quickfit/core/theme/app_colors.dart';
+import '../widgets/schedule_timeline.dart';
+import '../providers/schedule_provider.dart';
 
 /// Instructor's schedule showing confirmed jobs.
 class InstructorScheduleScreen extends ConsumerStatefulWidget {
@@ -21,48 +21,11 @@ class InstructorScheduleScreen extends ConsumerStatefulWidget {
 
 class _InstructorScheduleScreenState
     extends ConsumerState<InstructorScheduleScreen> {
-  List<Map<String, dynamic>> _confirmedJobs = [];
-  bool _isLoading = true;
   DateTime _selectedDate = DateTime.now();
 
-  @override
-  void initState() {
-    super.initState();
-    _loadSchedule();
-  }
-
-  Future<void> _loadSchedule() async {
-    setState(() => _isLoading = true);
-
-    try {
-      final result =
-          await ConvexClient.instance.query('jobs:getInstructorSchedule', {});
-
-      if (result.isNotEmpty && result != 'null') {
-        final data = json.decode(result) as List;
-        if (mounted) {
-          setState(() {
-            _confirmedJobs = data.cast<Map<String, dynamic>>();
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _confirmedJobs = [];
-            _isLoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  List<Map<String, dynamic>> get _jobsForSelectedDate {
-    return _confirmedJobs.where((job) {
+  List<Map<String, dynamic>> _getJobsForSelectedDate(
+      List<Map<String, dynamic>> allJobs) {
+    return allJobs.where((job) {
       final startTime = job['startTime'] as num?;
       if (startTime == null) return false;
       final jobDate = DateTime.fromMillisecondsSinceEpoch(startTime.toInt());
@@ -82,30 +45,50 @@ class _InstructorScheduleScreenState
     final theme = Theme.of(context);
     final colors = theme.extension<AppColors>()!;
 
+    final scheduleState = ref.watch(scheduleProvider);
+    final jobs = _getJobsForSelectedDate(scheduleState.jobs);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Schedule'),
         actions: [
-          IconButton(
-            onPressed: _loadSchedule,
-            icon: const Icon(LucideIcons.refreshCw),
-          ),
+          if (scheduleState.isLoading)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              onPressed: () => ref.read(scheduleProvider.notifier).refresh(),
+              icon: const Icon(LucideIcons.refreshCw),
+            ),
         ],
       ),
       body: Column(
         children: [
-          _buildWeekStrip(theme),
+          _buildWeekStrip(theme, scheduleState.jobs),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _buildJobsList(theme, colors),
+            child: jobs.isEmpty && !scheduleState.isLoading
+                ? Center(
+                    child: Text(
+                      'No jobs for this day',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: colors.mutedText,
+                      ),
+                    ),
+                  )
+                : _buildJobsList(theme, colors, jobs),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildWeekStrip(ThemeData theme) {
+  Widget _buildWeekStrip(ThemeData theme, List<Map<String, dynamic>> allJobs) {
     final now = DateTime.now();
     final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
 
@@ -135,7 +118,7 @@ class _InstructorScheduleScreenState
                 day.month == now.month &&
                 day.year == now.year;
 
-            final jobCount = _confirmedJobs.where((job) {
+            final jobCount = allJobs.where((job) {
               final startTime = job['startTime'] as num?;
               if (startTime == null) return false;
               final jobDate =
@@ -204,164 +187,14 @@ class _InstructorScheduleScreenState
     );
   }
 
-  Widget _buildJobsList(ThemeData theme, AppColors colors) {
-    final jobs = _jobsForSelectedDate;
-
-    if (jobs.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              LucideIcons.calendarOff,
-              size: 48,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No classes scheduled',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            Text(
-              DateFormat.yMMMMd().format(_selectedDate),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colors.mutedText,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: jobs.length,
-      itemBuilder: (context, index) {
-        final job = jobs[index];
-        return _ScheduleCard(job: job, colors: colors);
+  Widget _buildJobsList(
+      ThemeData theme, AppColors colors, List<Map<String, dynamic>> jobs) {
+    return ScheduleTimeline(
+      selectedDate: _selectedDate,
+      jobs: jobs,
+      onJobTap: (jobId) {
+        // Handle job tap
       },
-    );
-  }
-}
-
-class _ScheduleCard extends StatelessWidget {
-  const _ScheduleCard({required this.job, required this.colors});
-
-  final Map<String, dynamic> job;
-  final AppColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    final startTime = job['startTime'] as num?;
-    final durationMinutes = (job['durationMinutes'] as num?)?.toInt() ?? 60;
-    final title = job['title'] as String? ?? 'Class';
-    final studioName = job['studioName'] as String? ?? 'Studio';
-    final address = job['address'] as String? ?? '';
-    final rate = (job['currentRate'] as num?)?.toDouble() ?? 0;
-
-    final startDateTime = startTime != null
-        ? DateTime.fromMillisecondsSinceEpoch(startTime.toInt())
-        : DateTime.now();
-    final endDateTime = startDateTime.add(Duration(minutes: durationMinutes));
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Time column
-            Column(
-              children: [
-                Text(
-                  DateFormat.Hm().format(startDateTime),
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                Container(
-                  width: 2,
-                  height: 24,
-                  color: theme.colorScheme.primary,
-                ),
-                Text(
-                  DateFormat.Hm().format(endDateTime),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.mutedText,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 16),
-            // Details column
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(LucideIcons.building2,
-                          size: 14, color: colors.mutedText),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          studioName,
-                          style: theme.textTheme.bodySmall,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (address.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(LucideIcons.mapPin,
-                            size: 14, color: colors.mutedText),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            address,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colors.mutedText,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // Rate
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: colors.successBackground,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '₪${rate.toStringAsFixed(0)}',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: colors.successText,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -31,7 +31,7 @@ class StaticMap extends StatelessWidget {
   final VoidCallback? onTap;
 
   // OpenStreetMap - Free, no API key needed
-  static const _tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'; 
+  static const _tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   @override
   Widget build(BuildContext context) {
@@ -126,15 +126,15 @@ class _CachedTileProvider extends TileProvider {
 
   String _getTileUrl(TileCoordinates coordinates, TileLayer options) {
     var url = options.urlTemplate ?? '';
-    
+
     // Basic replacement logic
     url = url.replaceAll('{z}', coordinates.z.toString());
     url = url.replaceAll('{x}', coordinates.x.toString());
     url = url.replaceAll('{y}', coordinates.y.toString());
-    
+
     // Handle retina/high-res
     url = url.replaceAll('{r}', ''); // Default to standard for now
-    
+
     // Handle additional options (api_key)
     options.additionalOptions.forEach((key, value) {
       url = url.replaceAll('{$key}', value);

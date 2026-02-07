@@ -12,9 +12,11 @@ import 'package:quickfit/features/auth/presentation/onboarding_screen.dart';
 import 'package:quickfit/features/jobs/presentation/job_list_screen.dart';
 import 'package:quickfit/features/jobs/presentation/post_job_screen.dart';
 import 'package:quickfit/features/jobs/presentation/job_detail_screen.dart';
+import 'package:quickfit/core/services/notification_service.dart';
+import 'package:quickfit/core/utils/logger.dart';
 import 'package:quickfit/features/profile/presentation/profile_screen.dart';
 import 'package:quickfit/features/verification/presentation/verification_screen.dart';
-import 'package:quickfit/features/instructor/screens/instructor_map_screen.dart';
+import 'package:quickfit/features/instructor/map/presentation/instructor_map_screen.dart';
 import 'package:quickfit/features/instructor/screens/instructor_schedule_screen.dart';
 import 'package:quickfit/features/studio/presentation/screens/studio_jobs_screen.dart';
 import 'package:quickfit/shared/layouts/app_scaffold.dart';
@@ -61,7 +63,7 @@ class _AuthRefreshNotifier extends ChangeNotifier {
 GoRouter router(Ref ref) {
   final refreshNotifier = _AuthRefreshNotifier(ref);
 
-  return GoRouter(
+  final goRouter = GoRouter(
     initialLocation: AppRoutes.splash,
     debugLogDiagnostics: kDebugMode,
     refreshListenable: refreshNotifier,
@@ -118,78 +120,77 @@ GoRouter router(Ref ref) {
       ),
 
       // Instructor shell
-      ShellRoute(
-        builder: (context, state, child) => AppScaffold(
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) => AppScaffold(
           role: 'instructor',
-          child: child,
+          navigationShell: navigationShell,
         ),
-        routes: [
-          GoRoute(
-            path: AppRoutes.instructorHome,
-            redirect: (_, __) => AppRoutes.instructorJobs,
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.instructorJobs,
+                builder: (context, state) => const JobListScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: AppRoutes.instructorJobs,
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const JobListScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.instructorSchedule,
+                builder: (context, state) => const InstructorScheduleScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: AppRoutes.instructorSchedule,
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const InstructorScheduleScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.instructorMap,
+                builder: (context, state) => const InstructorMapScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: AppRoutes.instructorProfile,
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const ProfileScreen(),
-            ),
-          ),
-          GoRoute(
-            path: AppRoutes.instructorMap,
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const InstructorMapScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.instructorProfile,
+                builder: (context, state) => const ProfileScreen(),
+              ),
+            ],
           ),
         ],
       ),
 
       // Studio shell
-      ShellRoute(
-        builder: (context, state, child) => AppScaffold(
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) => AppScaffold(
           role: 'studio',
-          child: child,
+          navigationShell: navigationShell,
         ),
-        routes: [
-          GoRoute(
-            path: AppRoutes.studioHome,
-            redirect: (_, __) => AppRoutes.studioJobs,
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.studioJobs,
+                builder: (context, state) => const StudioJobsScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: AppRoutes.studioJobs,
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const StudioJobsScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.studioPostJob,
+                builder: (context, state) => const PostJobScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: AppRoutes.studioPostJob,
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const PostJobScreen(),
-            ),
-          ),
-          GoRoute(
-            path: AppRoutes.studioProfile,
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const ProfileScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.studioProfile,
+                builder: (context, state) => const ProfileScreen(),
+              ),
+            ],
           ),
         ],
       ),
@@ -209,6 +210,21 @@ GoRouter router(Ref ref) {
     ],
     errorBuilder: (context, state) => _ErrorScreen(error: state.error),
   );
+
+  // GLOBAL NOTIFICATION LISTENER
+  NotificationService.instance.onNotification.listen((message) {
+    final data = message.data;
+    final type = data['type'];
+    final jobId = data['jobId'];
+
+    log.i('[Router] Notification received: type=$type, jobId=$jobId');
+
+    if (type == 'new_job' && jobId != null) {
+      goRouter.push(AppRoutes.jobDetail.replaceFirst(':id', jobId));
+    }
+  });
+
+  return goRouter;
 }
 
 // Splash screen shown during auth loading

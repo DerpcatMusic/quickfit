@@ -91,7 +91,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     }
 
     final auth = ref.read(authProvider);
-    
+
     // For studios, we MUST have a location set during onboarding
     // Check both lat/lng from auth state
     if (auth.latitude == null || auth.longitude == null) {

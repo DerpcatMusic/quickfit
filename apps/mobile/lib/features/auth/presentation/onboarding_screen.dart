@@ -140,17 +140,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
     try {
       // 2026 FIX: Ensure studio address has coordinates
-      if (_currentLocation == null && _addressController.text.trim().isNotEmpty) {
+      if (_currentLocation == null &&
+          _addressController.text.trim().isNotEmpty) {
         final pos = await LocationService.instance
             .getLatLngFromAddress(_addressController.text.trim());
-        
+
         if (pos != null) {
           _currentLocation = LatLng(pos.latitude, pos.longitude);
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Could not find location. Please select from the list or use GPS.'),
+                content: Text(
+                    'Could not find location. Please select from the list or use GPS.'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -165,7 +167,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Studio location required. Please enter a valid address.'),
+              content: Text(
+                  'Studio location required. Please enter a valid address.'),
               backgroundColor: Colors.red,
             ),
           );

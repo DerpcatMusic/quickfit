@@ -8,8 +8,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
-import '../../core/config/map_config.dart';
-import '../../core/services/map_style_service.dart';
+import 'package:quickfit/core/config/map_config.dart';
+import 'package:quickfit/core/services/map_style_service.dart';
 
 /// A reusable MapLibre map widget styled for QuickFit.
 ///
@@ -106,6 +106,7 @@ class QuickFitMapState extends State<QuickFitMap>
 
   // Radius circle state - simple boolean for complete state
   bool _radiusReady = false;
+  Symbol? _homePinSymbol;
 
   /// Get the underlying MapLibre controller for advanced operations.
   Future<MapLibreMapController> get controller => _controllerCompleter.future;
@@ -169,10 +170,8 @@ class QuickFitMapState extends State<QuickFitMap>
         minMaxZoomPreference:
             const MinMaxZoomPreference(MapConfig.minZoom, MapConfig.maxZoom),
         myLocationEnabled: widget.showUserLocation && !kIsWeb, // Disable on web
-        // myLocationRenderMode not available on web
-        myLocationRenderMode:
-            kIsWeb ? MyLocationRenderMode.normal : MyLocationRenderMode.compass,
         myLocationTrackingMode: MyLocationTrackingMode.none,
+        // myLocationRenderMode: MyLocationRenderMode.compass, // Removed for web compatibility
         trackCameraPosition: true,
         compassEnabled: false,
         rotateGesturesEnabled: widget.interactionEnabled,
@@ -187,7 +186,7 @@ class QuickFitMapState extends State<QuickFitMap>
             : null,
         // Hide the attribution on the bottom right as it impacts the premium "avant-garde" look.
         // We ensure attribution is handled in legal/about sections of the app.
-        attributionButtonMargins: const math.Point(-100, -100),
+        attributionButtonMargins: kIsWeb ? null : const math.Point(-100, -100),
       ),
     );
   }
@@ -272,6 +271,22 @@ class QuickFitMapState extends State<QuickFitMap>
       await _updateRadiusSource(center, radiusKm);
     } else {
       await _addRadiusCircleAt(center, radiusKm);
+    }
+
+    if (widget.showHomePin) {
+      await updateHomePin(center);
+    }
+  }
+
+  /// Update the home pin position.
+  Future<void> updateHomePin(LatLng position) async {
+    final controller = await _controllerCompleter.future;
+    if (_homePinSymbol != null) {
+      await controller.updateSymbol(
+          _homePinSymbol!, SymbolOptions(geometry: position));
+    } else {
+      // If not exists, add it
+      await _addHomePin(positionOverride: position);
     }
   }
 
@@ -411,15 +426,16 @@ class QuickFitMapState extends State<QuickFitMap>
   }
 
   /// Add a home pin marker at the radius center.
-  Future<void> _addHomePin() async {
-    final center = widget.radiusCenter ?? widget.initialCenter;
+  Future<void> _addHomePin({LatLng? positionOverride}) async {
+    final center =
+        positionOverride ?? widget.radiusCenter ?? widget.initialCenter;
     if (center == null) return;
 
     final controller = await _controllerCompleter.future;
     if (!mounted) return;
 
     // Add a prominent marker at the home location
-    await controller.addSymbol(
+    _homePinSymbol = await controller.addSymbol(
       SymbolOptions(
         geometry: center,
         iconSize: 1.5,

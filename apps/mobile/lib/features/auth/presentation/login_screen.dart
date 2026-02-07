@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../../../core/theme/app_colors.dart';
-import '../providers/auth_provider.dart';
-import '../../../shared/widgets/google_sign_in_button.dart';
+import 'package:quickfit/core/theme/app_colors.dart';
+import 'package:quickfit/features/auth/providers/auth_provider.dart';
+import 'package:quickfit/shared/widgets/google_sign_in_button.dart';
 
 /// Login screen for authentication.
 class LoginScreen extends ConsumerStatefulWidget {

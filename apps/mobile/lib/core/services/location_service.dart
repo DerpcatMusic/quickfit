@@ -107,7 +107,8 @@ class LocationService {
     try {
       _currentPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high, // Changed to HIGH for better accuracy
+          accuracy:
+              LocationAccuracy.high, // Changed to HIGH for better accuracy
           distanceFilter: 100, // Reduced to 100m for more precise updates
         ),
       );

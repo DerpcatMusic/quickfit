@@ -2,6 +2,8 @@
 // Resolution 11 = ~50m precision
 
 import * as h3 from "h3-js";
+import { v } from "convex/values";
+import { internalQuery } from "./_generated/server";
 
 const RESOLUTION = 11;
 const EDGE_LENGTH_M = 28.7; // Average edge length at res 11
@@ -49,3 +51,22 @@ export function isHexInSet(hexId: string, hexSet: string[]): boolean {
 export function getHexBoundary(hexId: string): Array<[number, number]> {
   return h3.cellToBoundary(hexId, true); // true = return as [lat, lng] pairs
 }
+
+// ==========================================
+// CONVEX API WRAPPERS
+// ==========================================
+
+/**
+ * Internal query to get neighboring hexes (1-ring expansion).
+ * Used by dispatchJobNotifications action.
+ */
+export const getNeighbors = internalQuery({
+  args: { hex: v.string() },
+  handler: async (ctx, { hex }) => {
+    // Returns the 6 neighbors of the given hex (distance k=1, excluding self)
+    // Actually gridDisk(hex, 1) returns center + neighbors. 
+    // We filter out the center to get only neighbors.
+    const all = h3.gridDisk(hex, 1);
+    return all.filter(h => h !== hex);
+  },
+});

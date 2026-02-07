@@ -14,6 +14,7 @@ import 'core/services/hive_service.dart';
 import 'core/services/offline_queue_manager.dart';
 import 'core/services/background_sync_service.dart';
 import 'core/constants/app_constants.dart';
+import 'features/auth/services/auth_service.dart';
 
 // Background message handler
 @pragma('vm:entry-point')
@@ -41,6 +42,8 @@ void main() async {
     Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     ),
+    // Initialize Google Sign In (Required for Web)
+    AuthService().initialize(),
     ConvexClient.initialize(
       const ConvexConfig(
         deploymentUrl: AppConstants.convexUrl,

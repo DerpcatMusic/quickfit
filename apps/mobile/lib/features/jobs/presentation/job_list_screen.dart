@@ -13,7 +13,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/job_card.dart';
 import '../../../shared/widgets/sos_badge.dart';
 import '../providers/jobs_provider.dart';
-import '../../auth/providers/auth_provider.dart';
 import '../../../core/constants/categories.dart';
 
 /// Main screen for instructors to browse available jobs.
@@ -371,7 +370,8 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                   child: JobCard(
                     job: job,
                     isLoading: _claimingJobId == job.id,
-                    pendingStatus: jobsState.getPendingOperation(job.id)?.status,
+                    pendingStatus:
+                        jobsState.getPendingOperation(job.id)?.status,
                     onClaim: () => _claimJob(job),
                     onTap: () => context
                         .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
@@ -394,7 +394,8 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                   child: JobCard(
                     job: job,
                     isLoading: _claimingJobId == job.id,
-                    pendingStatus: jobsState.getPendingOperation(job.id)?.status,
+                    pendingStatus:
+                        jobsState.getPendingOperation(job.id)?.status,
                     onClaim: () => _claimJob(job),
                     onTap: () => context
                         .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),

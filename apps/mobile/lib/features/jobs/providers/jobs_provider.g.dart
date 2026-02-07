@@ -20,7 +20,7 @@ final class JobsNotifierProvider
           argument: null,
           retry: null,
           name: r'jobsProvider',
-          isAutoDispose: true,
+          isAutoDispose: false,
           dependencies: null,
           $allTransitiveDependencies: null,
         );
@@ -41,7 +41,7 @@ final class JobsNotifierProvider
   }
 }
 
-String _$jobsNotifierHash() => r'4eb72e72a1178e743b467a41b3e41947694a5d50';
+String _$jobsNotifierHash() => r'2ac6afe437b3ca51dfcc79b2e755bfb965665ef1';
 
 abstract class _$JobsNotifier extends $Notifier<JobsState> {
   JobsState build();
@@ -66,7 +66,7 @@ final class StudioJobsNotifierProvider
           argument: null,
           retry: null,
           name: r'studioJobsProvider',
-          isAutoDispose: true,
+          isAutoDispose: false,
           dependencies: null,
           $allTransitiveDependencies: null,
         );
@@ -88,7 +88,7 @@ final class StudioJobsNotifierProvider
 }
 
 String _$studioJobsNotifierHash() =>
-    r'43cbee99eb51ff2be13d5d3464726be964eadb64';
+    r'b1271010dfa933e080fc0c2f09365fc16d18bc3e';
 
 abstract class _$StudioJobsNotifier extends $Notifier<JobsState> {
   JobsState build();
@@ -152,7 +152,7 @@ final class JobProvider
   }
 }
 
-String _$jobHash() => r'd1551ed7b47755461aeb511f5b338157cf4bab73';
+String _$jobHash() => r'6d319d3659cf1199d32c6e83ebfd5bb1bc17b57c';
 
 final class JobFamily extends $Family
     with $FunctionalFamilyOverride<FutureOr<Job?>, String> {

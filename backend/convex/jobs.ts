@@ -57,10 +57,31 @@ export const getJobById = query({
       }
     }
 
+    const identity = await ctx.auth.getUserIdentity();
+    const user = identity ? await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first() : null;
+
+    const isOwner = user?._id === job.studioId;
+    const isPrimary = user?._id === job.claimedBy;
+    const isBackup = user?._id === job.backupClaimedBy;
+
+    // Get the active claim ID (most recent accepted or pending claim)
+    const activeClaim = await ctx.db
+      .query("claims")
+      .withIndex("by_job", (q) => q.eq("jobId", jobId))
+      .filter((q) => q.eq(q.field("instructorId"), job.claimedBy))
+      .first();
+
     return {
       ...job,
       studioName: studio?.businessName || studio?.name || "Studio",
       claimedInstructor,
+      claimId: activeClaim?._id,
+      canClaimAsPrimary: job.status === "open",
+      canClaimAsBackup: job.status === "claimed" && !job.backupClaimedBy && !isPrimary && !isOwner,
+      userRole: isOwner ? "owner" : (isPrimary ? "primary" : (isBackup ? "backup" : "viewer")),
     };
   },
 });
@@ -368,6 +389,11 @@ export const postJob = mutation({
   },
 });
 
+// ==========================================
+// CONFIGURATION
+// ==========================================
+const MVP_SKIP_CERTIFICATION = true; // Set to true to allow non-verified instructors for MVP
+
 export const claimJob = mutation({
   args: {
     jobId: v.id("jobs"),
@@ -395,7 +421,7 @@ export const claimJob = mutation({
     
     if (job.status === "open") {
       // FIRST CLAIM - Primary instructor
-      if (job.requiresVerification && !user.isVerified) {
+      if (!MVP_SKIP_CERTIFICATION && job.requiresVerification && !user.isVerified) {
         throw new Error("This job requires a verified instructor");
       }
       
@@ -446,7 +472,7 @@ export const claimJob = mutation({
       }
       
       // Verify instructor is eligible
-      if (job.requiresVerification && !user.isVerified) {
+      if (!MVP_SKIP_CERTIFICATION && job.requiresVerification && !user.isVerified) {
         throw new Error("This job requires a verified instructor");
       }
       
@@ -481,7 +507,7 @@ export const claimJob = mutation({
       await ctx.scheduler.runAfter(0, internal.notifications.notifyStudioOfBackupClaim, {
         jobId: args.jobId,
         backupClaimId,
-        primaryInstructorId: job.claimedBy,
+        primaryInstructorId: job.claimedBy!,
         backupInstructorId: user._id,
       });
       

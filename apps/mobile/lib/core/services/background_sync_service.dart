@@ -8,11 +8,9 @@
 
 import 'dart:async';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter_background_service_android/flutter_background_service_android.dart';
-import 'connectivity_plus/connectivity_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:developer' as developer;
 import 'hive_service.dart';
-import 'offline_queue_manager.dart';
-import 'notification_service.dart';
 
 /// Ultra-lightweight background service
 /// Focused on receiving urgent notifications for last-minute replacements
@@ -56,7 +54,7 @@ class BackgroundSyncService {
   /// Stop the service
   Future<void> stopService() async {
     final service = FlutterBackgroundService();
-    await service.invoke('stop');
+    service.invoke('stop');
     _isRunning = false;
   }
 
@@ -87,9 +85,9 @@ void onStart(ServiceInstance service) async {
 
   // Listen for connectivity changes
   final connectivity = Connectivity();
-  connectivity.onConnectivityChanged.listen((results) {
-    final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
-    if (result != ConnectivityResult.none) {
+  connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
+    if (results.isNotEmpty &&
+        results.any((r) => r != ConnectivityResult.none)) {
       // Came online - trigger sync
       _syncPendingMutations();
     }
@@ -121,7 +119,7 @@ Future<void> _syncPendingMutations() async {
     // Check connectivity
     final connectivity = Connectivity();
     final results = await connectivity.checkConnectivity();
-    if (results.isEmpty || results.first == ConnectivityResult.none) {
+    if (results.isEmpty || !results.any((r) => r != ConnectivityResult.none)) {
       return; // No connection, skip
     }
 
@@ -142,7 +140,12 @@ Future<void> _syncPendingMutations() async {
       mutation.status = 'pending';
       await mutation.save();
     }
-  } catch (e) {
-    print('Background sync error: $e');
+  } catch (e, stack) {
+    developer.log(
+      'Background sync error',
+      name: 'quickfit.sync',
+      error: e,
+      stackTrace: stack,
+    );
   }
 }

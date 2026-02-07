@@ -36,11 +36,12 @@ class StudioJobsState {
   }
 
   // Helper getters
-  List<Job> get activeJobs => 
+  List<Job> get activeJobs =>
       jobs.where((j) => j.status == 'open' || j.status == 'claimed').toList();
-      
-  List<Job> get completedJobs => 
-      jobs.where((j) => j.status == 'completed' || j.status == 'cancelled').toList();
+
+  List<Job> get completedJobs => jobs
+      .where((j) => j.status == 'completed' || j.status == 'cancelled')
+      .toList();
 }
 
 @riverpod
@@ -66,7 +67,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
       _subscription?.cancel();
       _subscription = null;
     }
-    
+
     return const StudioJobsState(isLoading: false);
   }
 
@@ -153,10 +154,9 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
           if (description != null) 'description': description,
         },
       );
-      
+
       // Result is the jobId
       return result.replaceAll('"', '');
-      
     } catch (e) {
       log.e('Failed to post job: $e');
       // Show error but don't clear state (keep existing jobs)
