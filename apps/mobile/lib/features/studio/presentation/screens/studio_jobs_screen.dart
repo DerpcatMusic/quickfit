@@ -2,6 +2,7 @@
 // lib/features/studio/presentation/screens/studio_jobs_screen.dart
 
 import 'dart:convert';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +12,9 @@ import 'package:intl/intl.dart';
 
 import 'package:quickfit/core/router/app_router.dart';
 import 'package:quickfit/core/theme/app_colors.dart';
+import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
+import 'package:quickfit/shared/widgets/adaptive_dialog.dart' as qf_dialog;
+import 'package:quickfit/core/utils/platform.dart';
 
 /// Screen displaying all jobs posted by the current studio.
 class StudioJobsScreen extends ConsumerStatefulWidget {
@@ -95,22 +99,33 @@ class _StudioJobsScreenState extends ConsumerState<StudioJobsScreen> {
   }
 
   Future<void> _cancelJob(String jobId) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Job?'),
-        content: const Text('This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Yes, Cancel'),
-          ),
-        ],
-      ),
+    final isCupertino = isCupertinoPlatform(context);
+    final confirm = await qf_dialog.showAdaptiveDialog<bool>(
+      context,
+      title: const Text('Cancel Job?'),
+      content: const Text('This action cannot be undone.'),
+      actions: isCupertino
+          ? [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('No'),
+              ),
+              CupertinoDialogAction(
+                onPressed: () => Navigator.pop(context, true),
+                isDestructiveAction: true,
+                child: const Text('Yes, Cancel'),
+              ),
+            ]
+          : [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('No'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Yes, Cancel'),
+              ),
+            ],
     );
 
     if (confirm != true) return;
@@ -145,28 +160,46 @@ class _StudioJobsScreenState extends ConsumerState<StudioJobsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppColors>()!;
+    final isCupertino = isCupertinoPlatform(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Jobs'),
+      appBar: adaptiveAppBar(
+        context,
+        title: 'My Jobs',
         actions: [
-          IconButton(
-            onPressed: _loadJobs,
-            icon: const Icon(LucideIcons.refreshCw),
-            tooltip: 'Refresh',
-          ),
+          if (isCupertino)
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: _loadJobs,
+              child: const Icon(CupertinoIcons.refresh),
+            )
+          else
+            IconButton(
+              onPressed: _loadJobs,
+              icon: const Icon(LucideIcons.refreshCw),
+              tooltip: 'Refresh',
+            ),
+          if (isCupertino)
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: () => context.go(AppRoutes.studioPostJob),
+              child: const Icon(CupertinoIcons.add),
+            ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go(AppRoutes.studioPostJob),
-        icon: const Icon(LucideIcons.plus),
-        label: const Text('Post Job'),
-      ),
+      floatingActionButton: isCupertino
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => context.go(AppRoutes.studioPostJob),
+              icon: const Icon(LucideIcons.plus),
+              label: const Text('Post Job'),
+            ),
       body: _buildBody(theme, colors),
     );
   }
 
   Widget _buildBody(ThemeData theme, AppColors colors) {
+    final isCupertino = isCupertinoPlatform(context);
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -181,7 +214,12 @@ class _StudioJobsScreenState extends ConsumerState<StudioJobsScreen> {
             const SizedBox(height: 16),
             Text(_error!, style: theme.textTheme.bodyLarge),
             const SizedBox(height: 16),
-            FilledButton(onPressed: _loadJobs, child: const Text('Retry')),
+            isCupertino
+                ? CupertinoButton.filled(
+                    onPressed: _loadJobs,
+                    child: const Text('Retry'),
+                  )
+                : FilledButton(onPressed: _loadJobs, child: const Text('Retry')),
           ],
         ),
       );
@@ -208,11 +246,16 @@ class _StudioJobsScreenState extends ConsumerState<StudioJobsScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () => context.go(AppRoutes.studioPostJob),
-              icon: const Icon(LucideIcons.plus),
-              label: const Text('Post Your First Job'),
-            ),
+            isCupertino
+                ? CupertinoButton.filled(
+                    onPressed: () => context.go(AppRoutes.studioPostJob),
+                    child: const Text('Post Your First Job'),
+                  )
+                : FilledButton.icon(
+                    onPressed: () => context.go(AppRoutes.studioPostJob),
+                    icon: const Icon(LucideIcons.plus),
+                    label: const Text('Post Your First Job'),
+                  ),
           ],
         ),
       );
@@ -362,7 +405,7 @@ class _JobCard extends StatelessWidget {
               // Rate
               Row(
                 children: [
-                  Text('₪${currentRate.toStringAsFixed(0)}',
+                  Text('ILS ${currentRate.toStringAsFixed(0)}',
                       style: theme.textTheme.titleSmall
                           ?.copyWith(fontWeight: FontWeight.bold)),
                   if (sosBoost) ...[

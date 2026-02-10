@@ -24,10 +24,24 @@ export const generateUploadUrl = mutation({
  * Takes a storageId and returns a signed URL.
  */
 export const getUrl = query({
-  args: { storageId: v.string() },
+  args: { storageId: v.id("_storage") },
   handler: async (ctx, { storageId }) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!user) throw new Error("User not found");
+
+    const owner = await ctx.db
+      .query("userFiles")
+      .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+      .first();
+    if (!owner || owner.userId !== user._id) {
+      throw new Error("Unauthorized");
+    }
 
     // Get signed URL for viewing
     return await ctx.storage.getUrl(storageId);
@@ -35,10 +49,50 @@ export const getUrl = query({
 });
 
 /**
+ * Register ownership of an uploaded storage object.
+ * Must be called by the uploader after upload.
+ */
+export const registerUploadedFile = mutation({
+  args: {
+    storageId: v.id("_storage"),
+    purpose: v.optional(v.string()),
+  },
+  handler: async (ctx, { storageId, purpose }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!user) throw new Error("User not found");
+
+    const existing = await ctx.db
+      .query("userFiles")
+      .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+      .first();
+
+    if (existing) {
+      if (existing.userId !== user._id) {
+        throw new Error("Storage object already owned by another user");
+      }
+      return existing._id;
+    }
+
+    return await ctx.db.insert("userFiles", {
+      userId: user._id,
+      storageId,
+      purpose,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Delete a stored file.
  */
 export const deleteFile = mutation({
-  args: { storageId: v.string() },
+  args: { storageId: v.id("_storage") },
   handler: async (ctx, { storageId }) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
@@ -51,8 +105,18 @@ export const deleteFile = mutation({
 
     if (!user) throw new Error("User not found");
 
-    // Delete the file
+    const owner = await ctx.db
+      .query("userFiles")
+      .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+      .first();
+
+    if (!owner || owner.userId !== user._id) {
+      throw new Error("Unauthorized");
+    }
+
+    // Delete the file and ownership record
     await ctx.storage.delete(storageId);
+    await ctx.db.delete(owner._id);
     return true;
   },
 });

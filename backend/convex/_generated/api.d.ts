@@ -12,16 +12,18 @@ import type * as actions_geminiVerify from "../actions/geminiVerify.js";
 import type * as actions_sendPush from "../actions/sendPush.js";
 import type * as backfill from "../backfill.js";
 import type * as claims from "../claims.js";
+import type * as crons from "../crons.js";
 import type * as geo from "../geo.js";
-import type * as h3 from "../h3.js";
 import type * as jobs from "../jobs.js";
 import type * as notifications from "../notifications.js";
 import type * as seed from "../seed.js";
 import type * as seedZones from "../seedZones.js";
 import type * as storage from "../storage.js";
-import type * as subscriptions from "../subscriptions.js";
+import type * as testHarness from "../testHarness.js";
+import type * as testing_dispatchTests from "../testing/dispatchTests.js";
 import type * as users from "../users.js";
 import type * as verifications from "../verifications.js";
+import type * as zoneSubscriptions from "../zoneSubscriptions.js";
 import type * as zones from "../zones.js";
 
 import type {
@@ -35,16 +37,18 @@ declare const fullApi: ApiFromModules<{
   "actions/sendPush": typeof actions_sendPush;
   backfill: typeof backfill;
   claims: typeof claims;
+  crons: typeof crons;
   geo: typeof geo;
-  h3: typeof h3;
   jobs: typeof jobs;
   notifications: typeof notifications;
   seed: typeof seed;
   seedZones: typeof seedZones;
   storage: typeof storage;
-  subscriptions: typeof subscriptions;
+  testHarness: typeof testHarness;
+  "testing/dispatchTests": typeof testing_dispatchTests;
   users: typeof users;
   verifications: typeof verifications;
+  zoneSubscriptions: typeof zoneSubscriptions;
   zones: typeof zones;
 }>;
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:convex_flutter/convex_flutter.dart';
 import 'package:quickfit/core/services/location_service.dart';
 import 'package:quickfit/core/providers/zone_provider.dart';
 import 'package:quickfit/core/theme/app_colors.dart';
+import 'package:quickfit/core/utils/platform.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:quickfit/shared/widgets/quickfit_map.dart';
 import 'package:quickfit/features/instructor/map/presentation/widgets/instructor_map_view.dart';
@@ -35,6 +37,10 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
   int _totalJobs = 0;
   double _earningsThisMonth = 0.0;
   List<QuickFitJobMarker> _parsedJobs = const [];
+  int _jobsDataSignature = 0;
+  SubscriptionHandle? _jobsSubscription;
+  Timer? _jobsSubscriptionDebounce;
+  String? _jobsSubscriptionKey;
 
   @override
   void initState() {
@@ -50,13 +56,16 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
   void _loadInitialData() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authState = ref.read(authProvider);
+      setState(() {
+        _selectedZoneIds = Set.from(authState.zoneIds ?? []);
+        _mode = authState.dispatchMode == 'zone'
+            ? SelectionMode.zones
+            : SelectionMode.radius;
+      });
       if (authState.latitude != null && authState.longitude != null) {
         setState(() {
           _currentLocation = LatLng(authState.latitude!, authState.longitude!);
           _radiusKm = authState.radiusKm ?? 5.0;
-          if (authState.radiusKm != null) {
-            _mode = SelectionMode.radius;
-          }
         });
       }
       await _loadStatsAndJobs();
@@ -66,7 +75,7 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
   Future<void> _loadStatsAndJobs() async {
     await Future.wait([
       _loadStats(),
-      _loadJobsForMap(),
+      _subscribeToMapJobs(force: true),
     ]);
   }
 
@@ -88,44 +97,121 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
     }
   }
 
-  Future<void> _loadJobsForMap() async {
-    if (_currentLocation == null) return;
+  void _scheduleMapJobsResubscribe() {
+    _jobsSubscriptionDebounce?.cancel();
+    _jobsSubscriptionDebounce = Timer(const Duration(milliseconds: 250), () {
+      _subscribeToMapJobs();
+    });
+  }
+
+  Map<String, String> _buildMapJobsArgs() {
+    final auth = ref.read(authProvider);
+    return {
+      'latitude': _currentLocation!.latitude.toString(),
+      'longitude': _currentLocation!.longitude.toString(),
+      'radiusKm': _radiusKm.toString(),
+      'categories': auth.categories?.join(',') ?? 'general',
+      'isVerified': auth.isVerified.toString(),
+    };
+  }
+
+  Future<void> _subscribeToMapJobs({bool force = false}) async {
+    if (_mode == SelectionMode.radius && _currentLocation == null) return;
+    if (_mode == SelectionMode.zones && _selectedZoneIds.isEmpty) {
+      if (mounted) {
+        setState(() => _parsedJobs = const []);
+      }
+      _jobsSubscription?.cancel();
+      _jobsSubscription = null;
+      _jobsSubscriptionKey = null;
+      return;
+    }
+
+    final auth = ref.read(authProvider);
+    final args = _mode == SelectionMode.radius ? _buildMapJobsArgs() : <String, String>{};
+    final zoneArgs = <String, String>{
+      'zoneIds': json.encode(_selectedZoneIds.toList()),
+      'categories': auth.categories?.join(',') ?? 'general',
+    };
+    final key = json.encode(_mode == SelectionMode.zones ? zoneArgs : args);
+
+    if (!force && _jobsSubscription != null && _jobsSubscriptionKey == key) {
+      return;
+    }
+
+    _jobsSubscription?.cancel();
+    _jobsSubscription = null;
+    _jobsSubscriptionKey = key;
 
     try {
-      final result = await ConvexClient.instance.query(
-        'geo:getNearbyJobsForInstructor',
-        {
-          'latitude': _currentLocation!.latitude.toString(),
-          'longitude': _currentLocation!.longitude.toString(),
-          'radiusKm': _radiusKm.toString(),
-          'categories':
-              ref.read(authProvider).categories?.join(',') ?? 'general',
-          'isVerified': ref.read(authProvider).isVerified.toString(),
+      _jobsSubscription = await ConvexClient.instance.subscribe(
+        name: _mode == SelectionMode.zones
+            ? 'jobs:getZoneJobsForInstructor'
+            : 'geo:getNearbyJobsForInstructor',
+        args: _mode == SelectionMode.zones
+            ? zoneArgs
+            : args,
+        onUpdate: _handleMapJobsUpdate,
+        onError: (message, value) {
+          developer.log('Map job subscription error: $message',
+              name: 'instructor_map', error: value);
         },
       );
+    } catch (e) {
+      developer.log('Error subscribing to jobs',
+          name: 'instructor_map', error: e);
+    }
+  }
 
-      if (result.isNotEmpty && result != 'null') {
-        final List<dynamic> data = json.decode(result);
+  void _handleMapJobsUpdate(String data) {
+    try {
+      if (data.isEmpty || data == 'null') {
         if (mounted) {
-          setState(() {
-            _parsedJobs = data.map((job) {
-              return QuickFitJobMarker(
-                id: job['_id'] as String,
-                position: LatLng(
-                    job['latitude'] as double, job['longitude'] as double),
-                label: job['title'] as String? ?? 'Job',
-                isSos: job['sosBoostApplied'] as bool? ?? false,
-                currentRate: (job['currentRate'] as num?)?.toDouble(),
-                distanceKm: ((job['distanceMeters'] as num?) ?? 0) / 1000,
-              );
-            }).toList();
-          });
-          _mapKey.currentState?.updateJobs(_parsedJobs);
+          _jobsDataSignature = 0;
+          setState(() => _parsedJobs = const []);
         }
+        return;
+      }
+
+      final List<dynamic> parsed = json.decode(data) as List<dynamic>;
+      final jobs = parsed.map((job) {
+        return QuickFitJobMarker(
+          id: job['_id'] as String,
+          position: LatLng(
+            (job['latitude'] as num).toDouble(),
+            (job['longitude'] as num).toDouble(),
+          ),
+          label: job['title'] as String? ?? 'Job',
+          isSos: job['sosBoostApplied'] as bool? ?? false,
+          currentRate: (job['currentRate'] as num?)?.toDouble(),
+          distanceKm: ((job['distanceMeters'] as num?) ?? 0) / 1000,
+        );
+      }).toList();
+
+      final signature = _computeJobsSignature(jobs);
+      if (mounted && signature != _jobsDataSignature) {
+        _jobsDataSignature = signature;
+        setState(() => _parsedJobs = jobs);
       }
     } catch (e) {
-      developer.log('Error loading jobs', name: 'instructor_map', error: e);
+      developer.log('Error parsing map jobs', name: 'instructor_map', error: e);
     }
+  }
+
+  int _computeJobsSignature(List<QuickFitJobMarker> jobs) {
+    var hash = jobs.length;
+    for (final job in jobs) {
+      hash = Object.hash(
+        hash,
+        job.id,
+        job.position.latitude.toStringAsFixed(5),
+        job.position.longitude.toStringAsFixed(5),
+        job.isSos,
+        job.label,
+        job.currentRate,
+      );
+    }
+    return hash;
   }
 
   Future<void> _onSave() async {
@@ -149,6 +235,7 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
           radiusKm: _radiusKm,
           latitude: _currentLocation!.latitude,
           longitude: _currentLocation!.longitude,
+          dispatchMode: 'radius',
         );
       } else {
         if (_selectedZoneIds.isEmpty) {
@@ -162,7 +249,8 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
           role: authState.role ?? 'instructor',
           name: authState.user?.displayName ?? '',
           categories: authState.categories ?? [],
-          selectedZones: _selectedZoneIds.toList(),
+          dispatchMode: 'zone',
+          zoneIds: _selectedZoneIds.toList(),
         );
       }
 
@@ -170,6 +258,7 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Settings saved successfully')),
         );
+        await _loadStatsAndJobs();
       }
     } catch (e) {
       if (mounted) {
@@ -181,8 +270,16 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
   }
 
   @override
+  void dispose() {
+    _jobsSubscription?.cancel();
+    _jobsSubscriptionDebounce?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final zonesAsync = ref.watch(zonesProvider);
+    final isCupertino = isCupertinoPlatform(context);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -200,12 +297,14 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
               setState(() {
                 _selectedZoneIds = zones;
               });
+              _scheduleMapJobsResubscribe();
             },
             onMapTap: (point) {
               if (_mode == SelectionMode.radius) {
                 setState(() {
                   _currentLocation = point;
                 });
+                _scheduleMapJobsResubscribe();
               }
             },
           ),
@@ -216,12 +315,6 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
             left: 0,
             right: 0,
             child: Container(
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 16,
-                left: 16,
-                right: 16,
-                bottom: 16,
-              ),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
@@ -232,108 +325,169 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
                   ],
                 ),
               ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.black),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: Colors.white,
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Colors.black),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Service Area',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Service Area',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
 
           // Controls / Stats Overlay
           Positioned(
-            bottom: 32,
+            bottom: 0,
             left: 16,
             right: 16,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_mode == SelectionMode.radius)
-                  InstructorStatsCard(
-                    totalJobs: _totalJobs,
-                    earnings: _earningsThisMonth,
-                    visibleJobsCount: _parsedJobs.length,
-                  ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (context) => MapSettingsSheet(
-                              initialMode: _mode,
-                              initialRadius: _radiusKm,
-                              selectedZoneIds: _selectedZoneIds,
-                              onSave: _onSave,
-                              onModeChanged: (mode) {
-                                setState(() {
-                                  _mode = mode;
-                                });
-                              },
-                              onRadiusChanged: (radius) {
-                                setState(() {
-                                  _radiusKm = radius;
-                                });
-                              },
+            child: SafeArea(
+              top: false,
+              minimum: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_mode == SelectionMode.radius)
+                    InstructorStatsCard(
+                      totalJobs: _totalJobs,
+                      earnings: _earningsThisMonth,
+                      visibleJobsCount: _parsedJobs.length,
+                    ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: isCupertino
+                            ? CupertinoButton(
+                                onPressed: () {
+                                  showModalBottomSheet(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (context) => MapSettingsSheet(
+                                      initialMode: _mode,
+                                      initialRadius: _radiusKm,
+                                      selectedZoneIds: _selectedZoneIds,
+                                      onSave: _onSave,
+                                      onModeChanged: (mode) {
+                                        setState(() {
+                                          _mode = mode;
+                                        });
+                                        _scheduleMapJobsResubscribe();
+                                      },
+                                      onRadiusChanged: (radius) {
+                                        setState(() {
+                                          _radiusKm = radius;
+                                        });
+                                        _scheduleMapJobsResubscribe();
+                                      },
+                                    ),
+                                  );
+                                },
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                color: CupertinoColors.systemGrey5,
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(CupertinoIcons.settings),
+                                    SizedBox(width: 8),
+                                    Text('Settings'),
+                                  ],
+                                ),
+                              )
+                            : ElevatedButton(
+                                onPressed: () {
+                                  showModalBottomSheet(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (context) => MapSettingsSheet(
+                                      initialMode: _mode,
+                                      initialRadius: _radiusKm,
+                                      selectedZoneIds: _selectedZoneIds,
+                                      onSave: _onSave,
+                                      onModeChanged: (mode) {
+                                        setState(() {
+                                          _mode = mode;
+                                        });
+                                        _scheduleMapJobsResubscribe();
+                                      },
+                                      onRadiusChanged: (radius) {
+                                        setState(() {
+                                          _radiusKm = radius;
+                                        });
+                                        _scheduleMapJobsResubscribe();
+                                      },
+                                    ),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: Colors.black,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.settings),
+                                    SizedBox(width: 8),
+                                    Text('Settings'),
+                                  ],
+                                ),
+                              ),
+                      ),
+                      const SizedBox(width: 12),
+                      isCupertino
+                          ? CupertinoButton.filled(
+                              onPressed: _onSave,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12,
+                                horizontal: 24,
+                              ),
+                              child: const Text('Save'),
+                            )
+                          : ElevatedButton(
+                              onPressed: _onSave,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: context.colors.cobaltAccent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                  horizontal: 24,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Save'),
                             ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.settings),
-                            SizedBox(width: 8),
-                            Text('Settings'),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      onPressed: _onSave,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: context.colors.cobaltAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                          horizontal: 24,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],

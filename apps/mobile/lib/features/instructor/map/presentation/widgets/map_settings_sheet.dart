@@ -163,9 +163,9 @@ class _MapSettingsSheetState extends ConsumerState<MapSettingsSheet> {
                 overlayColor: theme.colorScheme.primary.withValues(alpha: 0.2),
               ),
               child: Slider(
-                value: _radiusKm.clamp(0.5, 50.0),
+                value: _radiusKm.clamp(0.5, 15.0),
                 min: 0.5,
-                max: 50.0,
+                max: 15.0,
                 onChanged: (v) {
                   setState(() => _radiusKm = v);
                   widget.onRadiusChanged(v);

@@ -70,6 +70,10 @@ class AuthNotifier extends _$AuthNotifier {
           categories: userData['categories'] != null
               ? List<String>.from(userData['categories'] as List)
               : null,
+          dispatchMode: userData['dispatchMode']?.toString(),
+          zoneIds: userData['zoneIds'] != null
+              ? List<String>.from(userData['zoneIds'] as List)
+              : null,
           radiusKm: (userData['radiusKm'] as num?)?.toDouble(),
           isVerified: userData['isVerified'] ?? false,
           isLoading: false,
@@ -163,7 +167,8 @@ class AuthNotifier extends _$AuthNotifier {
     double? latitude,
     double? longitude,
     String? address,
-    List<String>? selectedZones,
+    String? dispatchMode,
+    List<String>? zoneIds,
   }) async {
     state = state.copyWith(isLoading: true);
     try {
@@ -175,7 +180,8 @@ class AuthNotifier extends _$AuthNotifier {
         latitude: latitude,
         longitude: longitude,
         address: address,
-        selectedZones: selectedZones,
+        dispatchMode: dispatchMode,
+        zoneIds: zoneIds,
       );
 
       state = state.copyWith(
@@ -183,6 +189,11 @@ class AuthNotifier extends _$AuthNotifier {
         hasCompletedOnboarding: true,
         isLoading: false,
         error: null,
+        dispatchMode: dispatchMode,
+        zoneIds: zoneIds,
+        radiusKm: radiusKm ?? state.radiusKm,
+        latitude: latitude ?? state.latitude,
+        longitude: longitude ?? state.longitude,
       );
       return true;
     } catch (e) {

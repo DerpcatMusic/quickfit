@@ -10,8 +10,7 @@ enum FitnessCategory {
   spinning('spinning', 'Spinning', 'ספינינג', '🚴', Color(0xFF2196F3)),
   hiit('hiit', 'HIIT', 'אינטרוולים', '🔥', Color(0xFFF44336)),
   dance('dance', 'Dance', 'ריקוד', '💃', Color(0xFF00BCD4)),
-  personalTraining('personal_training', 'Personal Training', 'אימון אישי',
-      '🏋️', Color(0xFF4CAF50));
+  personalTraining('personal_training', 'Personal Training', 'אימון אישי', '🏋️', Color(0xFF4CAF50));
 
   const FitnessCategory(
       this.id, this.nameEn, this.nameHe, this.emoji, this.color);
@@ -41,7 +40,7 @@ enum FitnessCategory {
   static List<FitnessCategory> get all => FitnessCategory.values;
 }
 
-// Default hourly rates in ILS (₪)
+// Default hourly rates in ILS.
 const Map<String, int> defaultRates = {
   'yoga': 120,
   'pilates': 150,

@@ -42,7 +42,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // Zone selection state (default to zones mode)
   bool _useZoneMode = true; // true = select zones, false = use radius
-  final Set<String> _selectedZoneIds = {};
+  Set<String> _selectedZoneIds = {};
 
   final _storageKey = const PageStorageKey('onboarding_form');
 
@@ -103,6 +103,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   void dispose() {
+    _mapVisibilityTimer?.cancel();
     _pageController.dispose();
     _nameController.dispose();
     _addressController.dispose();
@@ -187,7 +188,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             latitude: _currentLocation?.latitude,
             longitude: _currentLocation?.longitude,
             address: _addressController.text.trim(),
-            selectedZones: _selectedRole == 'instructor' && _useZoneMode
+            dispatchMode: _selectedRole == 'instructor'
+                ? (_useZoneMode ? 'zone' : 'radius')
+                : null,
+            zoneIds: _selectedRole == 'instructor' && _useZoneMode
                 ? _selectedZoneIds.toList()
                 : null,
           );
@@ -763,6 +767,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   // ==============================================================================
 
   Widget _buildMapPanel(ThemeData theme) {
+    final media = MediaQuery.of(context);
+    final topInset = media.padding.top;
+    final bottomInset = media.padding.bottom;
     return Directionality(
       textDirection: isHebrew ? TextDirection.rtl : TextDirection.ltr,
       child: Stack(
@@ -772,7 +779,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
           // Mode toggle at top
           Positioned(
-            top: 16,
+            top: 16 + topInset,
             left: 16,
             right: 16,
             child: Card(
@@ -805,7 +812,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
           // Selection info at bottom
           Positioned(
-            bottom: 16,
+            bottom: 16 + bottomInset,
             left: 16,
             right: 16,
             child: Card(
@@ -946,7 +953,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 zones: zones,
                 initialSelectedZones: _selectedZoneIds,
                 onSelectionChanged: (ids) =>
-                    setState(() => _selectedZoneIds.addAll(ids)),
+                    setState(() => _selectedZoneIds = Set.from(ids)),
                 topPadding: 80,
               )
             : Container(color: theme.colorScheme.surface),

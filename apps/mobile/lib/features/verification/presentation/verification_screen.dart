@@ -3,6 +3,7 @@
 
 // Note: Using XFile instead of dart:io File for cross-platform compatibility
 import 'dart:convert';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +11,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:convex_flutter/convex_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
+import 'package:quickfit/core/utils/platform.dart';
 
 class VerificationScreen extends ConsumerStatefulWidget {
   const VerificationScreen({super.key});
@@ -89,18 +92,20 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
       final uploadResult = json.decode(uploadResponse.body);
       final storageId = uploadResult['storageId'] as String;
 
-      // 4. Get the actual storage URL
-      final storageUrlResult = await ConvexClient.instance.query(
-        'storage:getUrl',
-        {'storageId': storageId},
+      // 4. Register ownership of uploaded file
+      await ConvexClient.instance.mutation(
+        name: 'storage:registerUploadedFile',
+        args: {
+          'storageId': storageId,
+          'purpose': 'verification_certificate',
+        },
       );
-      final docUrl = storageUrlResult.replaceAll('"', '');
 
       // 5. Create verification record (triggers Gemini AI verification)
       await ConvexClient.instance.mutation(
         name: 'verifications:uploadCertificate',
         args: {
-          'docUrl': docUrl,
+          'storageId': storageId,
           'docType': mimeType,
           'originalFilename': _selectedFile!.name,
         },
@@ -143,19 +148,12 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+      appBar: adaptiveAppBar(
+        context,
+        title: 'Verify Certification',
         leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, color: Colors.black87),
+          icon: const Icon(LucideIcons.arrowLeft),
           onPressed: () => context.pop(),
-        ),
-        title: const Text(
-          'Verify Certification',
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.bold,
-          ),
         ),
       ),
       body: SingleChildScrollView(
@@ -199,32 +197,59 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
               SizedBox(
                 width: double.infinity,
                 height: 56,
-                child: FilledButton(
-                  onPressed: _isUploading ? null : _uploadCertificate,
-                  child: _isUploading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(LucideIcons.upload, size: 18),
-                            SizedBox(width: 8),
-                            Text(
-                              'Submit for Verification',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                child: isCupertinoPlatform(context)
+                    ? CupertinoButton.filled(
+                        onPressed: _isUploading ? null : _uploadCertificate,
+                        child: _isUploading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(LucideIcons.upload, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Submit for Verification',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                ),
+                      )
+                    : FilledButton(
+                        onPressed: _isUploading ? null : _uploadCertificate,
+                        child: _isUploading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(LucideIcons.upload, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Submit for Verification',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
               ),
             ],
 

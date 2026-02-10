@@ -7,9 +7,17 @@
 // 3. Minimal battery usage - no location tracking
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:developer' as developer;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'dart:developer' as developer;
+import 'package:convex_flutter/convex_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:quickfit/firebase_options.dart';
+import '../constants/app_constants.dart';
+import '../models/pending_mutation.dart';
 import 'hive_service.dart';
 
 /// Ultra-lightweight background service
@@ -65,6 +73,10 @@ class BackgroundSyncService {
 /// Background entry point
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _ensureFirebaseInitialized();
+  await _ensureConvexInitialized();
+
   // Initialize Hive for offline queue
   await HiveService().init();
 
@@ -83,19 +95,13 @@ void onStart(ServiceInstance service) async {
     service.stopSelf();
   });
 
-  // Listen for connectivity changes
+  // Listen for connectivity changes (event-based sync)
   final connectivity = Connectivity();
   connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
     if (results.isNotEmpty &&
         results.any((r) => r != ConnectivityResult.none)) {
-      // Came online - trigger sync
       _syncPendingMutations();
     }
-  });
-
-  // Periodic sync every 5 minutes (lightweight)
-  Timer.periodic(const Duration(minutes: 5), (timer) async {
-    await _syncPendingMutations();
   });
 
   // Initial sync
@@ -105,6 +111,9 @@ void onStart(ServiceInstance service) async {
 /// iOS background handler
 @pragma('vm:entry-point')
 Future<bool> onIosBackground(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _ensureFirebaseInitialized();
+  await _ensureConvexInitialized();
   await HiveService().init();
   await _syncPendingMutations();
   return true;
@@ -113,6 +122,15 @@ Future<bool> onIosBackground(ServiceInstance service) async {
 /// Sync pending mutations from offline queue
 Future<void> _syncPendingMutations() async {
   try {
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await ConvexClient.instance.setAuthWithRefresh(
+      fetchToken: () async {
+        return await user.getIdToken();
+      },
+    );
+
     final pending = HiveService().getPendingMutations();
     if (pending.isEmpty) return;
 
@@ -129,16 +147,17 @@ Future<void> _syncPendingMutations() async {
         continue;
       }
 
-      // Update status
       mutation.status = 'syncing';
       await mutation.save();
 
-      // TODO: Execute mutation via Convex
-      // This would need ConvexClient initialized in background
-      // For now, just mark for foreground sync
-
-      mutation.status = 'pending';
-      await mutation.save();
+      try {
+        await _executeMutation(mutation);
+        mutation.status = 'completed';
+        await mutation.save();
+      } catch (e) {
+        mutation.status = 'pending';
+        await mutation.save();
+      }
     }
   } catch (e, stack) {
     developer.log(
@@ -148,4 +167,50 @@ Future<void> _syncPendingMutations() async {
       stackTrace: stack,
     );
   }
+}
+
+Future<void> _executeMutation(PendingMutation mutation) async {
+  final decoded = mutation.payload;
+  final args = decoded.isNotEmpty
+      ? Map<String, dynamic>.from(jsonDecode(decoded) as Map)
+      : <String, dynamic>{};
+
+  switch (mutation.operation) {
+    case 'claimJob':
+      await ConvexClient.instance.mutation(
+        name: 'jobs:claimJob',
+        args: {
+          'jobId': args['jobId'],
+          if (args['message'] != null) 'message': args['message'],
+        },
+      );
+      break;
+    case 'withdrawClaim':
+      await ConvexClient.instance.mutation(
+        name: 'jobs:withdrawClaim',
+        args: {'jobId': args['jobId']},
+      );
+      break;
+    default:
+      throw Exception('Unknown operation: ${mutation.operation}');
+  }
+}
+
+Future<void> _ensureFirebaseInitialized() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (_) {}
+}
+
+Future<void> _ensureConvexInitialized() async {
+  try {
+    await ConvexClient.initialize(
+      const ConvexConfig(
+        deploymentUrl: AppConstants.convexUrl,
+        clientId: 'quickfit-mobile-bg',
+      ),
+    );
+  } catch (_) {}
 }

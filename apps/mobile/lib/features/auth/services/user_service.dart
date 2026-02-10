@@ -65,7 +65,8 @@ class UserService {
     double? latitude,
     double? longitude,
     String? address,
-    List<String>? selectedZones,
+    String? dispatchMode,
+    List<String>? zoneIds,
   }) async {
     final mutationArgs = <String, dynamic>{
       'role': role,
@@ -73,12 +74,15 @@ class UserService {
       'categories': categories.join(','),
     };
 
+    if (dispatchMode != null) {
+      mutationArgs['dispatchMode'] = dispatchMode;
+    }
     if (radiusKm != null) mutationArgs['radiusKm'] = radiusKm;
     if (latitude != null) mutationArgs['latitude'] = latitude;
     if (longitude != null) mutationArgs['longitude'] = longitude;
     if (address != null) mutationArgs['address'] = address;
-    if (selectedZones != null) {
-      mutationArgs['selectedZones'] = selectedZones;
+    if (zoneIds != null) {
+      mutationArgs['zoneIds'] = zoneIds;
     }
 
     await _convex.mutation(

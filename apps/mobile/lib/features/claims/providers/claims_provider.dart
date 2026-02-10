@@ -41,8 +41,8 @@ class StudioClaimsNotifier extends _$StudioClaimsNotifier {
   Future<bool> acceptClaim(String claimId) async {
     try {
       await ConvexClient.instance.mutation(
-        name: 'jobs:acceptClaim',
-        args: {'claimId': claimId},
+        name: 'jobs:respondToClaim',
+        args: {'claimId': claimId, 'accept': true},
       );
       return true;
     } catch (e) {
@@ -55,8 +55,8 @@ class StudioClaimsNotifier extends _$StudioClaimsNotifier {
   Future<bool> rejectClaim(String claimId) async {
     try {
       await ConvexClient.instance.mutation(
-        name: 'jobs:rejectClaim',
-        args: {'claimId': claimId},
+        name: 'jobs:respondToClaim',
+        args: {'claimId': claimId, 'accept': false},
       );
       return true;
     } catch (e) {
@@ -95,11 +95,11 @@ class InstructorClaimsNotifier extends _$InstructorClaimsNotifier {
   }
 
   /// Cancel/withdraw a claim
-  Future<bool> withdrawClaim(String claimId) async {
+  Future<bool> withdrawClaim(String jobId) async {
     try {
       await ConvexClient.instance.mutation(
         name: 'jobs:withdrawClaim',
-        args: {'claimId': claimId},
+        args: {'jobId': jobId},
       );
 
       // Refresh claims

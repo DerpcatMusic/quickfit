@@ -1,6 +1,6 @@
 // convex/geo.ts
 // Geospatial indexes and helper functions for QuickFit
-// Replaces H3 with Convex's native geospatial component
+// Primary spatial indexing using Convex geospatial component
 
 import { GeospatialIndex, Point } from "@convex-dev/geospatial";
 import { v } from "convex/values";
@@ -9,6 +9,7 @@ import { Id } from "./_generated/dataModel";
 import { ActionCtx, MutationCtx, QueryCtx, query, mutation, internalQuery, internalMutation } from "./_generated/server";
 
 const MVP_SKIP_CERTIFICATION = true; // Set to true to bypass verification checks for MVP
+const MAX_RADIUS_KM = 15;
 
 // ============================================
 // GEOSPATIAL INDEX DEFINITIONS
@@ -16,11 +17,13 @@ const MVP_SKIP_CERTIFICATION = true; // Set to true to bypass verification check
 
 /**
  * Instructor geospatial index.
+ * Only contains radius-mode instructors - zone-mode uses zoneSubscriptions table.
  */
 export const instructorGeo = new GeospatialIndex<
   Id<"users">,
   { 
-    category: string;
+    dispatchMode: "radius";  // Only radius mode in geo index
+    categories: string[];
     verified: boolean;
     notificationsEnabled: boolean;
   }
@@ -86,17 +89,34 @@ export async function syncInstructorLocation(
   ctx: MutationCtx,
   instructorId: Id<"users">,
   point: Point,
-  category: string,
+  dispatchMode: "radius" | "zone",
+  categories: string[],
   verified: boolean,
   notificationsEnabled: boolean,
   radiusKm: number
 ): Promise<void> {
-  try { await instructorGeo.remove(ctx, instructorId); } catch {}
+  // Always remove first
+  try { 
+    await instructorGeo.remove(ctx, instructorId); 
+  } catch (e) {
+    // Only log real errors, not "not found"
+    const errStr = String(e);
+    if (!errStr.includes("not found") && !errStr.includes("does not exist")) {
+      console.error(`[geo:syncInstructorLocation] Remove failed for ${instructorId}:`, e);
+    }
+  }
+  
+  // Only add to geo index if radius mode
+  if (dispatchMode !== "radius") {
+    return;
+  }
+  
+  const filterCategories = categories.length > 0 ? categories : ["general"];
   await instructorGeo.insert(
     ctx,
     instructorId,
     point,
-    { category, verified, notificationsEnabled },
+    { dispatchMode: "radius", categories: filterCategories, verified, notificationsEnabled },
     radiusKm
   );
 }
@@ -108,7 +128,14 @@ export async function removeInstructorLocation(
   ctx: MutationCtx,
   instructorId: Id<"users">
 ): Promise<void> {
-  try { await instructorGeo.remove(ctx, instructorId); } catch {}
+  try { 
+    await instructorGeo.remove(ctx, instructorId); 
+  } catch (e) {
+    const errStr = String(e);
+    if (!errStr.includes("not found") && !errStr.includes("does not exist")) {
+      console.error(`[geo:removeInstructorLocation] Remove failed for ${instructorId}:`, e);
+    }
+  }
 }
 
 /**
@@ -156,44 +183,53 @@ export async function findInstructorsForJob(
   jobCategory: string,
   requiresVerification: boolean
 ): Promise<Array<{ instructorId: Id<"users">; distanceMeters: number; radiusKm: number }>> {
-  const MAX_RADIUS_METERS = 50_000; // 50km max search radius
-  
-  // Query instructors within max radius who match category
-  const results = await instructorGeo.nearest(ctx, {
-    point: jobPoint,
-    limit: 1000, 
-    maxDistance: MAX_RADIUS_METERS,
-    filter: (q) => q
-      .eq("category", jobCategory)
-      .eq("notificationsEnabled", true),
-  });
+  const MAX_RADIUS_METERS = MAX_RADIUS_KM * 1000;
+
+  const rectangle = boundingBox(jobPoint, MAX_RADIUS_METERS);
+  const PAGE_SIZE = 512;
+  let cursor: string | undefined = undefined;
+  const results: Array<{ key: Id<"users">; coordinates: Point }> = [];
+
+  do {
+    const page = await instructorGeo.query(
+      ctx,
+      {
+        shape: { type: "rectangle", rectangle },
+        limit: PAGE_SIZE,
+        filter: (q) => {
+          let query = q.in("categories", [jobCategory]).eq("notificationsEnabled", true);
+          if (!MVP_SKIP_CERTIFICATION && requiresVerification) {
+            query = query.eq("verified", true);
+          }
+          return query;
+        },
+      },
+      cursor
+    );
+    results.push(...page.results);
+    cursor = page.nextCursor;
+  } while (cursor);
   
   // Post-filter: Check if job is within each instructor's personal radius
   const matches: Array<{ instructorId: Id<"users">; distanceMeters: number; radiusKm: number }> = [];
   
   for (const result of results) {
-    // Calculate distance from result coordinates to job point
-    const instructorCoords = result.coordinates;
+    const instructor = await ctx.db.get(result.key);
+    if (!instructor) continue;
+
     const distanceMeters = haversineDistanceMeters(
-      instructorCoords.latitude,
-      instructorCoords.longitude,
+      instructor.latitude ?? result.coordinates.latitude,
+      instructor.longitude ?? result.coordinates.longitude,
       jobPoint.latitude,
       jobPoint.longitude
     );
-    
-    // Get instructor's radius from sortKey
-    const radiusKm = (result as any).sortKey ?? 5; 
+
+    if (distanceMeters > MAX_RADIUS_METERS) continue;
+
+    const radiusKm = Math.min(instructor.radiusKm ?? MAX_RADIUS_KM, MAX_RADIUS_KM);
     const radiusMeters = radiusKm * 1000;
-    
-    // CRITICAL: Job must be within instructor's personal radius
+
     if (distanceMeters <= radiusMeters) {
-      if (!MVP_SKIP_CERTIFICATION && requiresVerification) {
-        const instructor = await ctx.db.get(result.key);
-        if (!instructor?.isVerified) {
-          continue;
-        }
-      }
-      
       matches.push({
         instructorId: result.key,
         distanceMeters: Math.round(distanceMeters),
@@ -224,7 +260,8 @@ export async function findJobsForInstructor(
   currentRate: number;
   distanceMeters: number;
 }>> {
-  const radiusMeters = radiusKm * 1000;
+  const effectiveRadiusKm = Math.min(radiusKm, MAX_RADIUS_KM);
+  const radiusMeters = effectiveRadiusKm * 1000;
   const allJobs: Array<{ 
     _id: Id<"jobs">; 
     title: string;
@@ -346,4 +383,27 @@ export function isWithinRadius(
     distanceKm: Math.round(distanceKm * 100) / 100,
     distanceMeters: Math.round(distanceMeters),
   };
+}
+
+/**
+ * Build a bounding box around a point for a given radius (meters).
+ */
+function boundingBox(point: Point, radiusMeters: number) {
+  const latRad = (point.latitude * Math.PI) / 180;
+  const metersPerDegreeLat = 111_320;
+  const metersPerDegreeLng = 111_320 * Math.cos(latRad);
+
+  const deltaLat = radiusMeters / metersPerDegreeLat;
+  const deltaLng = radiusMeters / metersPerDegreeLng;
+
+  const south = clamp(point.latitude - deltaLat, -90, 90);
+  const north = clamp(point.latitude + deltaLat, -90, 90);
+  const west = clamp(point.longitude - deltaLng, -180, 180);
+  const east = clamp(point.longitude + deltaLng, -180, 180);
+
+  return { west, south, east, north };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }

@@ -1,0 +1,139 @@
+{
+  "@@locale": "he",
+  "appName": "Quickfit",
+  "loading": "טוען...",
+  "pageNotFound": "העמוד לא נמצא",
+  "goHome": "לדף הבית",
+
+  "loginTagline": "מצא מחליפי מדריכים מהר",
+  "continueWithGoogle": "המשך עם Google",
+  "continueWithApple": "המשך עם Apple",
+  "continueWithEmail": "המשך עם אימייל",
+  "or": "או",
+  "back": "חזרה",
+  "createAccount": "יצירת חשבון",
+  "signIn": "התחברות",
+  "nameLabel": "שם",
+  "displayNameLabel": "שם תצוגה",
+  "emailLabel": "אימייל",
+  "passwordLabel": "סיסמה",
+  "emailRequired": "נדרש אימייל",
+  "emailInvalid": "הזן אימייל תקין",
+  "passwordRequired": "נדרשת סיסמה",
+  "passwordMinLength": "סיסמה חייבת להיות לפחות 6 תווים",
+  "alreadyHaveAccount": "כבר יש לך חשבון? התחבר",
+  "dontHaveAccount": "אין לך חשבון? הירשם",
+  "forgotPassword": "שכחת סיסמה?",
+  "passwordResetSent": "נשלחה הודעת איפוס סיסמה",
+  "enterEmailFirst": "הכנס אימייל קודם",
+  "termsPrefix": "בהמשך, אתה מסכים ל",
+  "and": "ו",
+  "termsOfService": "תנאי שימוש",
+  "privacyPolicy": "מדיניות פרטיות",
+
+  "profileInfo": "פרטי פרופיל",
+  "phoneNumber": "מספר טלפון",
+  "homeAddress": "כתובת בית",
+  "addressHint": "לדוגמה: רוטשילד 1, תל אביב",
+  "searchRadius": "רדיוס חיפוש",
+  "maximumDistance": "מרחק מקסימלי",
+  "expertise": "התמחות",
+  "saveChanges": "שמירת שינויים",
+  "profileUpdated": "הפרופיל עודכן בהצלחה",
+  "account": "חשבון",
+  "notSet": "לא הוגדר",
+  "email": "אימייל",
+  "workRadius": "רדיוס עבודה",
+  "teachingCategories": "קטגוריות הוראה",
+  "classTypes": "סוגי שיעורים",
+  "settings": "הגדרות",
+  "linkedAccounts": "חשבונות מקושרים",
+  "none": "אין",
+  "addPassword": "הוסף סיסמה",
+  "enableEmailLogin": "אפשר התחברות באימייל",
+  "notifications": "התראות",
+  "redoOnboarding": "בצע מחדש את ההרשמה",
+  "redoOnboardingPrompt": "זה יאפשר לבחור תפקיד ופרטי פרופיל מחדש.",
+  "redo": "בצע מחדש",
+  "cancel": "ביטול",
+  "language": "שפה",
+  "helpSupport": "עזרה ותמיכה",
+  "signOut": "התנתקות",
+  "verify": "אימות",
+  "verifiedCredentials": "המסמכים שלך אומתו",
+  "uploadCredentials": "העלה תעודה כדי לקבל אימות",
+
+  "notificationsLabelOff": "כבוי",
+  "notificationsLabelAll": "הכל",
+  "notificationsLabelSosOnly": "רק SOS",
+  "notificationsLabelRegularOnly": "רק רגיל",
+  "notificationsLabelMuted": "מושתק",
+  "notificationsTitle": "התראות",
+  "notificationsEnable": "אפשר התראות",
+  "notificationsRegular": "עבודות רגילות",
+  "notificationsSos": "עבודות SOS",
+  "save": "שמור",
+  "languageRestartPrompt": "יש להפעיל מחדש את האפליקציה כדי להחיל את השפה.",
+  "languageEnglish": "English",
+  "languageHebrew": "עברית",
+  "close": "סגור",
+  "editProfile": "עריכת פרופיל",
+  "filterJobsTitle": "סינון עבודות",
+  "reset": "איפוס",
+  "categoryLabel": "קטגוריה",
+  "minimumRateLabelWithValue": "תעריף מינימלי: {currency} {value}",
+  "@minimumRateLabelWithValue": {
+    "placeholders": {
+      "currency": {},
+      "value": {}
+    }
+  },
+  "currencyILS": "ש\"ח",
+  "currencyAmount": "{currency} {amount}",
+  "@currencyAmount": {
+    "placeholders": {
+      "currency": {},
+      "amount": {}
+    }
+  },
+  "applyFilters": "החל סינונים",
+  "jobClaimedNotification": "העבודה נתפסה! הסטודיו {studioName} יקבל הודעה.",
+  "@jobClaimedNotification": {
+    "placeholders": {
+      "studioName": {}
+    }
+  },
+  "availableJobsTitle": "עבודות זמינות",
+  "somethingWentWrong": "אירעה שגיאה",
+  "tryAgain": "נסה שוב",
+  "noJobsAvailable": "אין עבודות זמינות",
+  "noJobsAvailableHint": "בדוק שוב בקרוב או הרחב את רדיוס החיפוש בהגדרות.",
+  "refresh": "רענן",
+  "urgentJobsTitle": "עבודות דחופות",
+  "pullToRefresh": "משוך למטה כדי לרענן",
+  "noJobsMatchFilters": "אין עבודות שמתאימות לסינונים שלך",
+  "clearFilters": "נקה סינונים",
+  "supportPlaceholder": "פרטי תמיכה עדיין לא הוגדרו. הוסף אותם בהגדרות כשיהיה מוכן.",
+  "termsPlaceholder": "תנאי השימוש עדיין לא הוגדרו. הוסף כאן את הטקסט כשיהיה מוכן.",
+  "privacyPlaceholder": "מדיניות הפרטיות עדיין לא הוגדרה. הוסף כאן את הטקסט כשיהיה מוכן.",
+
+  "versionLabel": "Quickfit v{version}",
+  "@versionLabel": {
+    "placeholders": {
+      "version": {}
+    }
+  },
+
+  "radiusKmLabel": "{value} ק\"מ",
+  "@radiusKmLabel": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "zonesSelectedLabel": "{count} אזורים נבחרו",
+  "@zonesSelectedLabel": {
+    "placeholders": {
+      "count": {}
+    }
+  }
+}

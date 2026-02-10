@@ -23,42 +23,38 @@ export default defineSchema({
     // Role: "studio" posts jobs, "instructor" claims them
     role: v.union(v.literal("studio"), v.literal("instructor")),
 
+    // DISPATCH MODE - Instructor's choice for job matching
+    // "radius" = receive jobs within X km of location
+    // "zone" = receive jobs from selected Pikud HaOref zones
+    dispatchMode: v.optional(v.union(v.literal("radius"), v.literal("zone"))),
+
     // Onboarding status
-    hasCompletedOnboarding: v.boolean(),
+    hasCompletedOnboarding: v.optional(v.boolean()),
     
     // Verification status (instructors only)
     isVerified: v.boolean(),
     verifiedAt: v.optional(v.number()),
     
+    // Admin access
+    isAdmin: v.optional(v.boolean()),
+    
     // Rating (0-5 scale)
     rating: v.optional(v.float64()),
     ratingCount: v.optional(v.number()),
     
-    // HOME LOCATION (set during onboarding, used as fallback)
+    // LOCATION (for radius mode OR studio zone assignment)
+    latitude: v.optional(v.float64()),
+    longitude: v.optional(v.float64()),
     homeLatitude: v.optional(v.float64()),
     homeLongitude: v.optional(v.float64()),
     homeAddress: v.optional(v.string()),
+    address: v.optional(v.string()),
     
-    // CURRENT LOCATION (updated via GPS when app active)
-    currentLatitude: v.optional(v.float64()),
-    currentLongitude: v.optional(v.float64()),
-    locationUpdatedAt: v.optional(v.number()),
-    
-    // Effective location (for queries - updated when either home or current changes)
-    latitude: v.optional(v.float64()),
-    longitude: v.optional(v.float64()),
-    
-    // H3 HEX SPATIAL INDEXING (Resolution 11 = ~50m precision)
-    // One-time calculation per address change, O(1) lookups forever
-    homeHex11: v.optional(v.string()),              // Home location hex
-    workAreaHexes11: v.optional(v.array(v.string())), // All hexes within work radius
-    
-    // INSTRUCTOR-SPECIFIC: How far they're willing to travel (in km)
+    // RADIUS MODE: How far instructor is willing to travel (km)
     radiusKm: v.optional(v.float64()),
     
-    // INSTRUCTOR-SPECIFIC: Selected Pikud HaOref zones (preferred dispatch areas)
-    // Stored as string IDs for flexibility (validated server-side)
-    selectedZones: v.optional(v.array(v.string())),
+    // ZONE MODE: Selected Pikud HaOref zones instructor covers
+    zoneIds: v.optional(v.array(v.id("zones"))),
     
     // STUDIO-SPECIFIC: Auto-detected zone based on address
     zoneId: v.optional(v.id("zones")),
@@ -84,7 +80,7 @@ export default defineSchema({
     .index("by_role", ["role"])
     .index("by_verified", ["isVerified", "role"])
     .index("by_category", ["primaryCategory", "role"])
-    .index("by_homeHex11", ["homeHex11"]),
+    .index("by_dispatchMode", ["dispatchMode", "role"]),
 
   // ==========================================
   // JOBS - Substitute requests from studios
@@ -114,8 +110,8 @@ export default defineSchema({
     longitude: v.float64(),
     address: v.string(),
     
-    // H3 HEX SPATIAL INDEXING (Resolution 11 = ~50m precision)
-    locationHex11: v.optional(v.string()),  // Job location hex for fast matching
+    // Zone assignment (for zone-based dispatch)
+    zoneId: v.optional(v.id("zones")),
     
     // Status flow (with backup support)
     status: v.union(
@@ -137,21 +133,8 @@ export default defineSchema({
     backupClaimedBy: v.optional(v.id("users")),
     backupClaimedAt: v.optional(v.number()),
     
-    // BACKUP QUEUE (second instructor as backup)
-    backupClaimedBy: v.optional(v.id("users")),     // Second instructor
-    backupClaimedAt: v.optional(v.number()),
+    // BACKUP QUEUE (auto-promotion metadata)
     backupAutoPromoted: v.optional(v.boolean()),    // True if backup was auto-promoted
-    
-    // Status with backup support
-    status: v.union(
-      v.literal("open"),
-      v.literal("claimed"),           // Has primary claim
-      v.literal("backup_claimed"),    // Has primary + backup
-      v.literal("confirmed"),
-      v.literal("completed"),
-      v.literal("cancelled"),
-      v.literal("expired")
-    ),
     
     // Requirements
     requiresVerification: v.boolean(),
@@ -160,6 +143,10 @@ export default defineSchema({
     // Notifications sent
     notificationsSent: v.boolean(),
     notifiedInstructors: v.optional(v.array(v.id("users"))),
+    dispatchVersion: v.optional(v.number()),
+    dispatchAttempt: v.optional(v.number()),
+    dispatchScheduledAt: v.optional(v.number()),
+    dispatchLastError: v.optional(v.string()),
     
     // Timestamps
     createdAt: v.number(),
@@ -170,7 +157,8 @@ export default defineSchema({
     .index("by_category_status", ["category", "status"])
     .index("by_claimedBy", ["claimedBy"])
     .index("by_startTime", ["startTime"])
-    .index("by_locationHex11", ["locationHex11"]),
+    .index("by_zone_status", ["zoneId", "status"])
+    .index("by_zone_category_status", ["zoneId", "category", "status"]),
 
   // ==========================================
   // CLAIMS - Instructor claims on jobs
@@ -201,8 +189,11 @@ export default defineSchema({
   // ==========================================
   verifications: defineTable({
     userId: v.id("users"),
-    
-    docUrl: v.string(),
+
+    // Preferred secure reference: storage object ID in Convex storage.
+    storageId: v.id("_storage"),
+    // Legacy field kept optional for backward compatibility with older records.
+    docUrl: v.optional(v.string()),
     docType: v.string(),
     originalFilename: v.optional(v.string()),
     
@@ -287,6 +278,9 @@ export default defineSchema({
       v.literal("claim_accepted"),
       v.literal("claim_rejected"),
       v.literal("job_cancelled"),
+      v.literal("backup_claimed"),
+      v.literal("backup_promoted"),
+      v.literal("backup_promoted_studio"),
       v.literal("verification_complete"),
       v.literal("reminder")
     ),
@@ -338,30 +332,36 @@ export default defineSchema({
     .index("by_city", ["city"]),
 
   // ==========================================
-  // SUBSCRIPTIONS - Pre-computed Instructor-Studio Relationships
-  // Created when instructor/studio updates profile
-  // Enables O(1) dispatch queries
+  // ZONE SUBSCRIPTIONS - O(1) dispatch for zone-mode instructors
+  // Synced when instructor updates zones or categories
   // ==========================================
-  subscriptions: defineTable({
-    // The instructor who is subscribed
+  zoneSubscriptions: defineTable({
+    // The instructor subscribed to this zone/category combo
     instructorId: v.id("users"),
     
-    // The studio they can receive jobs from
-    studioId: v.id("users"),
-    
-    // The category this subscription is for
-    category: v.string(),
-    
-    // The zone this relationship is based on
+    // The zone they're subscribed to
     zoneId: v.id("zones"),
+    
+    // The category they teach
+    category: v.string(),
     
     // Timestamps
     createdAt: v.number(),
   })
-    // Primary query: "Find all instructors subscribed to this studio for this category"
-    .index("by_studio_category", ["studioId", "category"])
-    // Secondary: "Find all subscriptions for a zone"
+    // PRIMARY DISPATCH QUERY: Find instructors for zone+category
     .index("by_zone_category", ["zoneId", "category"])
-    // For cleanup: "Find all subscriptions for an instructor"
+    // Cleanup: Find all subscriptions for an instructor
     .index("by_instructor", ["instructorId"]),
+
+  // ==========================================
+  // USER FILES - storage object ownership
+  // ==========================================
+  userFiles: defineTable({
+    userId: v.id("users"),
+    storageId: v.id("_storage"),
+    purpose: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_storage", ["storageId"]),
 });

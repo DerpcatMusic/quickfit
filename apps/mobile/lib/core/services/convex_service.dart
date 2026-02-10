@@ -62,19 +62,21 @@ class ConvexService {
     double? latitude,
     double? longitude,
     String? address,
-    List<String>? selectedZones,
+    String? dispatchMode,
+    List<String>? zoneIds,
   }) async {
     final args = {
       'role': role,
       'name': name,
       'categories': categories.join(','),
+      if (dispatchMode != null) 'dispatchMode': dispatchMode,
       if (radiusKm != null) 'radiusKm': radiusKm.toDouble(),
       if (latitude != null) 'latitude': latitude.toDouble(),
       if (longitude != null) 'longitude': longitude.toDouble(),
       if (address != null) 'address': address,
-      if (selectedZones != null && selectedZones.isNotEmpty)
+      if (zoneIds != null && zoneIds.isNotEmpty)
         // Cast to List<dynamic> for proper JSON array serialization
-        'selectedZones': List<dynamic>.from(selectedZones),
+        'zoneIds': List<dynamic>.from(zoneIds),
     };
 
     debugPrint('Completing onboarding with args: $args');

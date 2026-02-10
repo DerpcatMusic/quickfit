@@ -49,7 +49,7 @@ class Job {
   /// When the class ends.
   final DateTime endTime;
 
-  /// Base pay rate in ILS (₪).
+  /// Base pay rate in ILS (ILS ).
   final double baseRate;
 
   /// Current rate including any SOS boost.
@@ -92,7 +92,7 @@ class Job {
       baseRate: (json['baseRate'] as num).toDouble(),
       currentRate:
           (json['currentRate'] as num? ?? json['baseRate'] as num).toDouble(),
-      notes: json['notes'] as String?,
+      notes: json['notes'] as String? ?? json['description'] as String?,
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
       address: json['address'] as String? ?? 'No address',
@@ -111,7 +111,7 @@ class Job {
   Duration get timeUntilStart => startTime.difference(DateTime.now());
 
   /// Formatted rate with currency symbol.
-  String get formattedRate => '₪${currentRate.round()}';
+  String get formattedRate => 'ILS ${currentRate.round()}';
 
   /// Formatted distance (meters if < 1km, km otherwise).
   String get formattedDistance => distanceKm < 1

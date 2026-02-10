@@ -1,0 +1,139 @@
+{
+  "@@locale": "en",
+  "appName": "Quickfit",
+  "loading": "Loading...",
+  "pageNotFound": "Page not found",
+  "goHome": "Go Home",
+
+  "loginTagline": "Find replacement instructors fast",
+  "continueWithGoogle": "Continue with Google",
+  "continueWithApple": "Continue with Apple",
+  "continueWithEmail": "Continue with Email",
+  "or": "or",
+  "back": "Back",
+  "createAccount": "Create Account",
+  "signIn": "Sign In",
+  "nameLabel": "Name",
+  "displayNameLabel": "Display Name",
+  "emailLabel": "Email",
+  "passwordLabel": "Password",
+  "emailRequired": "Email is required",
+  "emailInvalid": "Enter a valid email",
+  "passwordRequired": "Password is required",
+  "passwordMinLength": "Password must be at least 6 characters",
+  "alreadyHaveAccount": "Already have an account? Sign In",
+  "dontHaveAccount": "Don't have an account? Sign Up",
+  "forgotPassword": "Forgot Password?",
+  "passwordResetSent": "Password reset email sent",
+  "enterEmailFirst": "Enter your email first",
+  "termsPrefix": "By continuing, you agree to our ",
+  "and": "and",
+  "termsOfService": "Terms of Service",
+  "privacyPolicy": "Privacy Policy",
+
+  "profileInfo": "Profile Info",
+  "phoneNumber": "Phone Number",
+  "homeAddress": "Home Address",
+  "addressHint": "e.g., Rothschild 1, Tel Aviv",
+  "searchRadius": "Search Radius",
+  "maximumDistance": "Maximum Distance",
+  "expertise": "Expertise",
+  "saveChanges": "Save Changes",
+  "profileUpdated": "Profile updated successfully",
+  "account": "Account",
+  "notSet": "Not set",
+  "email": "Email",
+  "workRadius": "Work Radius",
+  "teachingCategories": "Teaching Categories",
+  "classTypes": "Class Types",
+  "settings": "Settings",
+  "linkedAccounts": "Linked Accounts",
+  "none": "None",
+  "addPassword": "Add Password",
+  "enableEmailLogin": "Enable email login",
+  "notifications": "Notifications",
+  "redoOnboarding": "Redo Onboarding",
+  "redoOnboardingPrompt": "This will let you choose your role and profile data again.",
+  "redo": "Redo",
+  "cancel": "Cancel",
+  "language": "Language",
+  "helpSupport": "Help & Support",
+  "signOut": "Sign Out",
+  "verify": "Verify",
+  "verifiedCredentials": "Your credentials have been verified",
+  "uploadCredentials": "Upload your certification to get verified",
+
+  "notificationsLabelOff": "Off",
+  "notificationsLabelAll": "All",
+  "notificationsLabelSosOnly": "SOS only",
+  "notificationsLabelRegularOnly": "Regular only",
+  "notificationsLabelMuted": "Muted",
+  "notificationsTitle": "Notifications",
+  "notificationsEnable": "Enable Alerts",
+  "notificationsRegular": "Regular Jobs",
+  "notificationsSos": "SOS Jobs",
+  "save": "Save",
+  "languageRestartPrompt": "Restart app to apply language.",
+  "languageEnglish": "English",
+  "languageHebrew": "עברית",
+  "close": "Close",
+  "editProfile": "Edit Profile",
+  "filterJobsTitle": "Filter Jobs",
+  "reset": "Reset",
+  "categoryLabel": "Category",
+  "minimumRateLabelWithValue": "Minimum Rate: {currency} {value}",
+  "@minimumRateLabelWithValue": {
+    "placeholders": {
+      "currency": {},
+      "value": {}
+    }
+  },
+  "currencyILS": "ILS",
+  "currencyAmount": "{currency} {amount}",
+  "@currencyAmount": {
+    "placeholders": {
+      "currency": {},
+      "amount": {}
+    }
+  },
+  "applyFilters": "Apply Filters",
+  "jobClaimedNotification": "Job claimed! {studioName} will be notified.",
+  "@jobClaimedNotification": {
+    "placeholders": {
+      "studioName": {}
+    }
+  },
+  "availableJobsTitle": "Available Jobs",
+  "somethingWentWrong": "Something went wrong",
+  "tryAgain": "Try Again",
+  "noJobsAvailable": "No jobs available",
+  "noJobsAvailableHint": "Check back soon or expand your search radius in settings.",
+  "refresh": "Refresh",
+  "urgentJobsTitle": "Urgent Jobs",
+  "pullToRefresh": "Pull down to refresh",
+  "noJobsMatchFilters": "No jobs match your filters",
+  "clearFilters": "Clear Filters",
+  "supportPlaceholder": "Support contact is not configured yet. Add support details in your app settings when ready.",
+  "termsPlaceholder": "Terms of Service are not configured yet. Add your terms copy here when ready.",
+  "privacyPlaceholder": "Privacy Policy is not configured yet. Add your policy copy here when ready.",
+
+  "versionLabel": "Quickfit v{version}",
+  "@versionLabel": {
+    "placeholders": {
+      "version": {}
+    }
+  },
+
+  "radiusKmLabel": "{value} km",
+  "@radiusKmLabel": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "zonesSelectedLabel": "{count} zones selected",
+  "@zonesSelectedLabel": {
+    "placeholders": {
+      "count": {}
+    }
+  }
+}

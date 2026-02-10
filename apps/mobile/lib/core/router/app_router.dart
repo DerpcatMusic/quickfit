@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:quickfit/features/auth/presentation/login_screen.dart';
@@ -118,6 +119,14 @@ GoRouter router(Ref ref) {
         path: AppRoutes.onboarding,
         builder: (context, state) => const OnboardingScreen(),
       ),
+      GoRoute(
+        path: AppRoutes.instructorHome,
+        redirect: (_, __) => AppRoutes.instructorJobs,
+      ),
+      GoRoute(
+        path: AppRoutes.studioHome,
+        redirect: (_, __) => AppRoutes.studioJobs,
+      ),
 
       // Instructor shell
       StatefulShellRoute.indexedStack(
@@ -212,7 +221,8 @@ GoRouter router(Ref ref) {
   );
 
   // GLOBAL NOTIFICATION LISTENER
-  NotificationService.instance.onNotification.listen((message) {
+  final notificationSub =
+      NotificationService.instance.onNotification.listen((message) {
     final data = message.data;
     final type = data['type'];
     final jobId = data['jobId'];
@@ -223,6 +233,7 @@ GoRouter router(Ref ref) {
       goRouter.push(AppRoutes.jobDetail.replaceFirst(':id', jobId));
     }
   });
+  ref.onDispose(notificationSub.cancel);
 
   return goRouter;
 }
@@ -233,20 +244,21 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              'Quickfit',
-              style: TextStyle(
+              l10n.appName,
+              style: const TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 24),
-            CircularProgressIndicator(),
+            const SizedBox(height: 24),
+            const CircularProgressIndicator(),
           ],
         ),
       ),
@@ -262,19 +274,20 @@ class _ErrorScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              'Page not found',
-              style: TextStyle(fontSize: 24),
+            Text(
+              l10n.pageNotFound,
+              style: const TextStyle(fontSize: 24),
             ),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: () => context.go(AppRoutes.splash),
-              child: const Text('Go Home'),
+              child: Text(l10n.goHome),
             ),
           ],
         ),

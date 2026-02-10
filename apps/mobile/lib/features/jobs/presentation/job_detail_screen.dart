@@ -1,6 +1,7 @@
 // Job Detail Screen - Shared view for studios and instructors
 // lib/features/jobs/presentation/job_detail_screen.dart
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -11,6 +12,9 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/services/convex_service.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import '../providers/jobs_provider.dart';
+import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
+import 'package:quickfit/shared/widgets/adaptive_dialog.dart' as qf_dialog;
+import 'package:quickfit/core/utils/platform.dart';
 
 class JobDetailScreen extends ConsumerStatefulWidget {
   final String jobId;
@@ -96,6 +100,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     final colors = theme.extension<AppColors>()!;
     final authState = ref.watch(authProvider);
     final isStudio = authState.role == 'studio';
+    final isCupertino = isCupertinoPlatform(context);
 
     // 2026 STABILIZATION: Ensure provider name matches generated riverpod code
     final streamingJob = ref.watch(streamingJobProvider(widget.jobId));
@@ -104,16 +109,19 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (err, _) => Scaffold(
-        appBar: AppBar(),
+        appBar: adaptiveAppBar(context, title: 'Job Details'),
         body: Center(child: Text('Error: $err')),
       ),
       data: (job) {
         if (job == null) {
-          return const Scaffold(body: Center(child: Text('Job not found')));
+          return Scaffold(
+            appBar: adaptiveAppBar(context, title: 'Job Details'),
+            body: const Center(child: Text('Job not found')),
+          );
         }
 
         final status = job['status'] as String;
-        final isSos = job['isSos'] as bool? ?? false;
+        final isSos = job['sosBoostApplied'] as bool? ?? false;
         final startTime = job['startTime'] as num;
         final endTime = job['endTime'] as num;
         final startDate =
@@ -121,7 +129,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         final endDate = DateTime.fromMillisecondsSinceEpoch(endTime.toInt());
         final duration = job['durationMinutes'] as int? ??
             endDate.difference(startDate).inMinutes;
-        final rate = (job['currentRate'] as num).toDouble();
+        final rate = (job['currentRate'] as num?)?.toDouble() ??
+            (job['baseRate'] as num?)?.toDouble() ??
+            0.0;
 
         // Pending state for optimistic feedback
         final jobsState = ref.watch(jobsProvider);
@@ -134,8 +144,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         final claimId = job['claimId'] as String?;
 
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Job Details'),
+          appBar: adaptiveAppBar(
+            context,
+            title: 'Job Details',
             actions: [
               if (isStudio &&
                   (status == 'open' ||
@@ -202,8 +213,11 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                     LucideIcons.mapPin, 'Location', job['address'] ?? 'Israel'),
                 const SizedBox(height: 16),
                 _buildDetailRow(
-                    LucideIcons.banknote, 'Rate', '₪${rate.toStringAsFixed(0)}',
-                    valueColor: colors.successText),
+                  LucideIcons.banknote,
+                  'Rate',
+                  'ILS ${rate.toStringAsFixed(0)}',
+                  valueColor: colors.successText,
+                ),
                 const Divider(height: 48),
 
                 // Description / Notes
@@ -211,7 +225,10 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                     style: theme.textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
-                Text(job['notes'] ?? 'No special requirements listed.',
+                Text(
+                    job['description'] ??
+                        job['notes'] ??
+                        'No special requirements listed.',
                     style: theme.textTheme.bodyLarge),
 
                 // Instructor Actions
@@ -220,21 +237,38 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   SizedBox(
                     width: double.infinity,
                     height: 56,
-                    child: FilledButton(
-                      onPressed: (isPending ||
-                              (!canClaimAsPrimary && !canClaimAsBackup))
-                          ? null
-                          : _claimJob,
-                      child: isPending
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : Text(canClaimAsBackup
-                              ? 'Claim as Backup'
-                              : 'Claim this Job'),
-                    ),
+                    child: isCupertino
+                        ? CupertinoButton.filled(
+                            onPressed: (isPending ||
+                                    (!canClaimAsPrimary && !canClaimAsBackup))
+                                ? null
+                                : _claimJob,
+                            child: isPending
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
+                                  )
+                                : Text(canClaimAsBackup
+                                    ? 'Claim as Backup'
+                                    : 'Claim this Job'),
+                          )
+                        : FilledButton(
+                            onPressed: (isPending ||
+                                    (!canClaimAsPrimary && !canClaimAsBackup))
+                                ? null
+                                : _claimJob,
+                            child: isPending
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : Text(canClaimAsBackup
+                                    ? 'Claim as Backup'
+                                    : 'Claim this Job'),
+                          ),
                   ),
                   if (canClaimAsBackup) ...[
                     const SizedBox(height: 12),
@@ -260,20 +294,38 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton(
-                          onPressed: () =>
-                              _handleRespondToClaim(false, claimId),
-                          style: OutlinedButton.styleFrom(
-                              foregroundColor: theme.colorScheme.error),
-                          child: const Text('Reject Claim'),
-                        ),
+                        child: isCupertino
+                            ? CupertinoButton(
+                                onPressed: () =>
+                                    _handleRespondToClaim(false, claimId),
+                                color: CupertinoColors.systemGrey5,
+                                child: Text(
+                                  'Reject Claim',
+                                  style: TextStyle(
+                                      color: theme.colorScheme.error),
+                                ),
+                              )
+                            : OutlinedButton(
+                                onPressed: () =>
+                                    _handleRespondToClaim(false, claimId),
+                                style: OutlinedButton.styleFrom(
+                                    foregroundColor: theme.colorScheme.error),
+                                child: const Text('Reject Claim'),
+                              ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: FilledButton(
-                          onPressed: () => _handleRespondToClaim(true, claimId),
-                          child: const Text('Accept Claim'),
-                        ),
+                        child: isCupertino
+                            ? CupertinoButton.filled(
+                                onPressed: () =>
+                                    _handleRespondToClaim(true, claimId),
+                                child: const Text('Accept Claim'),
+                              )
+                            : FilledButton(
+                                onPressed: () =>
+                                    _handleRespondToClaim(true, claimId),
+                                child: const Text('Accept Claim'),
+                              ),
                       ),
                     ],
                   ),
@@ -299,12 +351,20 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: isPending ? null : _withdrawClaim,
-                      child: isPending
-                          ? const Text('Processing...')
-                          : const Text('Cancel Claim'),
-                    ),
+                    child: isCupertino
+                        ? CupertinoButton(
+                            onPressed: isPending ? null : _withdrawClaim,
+                            color: CupertinoColors.systemGrey5,
+                            child: isPending
+                                ? const Text('Processing...')
+                                : const Text('Cancel Claim'),
+                          )
+                        : OutlinedButton(
+                            onPressed: isPending ? null : _withdrawClaim,
+                            child: isPending
+                                ? const Text('Processing...')
+                                : const Text('Cancel Claim'),
+                          ),
                   ),
                 ],
               ],
@@ -420,26 +480,44 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   }
 
   void _confirmCancel(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Job?'),
-        content: const Text(
-            'Are you sure you want to cancel this job? This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Keep it')),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _handleCancelJob();
-            },
-            child:
-                const Text('Cancel Job', style: TextStyle(color: Colors.red)),
-          ),
-        ],
+    final isCupertino = isCupertinoPlatform(context);
+    qf_dialog.showAdaptiveDialog<void>(
+      context,
+      title: const Text('Cancel Job?'),
+      content: const Text(
+        'Are you sure you want to cancel this job? This cannot be undone.',
       ),
+      actions: isCupertino
+          ? [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Keep It'),
+              ),
+              CupertinoDialogAction(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _handleCancelJob();
+                },
+                isDestructiveAction: true,
+                child: const Text('Cancel Job'),
+              ),
+            ]
+          : [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Keep it'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _handleCancelJob();
+                },
+                child: const Text(
+                  'Cancel Job',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
     );
   }
 }

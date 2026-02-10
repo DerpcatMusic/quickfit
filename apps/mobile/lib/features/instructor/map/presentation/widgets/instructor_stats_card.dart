@@ -39,7 +39,7 @@ class InstructorStatsCard extends StatelessWidget {
             Expanded(
               child: _StatItem(
                 label: 'Earnings',
-                value: '₪${earnings.toStringAsFixed(0)}',
+                value: 'ILS ${earnings.toStringAsFixed(0)}',
                 icon: Icons.payments_outlined,
               ),
             ),

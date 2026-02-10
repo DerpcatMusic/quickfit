@@ -7,7 +7,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:convex_flutter/convex_flutter.dart';
 
-import '../../../core/services/location_service.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/offline_queue_manager.dart';
 import '../../../core/services/hive_service.dart';
@@ -152,14 +151,6 @@ class JobsNotifier extends _$JobsNotifier {
   Future<void> _subscribeToJobs() async {
     final auth = ref.read(authProvider);
     if (auth.user == null) return;
-
-    final lat = LocationService.instance.latitude;
-    final lng = LocationService.instance.longitude;
-
-    if (lat == null || lng == null) {
-      state = state.copyWith(isLoading: false, error: 'Location not available');
-      return;
-    }
 
     _subscription = await ConvexClient.instance.subscribe(
       name: 'jobs:getNearbyJobs',

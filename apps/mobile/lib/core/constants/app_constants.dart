@@ -30,4 +30,8 @@ class StorageKeys {
   static const String onboardingComplete = 'onboarding_complete';
   static const String userRole = 'user_role';
   static const String lastLocation = 'last_location';
+  static const String notificationsEnabled = 'settings_notifications_enabled';
+  static const String regularJobAlerts = 'settings_regular_job_alerts';
+  static const String sosJobAlerts = 'settings_sos_job_alerts';
+  static const String languageCode = 'settings_language_code';
 }

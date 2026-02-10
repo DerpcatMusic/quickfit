@@ -102,11 +102,15 @@ class QuickFitMap extends StatefulWidget {
 class QuickFitMapState extends State<QuickFitMap>
     with AutomaticKeepAliveClientMixin {
   final Completer<MapLibreMapController> _controllerCompleter = Completer();
+  MapLibreMapController? _controller;
   bool _styleLoaded = false;
 
   // Radius circle state - simple boolean for complete state
   bool _radiusReady = false;
   Symbol? _homePinSymbol;
+  bool _jobsReady = false;
+  int _jobsSignature = 0;
+  LatLng? _lastRadiusCenter;
 
   /// Get the underlying MapLibre controller for advanced operations.
   Future<MapLibreMapController> get controller => _controllerCompleter.future;
@@ -114,11 +118,14 @@ class QuickFitMapState extends State<QuickFitMap>
   /// Whether the map style has finished loading.
   bool get isStyleLoaded => _styleLoaded;
 
-  // Layer IDs for radius visualization (ordered: glow → fill → stroke)
+  // Layer IDs for radius visualization (ordered: glow -> fill -> stroke)
   static const String _radiusGlowId = 'radius-glow';
   static const String _radiusFillId = 'radius-fill';
   static const String _radiusLineId = 'radius-line';
   static const String _radiusSourceId = 'radius-source';
+  static const String _jobsSourceId = 'jobs-source';
+  static const String _jobsCircleId = 'jobs-circles';
+  static const String _jobsLabelId = 'jobs-labels';
 
   @override
   bool get wantKeepAlive => true;
@@ -139,7 +146,9 @@ class QuickFitMapState extends State<QuickFitMap>
           _removeRadiusCircle();
         }
       }
-      if (widget.jobs != oldWidget.jobs) {
+      final nextSignature = _computeJobsSignature(widget.jobs);
+      if (nextSignature != _jobsSignature) {
+        _jobsSignature = nextSignature;
         updateJobs(widget.jobs);
       }
     }
@@ -181,9 +190,7 @@ class QuickFitMapState extends State<QuickFitMap>
         onMapCreated: _onMapCreated,
         onStyleLoadedCallback: _onStyleLoaded,
         onCameraIdle: _onCameraIdle,
-        onMapClick: widget.onMapTap != null
-            ? (_, latLng) => widget.onMapTap!(latLng)
-            : null,
+        onMapClick: _handleMapClick,
         // Hide the attribution on the bottom right as it impacts the premium "avant-garde" look.
         // We ensure attribution is handled in legal/about sections of the app.
         attributionButtonMargins: kIsWeb ? null : const math.Point(-100, -100),
@@ -192,6 +199,7 @@ class QuickFitMapState extends State<QuickFitMap>
   }
 
   void _onMapCreated(MapLibreMapController controller) {
+    _controller = controller;
     _controllerCompleter.complete(controller);
     widget.onMapCreated?.call(controller);
   }
@@ -199,6 +207,7 @@ class QuickFitMapState extends State<QuickFitMap>
   Future<void> _onStyleLoaded() async {
     _styleLoaded = true;
     _radiusReady = false; // Reset on new style load
+    _jobsReady = false;
 
     // Add radius visualization if enabled
     if (widget.showRadius && widget.radiusKm != null) {
@@ -210,10 +219,9 @@ class QuickFitMapState extends State<QuickFitMap>
       await _addHomePin();
     }
 
-    // Add job markers
-    if (widget.jobs.isNotEmpty) {
-      await _addJobMarkers();
-    }
+    await _ensureJobLayers();
+    await _updateJobsSource(widget.jobs);
+    _jobsSignature = _computeJobsSignature(widget.jobs);
 
     widget.onStyleLoaded?.call();
   }
@@ -244,10 +252,16 @@ class QuickFitMapState extends State<QuickFitMap>
   Future<void> updateRadius(double radiusKm, {LatLng? center}) async {
     if (!_styleLoaded) return;
 
+    final controller = await _controllerCompleter.future;
+    final cameraCenter = controller.cameraPosition?.target;
     final circleCenter = center ??
         widget.radiusCenter ??
+        _lastRadiusCenter ??
+        cameraCenter ??
         widget.initialCenter ??
         const LatLng(MapConfig.defaultLatitude, MapConfig.defaultLongitude);
+
+    _lastRadiusCenter = circleCenter;
 
     if (_radiusReady) {
       await _updateRadiusSource(circleCenter, radiusKm);
@@ -259,13 +273,15 @@ class QuickFitMapState extends State<QuickFitMap>
   /// Update job markers on the map.
   Future<void> updateJobs(List<QuickFitJobMarker> jobs) async {
     if (!_styleLoaded) return;
-    await _addJobMarkers(jobsOverride: jobs);
+    await _ensureJobLayers();
+    await _updateJobsSource(jobs);
   }
 
   /// Update just the radius center (when user drops a pin).
   Future<void> updateRadiusCenter(LatLng center) async {
     if (!_styleLoaded) return;
     final radiusKm = widget.radiusKm ?? 10.0;
+    _lastRadiusCenter = center;
 
     if (_radiusReady) {
       await _updateRadiusSource(center, radiusKm);
@@ -297,10 +313,12 @@ class QuickFitMapState extends State<QuickFitMap>
   Future<void> _addRadiusCircle() async {
     final center = widget.radiusCenter ?? widget.initialCenter;
     if (center == null || widget.radiusKm == null) return;
+    _lastRadiusCenter = center;
     await _addRadiusCircleAt(center, widget.radiusKm!);
   }
 
   Future<void> _addRadiusCircleAt(LatLng center, double radiusKm) async {
+    _lastRadiusCenter = center;
     // Already set up? Just update
     if (_radiusReady) {
       await _updateRadiusSource(center, radiusKm);
@@ -404,24 +422,81 @@ class QuickFitMapState extends State<QuickFitMap>
     }
   }
 
-  Future<void> _addJobMarkers({List<QuickFitJobMarker>? jobsOverride}) async {
+  Future<void> _ensureJobLayers() async {
+    if (_jobsReady) return;
     final controller = await _controllerCompleter.future;
-    final jobs = jobsOverride ?? widget.jobs;
+    if (!mounted) return;
 
-    // Add markers as symbols
-    for (final job in jobs) {
-      await controller.addSymbol(
-        SymbolOptions(
-          geometry: job.position,
-          iconSize: job.isSos ? 1.2 : 1.0,
-          textField: job.label,
+    try {
+      await controller.addGeoJsonSource(_jobsSourceId, {
+        'type': 'FeatureCollection',
+        'features': [],
+      });
+
+      await controller.addCircleLayer(
+        _jobsSourceId,
+        _jobsCircleId,
+        const CircleLayerProperties(
+          circleColor: [
+            'case',
+            ['get', 'isSos'],
+            '#F44336',
+            '#4CAF50',
+          ],
+          circleRadius: 8,
+          circleStrokeWidth: 2,
+          circleStrokeColor: '#FFFFFF',
+        ),
+      );
+
+      await controller.addSymbolLayer(
+        _jobsSourceId,
+        _jobsLabelId,
+        const SymbolLayerProperties(
+          textField: ['get', 'label'],
           textSize: 12,
-          textOffset: const Offset(0, 1.5),
           textColor: '#FFFFFF',
           textHaloColor: '#000000',
           textHaloWidth: 1,
+          textOffset: [0, 1.5],
+          textAnchor: 'top',
         ),
       );
+
+      _jobsReady = true;
+    } catch (e) {
+      debugPrint('Error adding job layers: $e');
+      _jobsReady = false;
+    }
+  }
+
+  Future<void> _updateJobsSource(List<QuickFitJobMarker> jobs) async {
+    if (!_jobsReady) return;
+    final controller = await _controllerCompleter.future;
+    if (!mounted) return;
+
+    final features = jobs.map((job) {
+      return {
+        'type': 'Feature',
+        'properties': {
+          'jobId': job.id,
+          'label': job.label,
+          'isSos': job.isSos,
+        },
+        'geometry': {
+          'type': 'Point',
+          'coordinates': [job.position.longitude, job.position.latitude],
+        },
+      };
+    }).toList();
+
+    try {
+      await controller.setGeoJsonSource(_jobsSourceId, {
+        'type': 'FeatureCollection',
+        'features': features,
+      });
+    } catch (e) {
+      debugPrint('Error updating job source: $e');
     }
   }
 
@@ -439,7 +514,7 @@ class QuickFitMapState extends State<QuickFitMap>
       SymbolOptions(
         geometry: center,
         iconSize: 1.5,
-        textField: '🏠',
+        textField: 'HOME',
         textSize: 24,
         textOffset: const Offset(0, 0),
       ),
@@ -492,6 +567,51 @@ class QuickFitMapState extends State<QuickFitMap>
             '${g.toRadixString(16).padLeft(2, '0')}'
             '${b.toRadixString(16).padLeft(2, '0')}'
         .toUpperCase();
+  }
+
+  Future<void> _handleMapClick(math.Point<double> point, LatLng latLng) async {
+    final controller = _controller;
+    if (controller != null && widget.onJobTapped != null) {
+      try {
+        final features = await controller.queryRenderedFeatures(
+          point,
+          [_jobsCircleId, _jobsLabelId],
+          null,
+        );
+        if (features.isNotEmpty) {
+          final props = features.first['properties'];
+          final jobId = props?['jobId'];
+          if (jobId != null) {
+            widget.onJobTapped?.call(jobId.toString());
+            return;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error handling job tap: $e');
+      }
+    }
+    widget.onMapTap?.call(latLng);
+  }
+
+  int _computeJobsSignature(List<QuickFitJobMarker> jobs) {
+    var hash = jobs.length;
+    for (final job in jobs) {
+      hash = Object.hash(
+        hash,
+        job.id,
+        job.position.latitude.toStringAsFixed(5),
+        job.position.longitude.toStringAsFixed(5),
+        job.isSos,
+        job.label,
+        job.currentRate,
+      );
+    }
+    return hash;
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 }
 

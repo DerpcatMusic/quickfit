@@ -4,7 +4,10 @@
 import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { syncInstructorLocation, removeInstructorLocation } from "./geo";
-import { latLngToHex11, getHexesInRadius } from "./h3";
+import { internal } from "./_generated/api";
+
+const MIN_RADIUS_KM = 0.5;
+const MAX_RADIUS_KM = 15;
 
 // ==========================================
 // QUERIES
@@ -34,9 +37,8 @@ export const syncUser = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    
-    // Use identity subject if available, otherwise use provided firebaseUid
-    const uid = identity?.subject ?? args.firebaseUid;
+    if (!identity) throw new Error("Not authenticated");
+    const uid = identity.subject;
     
     const existing = await ctx.db
       .query("users")
@@ -76,12 +78,15 @@ export const completeOnboarding = mutation({
     role: v.union(v.literal("studio"), v.literal("instructor")),
     name: v.string(),
     categories: v.string(), // comma separated list
-    // Accept both number and string due to convex_flutter serialization quirk
+    // Dispatch mode for instructors
+    dispatchMode: v.optional(v.union(v.literal("radius"), v.literal("zone"))),
+    // For radius mode
     radiusKm: v.optional(v.union(v.float64(), v.string())),
     latitude: v.optional(v.union(v.float64(), v.string())),
     longitude: v.optional(v.union(v.float64(), v.string())),
     address: v.optional(v.string()),
-    selectedZones: v.optional(v.array(v.string())),
+    // For zone mode
+    zoneIds: v.optional(v.array(v.id("zones"))),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -101,27 +106,7 @@ export const completeOnboarding = mutation({
     const categoriesArray = args.categories.split(',').map(c => c.trim()).filter(c => c.length > 0);
     const primaryCategory = categoriesArray.length > 0 ? categoriesArray[0] : "general";
 
-    // Validate zone IDs if provided - they should be valid Convex IDs
-    let validZoneIds: any[] | undefined = undefined;
-    if (args.selectedZones && args.selectedZones.length > 0) {
-      validZoneIds = [];
-      for (const zoneId of args.selectedZones) {
-        try {
-          // Try to fetch the zone to validate it exists
-          const zone = await ctx.db.get(zoneId as any);
-          if (zone) {
-            validZoneIds.push(zoneId);
-          } else {
-            console.warn(`[completeOnboarding] Zone not found: ${zoneId}`);
-          }
-        } catch (e) {
-          console.warn(`[completeOnboarding] Invalid zone ID format: ${zoneId}`);
-        }
-      }
-      console.log(`[completeOnboarding] Valid zones: ${validZoneIds.length}/${args.selectedZones.length}`);
-    }
-
-    // Helper to parse numbers
+    // Helper to parse numbers (handles Flutter's string serialization)
     const parseNum = (val: number | string | undefined): number | undefined => {
       if (val === undefined) return undefined;
       const parsed = typeof val === 'string' ? parseFloat(val) : val;
@@ -131,61 +116,56 @@ export const completeOnboarding = mutation({
     const lat = parseNum(args.latitude);
     const lng = parseNum(args.longitude);
     const rad = parseNum(args.radiusKm);
+    const clampedRadiusKm = Math.min(
+      Math.max(rad ?? user.radiusKm ?? 5, MIN_RADIUS_KM),
+      MAX_RADIUS_KM
+    );
+
+    // Default dispatch mode based on what data is provided
+    const dispatchMode = args.dispatchMode ?? 
+      ((args.zoneIds && args.zoneIds.length > 0) ? "zone" : "radius");
 
     await ctx.db.patch(user._id, {
       role: args.role,
       name: args.name,
       categories: categoriesArray,
       primaryCategory,
-      radiusKm: rad ?? user.radiusKm ?? 5,
+      dispatchMode: args.role === "instructor" ? dispatchMode : undefined,
+      radiusKm: clampedRadiusKm,
       latitude: lat ?? user.latitude,
       longitude: lng ?? user.longitude,
-      homeLatitude: lat ?? user.homeLatitude,
-      homeLongitude: lng ?? user.homeLongitude,
-      homeAddress: args.address ?? user.homeAddress,
-      selectedZones: validZoneIds ?? user.selectedZones,
+      address: args.address ?? user.address,
+      zoneIds: args.zoneIds,
       hasCompletedOnboarding: true,
       updatedAt: now,
     });
 
-    console.log("[completeOnboarding] Successfully updated user:", user._id);
+    console.log("[completeOnboarding] Updated user:", user._id, "dispatchMode:", dispatchMode);
 
-    // GEOSPATIAL SYNC
+    // DISPATCH SYSTEM SYNC
     const finalLat = lat ?? user.latitude;
     const finalLng = lng ?? user.longitude;
-    const finalRadiusKm = rad ?? user.radiusKm ?? 5;
+    const finalRadiusKm = clampedRadiusKm;
 
-    // H3 HEX SPATIAL INDEXING
-    // One-time calculation per address change, O(1) lookups forever
-    let homeHex11: string | undefined;
-    let workAreaHexes11: string[] | undefined;
-    
-    if (finalLat && finalLng) {
-      homeHex11 = latLngToHex11(finalLat, finalLng);
-      workAreaHexes11 = getHexesInRadius(finalLat, finalLng, finalRadiusKm);
-      
-      console.log(`[completeOnboarding] H3 computed: home=${homeHex11}, workArea=${workAreaHexes11?.length} hexes`);
-      
-      // Store H3 fields
-      await ctx.db.patch(user._id, {
-        homeHex11,
-        workAreaHexes11,
+    if (args.role === "instructor") {
+      if (finalLat && finalLng) {
+        // Sync to geospatial index (only adds if radius mode)
+        await syncInstructorLocation(
+          ctx,
+          user._id,
+          { latitude: finalLat, longitude: finalLng },
+          dispatchMode,
+          categoriesArray,
+          user.isVerified,
+          user.notificationsEnabled ?? true,
+          finalRadiusKm
+        );
+      }
+
+      // Sync zone subscriptions (creates if zone mode, deletes if radius mode)
+      await ctx.scheduler.runAfter(0, internal.zoneSubscriptions.syncZoneSubscriptions, {
+        instructorId: user._id,
       });
-    }
-
-    if (args.role === "instructor" && finalLat && finalLng) {
-      await syncInstructorLocation(
-        ctx,
-        user._id,
-        { 
-          latitude: finalLat, 
-          longitude: finalLng 
-        },
-        primaryCategory,
-        user.isVerified,
-        user.notificationsEnabled ?? true,
-        finalRadiusKm
-      );
     }
 
     return { success: true, userId: user._id };
@@ -318,29 +298,35 @@ export const updateLocation = mutation({
     
     if (!user) throw new Error("User not found");
     
-    const radiusKm = args.radiusKm ?? user.radiusKm ?? 5;
-    const primaryCategory = (args.categories && args.categories.length > 0) 
-      ? args.categories[0] 
+    const radiusKm = Math.min(
+      Math.max(args.radiusKm ?? user.radiusKm ?? 5, MIN_RADIUS_KM),
+      MAX_RADIUS_KM
+    );
+    const primaryCategory = (args.categories && args.categories.length > 0)
+      ? args.categories[0]
       : (user.categories && user.categories.length > 0) ? user.categories[0] : "general";
 
-    await ctx.db.patch(user._id, {
+    const updates: Record<string, unknown> = {
       latitude: args.latitude,
       longitude: args.longitude,
-      homeLatitude: user.homeLatitude ?? args.latitude,
-      homeLongitude: user.homeLongitude ?? args.longitude,
-      homeAddress: args.address ?? user.homeAddress,
+      address: args.address ?? user.address,
       radiusKm,
-      categories: args.categories,
       primaryCategory,
       updatedAt: Date.now(),
-    });
+    };
+    if (args.categories !== undefined) {
+      updates.categories = args.categories;
+    }
+
+    await ctx.db.patch(user._id, updates);
 
     if (user.role === "instructor") {
       await syncInstructorLocation(
         ctx,
         user._id,
         { latitude: args.latitude, longitude: args.longitude },
-        primaryCategory,
+        user.dispatchMode ?? "radius",
+        args.categories && args.categories.length > 0 ? args.categories : (user.categories ?? [primaryCategory]),
         user.isVerified,
         user.notificationsEnabled ?? true,
         radiusKm
@@ -396,16 +382,16 @@ export const updateProfile = mutation({
     if (args.phone !== undefined) updates.phone = args.phone;
     if (args.avatarUrl !== undefined) updates.avatarUrl = args.avatarUrl;
     if (args.businessName !== undefined) updates.businessName = args.businessName;
-    if (args.homeAddress !== undefined) updates.homeAddress = args.homeAddress;
+    if (args.homeAddress !== undefined) updates.address = args.homeAddress;
     if (args.latitude !== undefined) {
       updates.latitude = args.latitude;
-      updates.homeLatitude = args.latitude;
     }
     if (args.longitude !== undefined) {
       updates.longitude = args.longitude;
-      updates.homeLongitude = args.longitude;
     }
-    if (args.radiusKm !== undefined) updates.radiusKm = args.radiusKm;
+    if (args.radiusKm !== undefined) {
+      updates.radiusKm = Math.min(Math.max(args.radiusKm, MIN_RADIUS_KM), MAX_RADIUS_KM);
+    }
     if (args.categories !== undefined) {
       updates.categories = args.categories;
       if (args.categories.length > 0) {
@@ -417,8 +403,15 @@ export const updateProfile = mutation({
 
     // Sync to geo index if instructor location changed
     if (user.role === "instructor") {
-      const radiusKm = args.radiusKm ?? user.radiusKm ?? 5;
+      const radiusKm = Math.min(
+        Math.max((args.radiusKm ?? user.radiusKm ?? 5), MIN_RADIUS_KM),
+        MAX_RADIUS_KM
+      );
       const primaryCategory = updates.primaryCategory as string ?? user.primaryCategory ?? "general";
+      const categories =
+        (updates.categories as string[] | undefined) ??
+        user.categories ??
+        (primaryCategory ? [primaryCategory] : ["general"]);
       const lat = args.latitude ?? user.latitude;
       const lng = args.longitude ?? user.longitude;
 
@@ -427,7 +420,8 @@ export const updateProfile = mutation({
           ctx,
           user._id,
           { latitude: lat, longitude: lng },
-          primaryCategory,
+          user.dispatchMode ?? "radius",
+          categories,
           user.isVerified,
           user.notificationsEnabled ?? true,
           radiusKm
@@ -456,7 +450,8 @@ export const setVerified = internalMutation({
         ctx,
         userId,
         { latitude: user.latitude, longitude: user.longitude },
-        user.primaryCategory ?? "general",
+        user.dispatchMode ?? "radius",
+        user.categories ?? (user.primaryCategory ? [user.primaryCategory] : ["general"]),
         verified,
         user.notificationsEnabled ?? true,
         user.radiusKm ?? 5
@@ -475,8 +470,8 @@ export const updateRadius = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
     
-    if (radiusKm < 0.5 || radiusKm > 50) {
-      throw new Error("Radius must be between 0.5 and 50 km");
+    if (radiusKm < MIN_RADIUS_KM || radiusKm > MAX_RADIUS_KM) {
+      throw new Error(`Radius must be between ${MIN_RADIUS_KM} and ${MAX_RADIUS_KM} km`);
     }
     
     const user = await ctx.db
@@ -496,7 +491,8 @@ export const updateRadius = mutation({
         ctx,
         user._id,
         { latitude: user.latitude, longitude: user.longitude },
-        user.primaryCategory ?? "general",
+        user.dispatchMode ?? "radius",
+        user.categories ?? (user.primaryCategory ? [user.primaryCategory] : ["general"]),
         user.isVerified,
         user.notificationsEnabled ?? true,
         radiusKm
@@ -532,7 +528,8 @@ export const updateNotificationPreferences = mutation({
         ctx,
         user._id,
         { latitude: user.latitude, longitude: user.longitude },
-        user.primaryCategory ?? "general",
+        user.dispatchMode ?? "radius",
+        user.categories ?? (user.primaryCategory ? [user.primaryCategory] : ["general"]),
         user.isVerified,
         enabled,
         user.radiusKm ?? 5
@@ -543,11 +540,89 @@ export const updateNotificationPreferences = mutation({
 
 
 /**
+ * Update instructor's dispatch mode and associated settings.
+ * This is the PRIMARY way for instructors to switch between radius and zone modes.
+ */
+export const updateDispatchMode = mutation({
+  args: {
+    mode: v.union(v.literal("radius"), v.literal("zone")),
+    // For radius mode
+    latitude: v.optional(v.float64()),
+    longitude: v.optional(v.float64()),
+    radiusKm: v.optional(v.float64()),
+    // For zone mode
+    zoneIds: v.optional(v.array(v.id("zones"))),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    
+    if (!user) throw new Error("User not found");
+    if (user.role !== "instructor") throw new Error("Only instructors can set dispatch mode");
+    
+    // Validate mode-specific requirements
+    if (args.mode === "radius") {
+      const lat = args.latitude ?? user.latitude;
+      const lng = args.longitude ?? user.longitude;
+      const rad = args.radiusKm ?? user.radiusKm;
+      if (!lat || !lng) throw new Error("Radius mode requires a location. Please set your location first.");
+      if (!rad) throw new Error("Radius mode requires a radius.");
+    } else {
+      const zones = args.zoneIds ?? user.zoneIds;
+      if (!zones || zones.length === 0) throw new Error("Zone mode requires at least one zone.");
+    }
+    
+    const clampedRadius = args.radiusKm 
+      ? Math.min(Math.max(args.radiusKm, MIN_RADIUS_KM), MAX_RADIUS_KM)
+      : undefined;
+    
+    await ctx.db.patch(user._id, {
+      dispatchMode: args.mode,
+      latitude: args.latitude ?? user.latitude,
+      longitude: args.longitude ?? user.longitude,
+      radiusKm: clampedRadius ?? user.radiusKm,
+      zoneIds: args.zoneIds ?? user.zoneIds,
+      updatedAt: Date.now(),
+    });
+    
+    const finalLat = args.latitude ?? user.latitude;
+    const finalLng = args.longitude ?? user.longitude;
+    const finalRadiusKm = clampedRadius ?? user.radiusKm ?? 5;
+    
+    // Sync to appropriate dispatch system
+    if (finalLat && finalLng) {
+      await syncInstructorLocation(
+        ctx,
+        user._id,
+        { latitude: finalLat, longitude: finalLng },
+        args.mode,
+        user.categories ?? (user.primaryCategory ? [user.primaryCategory] : ["general"]),
+        user.isVerified,
+        user.notificationsEnabled ?? true,
+        finalRadiusKm
+      );
+    }
+    
+    // Update zone subscriptions (creates if zone mode, deletes if radius mode)
+    await ctx.scheduler.runAfter(0, internal.zoneSubscriptions.syncZoneSubscriptions, {
+      instructorId: user._id,
+    });
+    
+    return { success: true, mode: args.mode };
+  },
+});
+
+/**
  * Update instructor's selected zones.
  * Called from the map screen zone selector.
  */
 export const updateZones = mutation({
-  args: { zoneIds: v.array(v.string()) }, // Accept strings for flexibility
+  args: { zoneIds: v.array(v.id("zones")) },
   handler: async (ctx, { zoneIds }) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
@@ -560,8 +635,15 @@ export const updateZones = mutation({
     if (!user) throw new Error("User not found");
     
     await ctx.db.patch(user._id, {
-      selectedZones: zoneIds,
+      zoneIds,
       updatedAt: Date.now(),
     });
+    
+    // If user is zone mode, resync subscriptions
+    if (user.dispatchMode === "zone") {
+      await ctx.scheduler.runAfter(0, internal.zoneSubscriptions.syncZoneSubscriptions, {
+        instructorId: user._id,
+      });
+    }
   },
 });

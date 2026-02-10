@@ -32,6 +32,12 @@ class AuthState {
   /// Categories the user is interested in (e.g., ["yoga", "pilates"]).
   final List<String>? categories;
 
+  /// Dispatch mode for instructors: 'radius' or 'zone'.
+  final String? dispatchMode;
+
+  /// Zone IDs for zone-based dispatch.
+  final List<String>? zoneIds;
+
   /// Instructor's search radius in kilometers.
   final double? radiusKm;
 
@@ -54,6 +60,8 @@ class AuthState {
     this.latitude,
     this.longitude,
     this.categories,
+    this.dispatchMode,
+    this.zoneIds,
     this.radiusKm,
     this.isVerified = false,
     this.isLoading = false,
@@ -71,6 +79,8 @@ class AuthState {
     double? latitude,
     double? longitude,
     List<String>? categories,
+    String? dispatchMode,
+    List<String>? zoneIds,
     double? radiusKm,
     bool? isVerified,
     bool? isLoading,
@@ -87,6 +97,8 @@ class AuthState {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       categories: categories ?? this.categories,
+      dispatchMode: dispatchMode ?? this.dispatchMode,
+      zoneIds: zoneIds ?? this.zoneIds,
       radiusKm: radiusKm ?? this.radiusKm,
       isVerified: isVerified ?? this.isVerified,
       isLoading: isLoading ?? this.isLoading,

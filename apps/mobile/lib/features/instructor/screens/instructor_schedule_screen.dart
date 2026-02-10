@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 
 import 'package:quickfit/core/theme/app_colors.dart';
+import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
 import '../widgets/schedule_timeline.dart';
 import '../providers/schedule_provider.dart';
 
@@ -49,8 +50,9 @@ class _InstructorScheduleScreenState
     final jobs = _getJobsForSelectedDate(scheduleState.jobs);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Schedule'),
+      appBar: adaptiveAppBar(
+        context,
+        title: 'My Schedule',
         actions: [
           if (scheduleState.isLoading)
             const Padding(

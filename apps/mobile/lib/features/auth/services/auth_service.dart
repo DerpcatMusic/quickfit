@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart' as auth_gsi;
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -10,14 +11,17 @@ part 'auth_service.g.dart';
 /// Service responsible for handle low-level authentication interactions.
 @Riverpod(keepAlive: true)
 AuthService authService(Ref ref) {
-  return AuthService();
+  final service = AuthService();
+  ref.onDispose(service.dispose);
+  return service;
 }
 
 class AuthService {
-  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+  firebase_auth.FirebaseAuth get _auth => firebase_auth.FirebaseAuth.instance;
 
   // 2026: google_sign_in 7.x uses a singleton pattern.
   final auth_gsi.GoogleSignIn _googleSignIn = auth_gsi.GoogleSignIn.instance;
+  StreamSubscription<auth_gsi.GoogleSignInAuthenticationEvent>? _googleUserSub;
 
   Stream<firebase_auth.User?> get authStateChanges => _auth.authStateChanges();
   firebase_auth.User? get currentUser => _auth.currentUser;
@@ -25,6 +29,26 @@ class AuthService {
   Future<void> initialize() async {
     try {
       await _googleSignIn.initialize();
+      if (kIsWeb) {
+        _googleUserSub ??= _googleSignIn.authenticationEvents.listen(
+          (event) async {
+            if (event is auth_gsi.GoogleSignInAuthenticationEventSignIn) {
+              try {
+                await _processGoogleAccount(event.user);
+              } catch (e) {
+                developer.log('Google web sign-in bridge failed',
+                    name: 'auth_service', error: e);
+              }
+            }
+          },
+          onError: (error) {
+            developer.log('Google auth event error',
+                name: 'auth_service', error: error);
+          },
+        );
+        // Restore previous web session if available.
+        _googleSignIn.attemptLightweightAuthentication();
+      }
     } catch (e) {
       // Ignore errors if already initialized or not needed
     }
@@ -47,6 +71,13 @@ class AuthService {
   ) async {
     // Authentication (ID Token)
     final googleAuth = googleAccount.authentication;
+
+    if (googleAuth.idToken == null) {
+      throw StateError(
+        'Google Sign-In did not return an ID token. '
+        'Check your web client ID and OAuth consent screen configuration.',
+      );
+    }
 
     // Authorization (Access Token) - separated in v7.x
     final authorization =
@@ -120,6 +151,11 @@ class AuthService {
       // Ignore
     }
     await _auth.signOut();
+  }
+
+  void dispose() {
+    _googleUserSub?.cancel();
+    _googleUserSub = null;
   }
 
   Future<void> sendPasswordResetEmail(String email) async {

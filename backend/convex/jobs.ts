@@ -4,6 +4,7 @@
 import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 import { 
   haversineDistanceMeters, 
   haversineDistanceKm,
@@ -12,7 +13,6 @@ import {
   syncJobLocation,
   removeJobLocation,
 } from "./geo";
-import { latLngToHex11 } from "./h3";
 
 // Categories for Israeli market
 export const CATEGORIES = [
@@ -68,11 +68,14 @@ export const getJobById = query({
     const isBackup = user?._id === job.backupClaimedBy;
 
     // Get the active claim ID (most recent accepted or pending claim)
-    const activeClaim = await ctx.db
-      .query("claims")
-      .withIndex("by_job", (q) => q.eq("jobId", jobId))
-      .filter((q) => q.eq(q.field("instructorId"), job.claimedBy))
-      .first();
+    let activeClaim = null;
+    if (job.claimedBy) {
+      activeClaim = await ctx.db
+        .query("claims")
+        .withIndex("by_job", (q) => q.eq("jobId", jobId))
+        .filter((q) => q.eq(q.field("instructorId"), job.claimedBy))
+        .first();
+    }
 
     return {
       ...job,
@@ -92,7 +95,7 @@ export const getJobById = query({
  * A 2.95km job WILL match a 3.00km radius.
  */
 export const getNearbyJobs = query({
-  args: { limit: v.optional(v.number()) },
+  args: { limit: v.optional(v.union(v.number(), v.string())) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
@@ -103,27 +106,55 @@ export const getNearbyJobs = query({
       .first();
     
     if (!user || user.role !== "instructor") return [];
-    if (!user.latitude || !user.longitude || !user.radiusKm) return [];
     
-    // 2026 GEOSPATIAL SEARCH
-    const jobResults = await findJobsForInstructor(
-      ctx,
-      { latitude: user.latitude, longitude: user.longitude },
-      user.radiusKm,
-      user.categories || ["general"],
-      user.isVerified
-    );
+    const categories =
+      user.categories && user.categories.length > 0
+        ? user.categories
+        : ["general"];
+
+    let jobResults: Array<{
+      _id: Id<"jobs">;
+      title: string;
+      category: string;
+      latitude: number;
+      longitude: number;
+      sosBoostApplied: boolean;
+      currentRate: number;
+      distanceMeters: number;
+    }> = [];
+
+    if (user.dispatchMode === "zone") {
+      jobResults = await findJobsForInstructorByZones(
+        ctx,
+        user,
+        user.zoneIds ?? [],
+        categories
+      );
+    } else {
+      if (!user.latitude || !user.longitude || !user.radiusKm) return [];
+      jobResults = await findJobsForInstructor(
+        ctx,
+        { latitude: user.latitude, longitude: user.longitude },
+        user.radiusKm,
+        categories,
+        user.isVerified
+      );
+    }
     
     // Sort by SOS first (manually sorting the enriched results later if needed)
     // For now, these results are already distance-sorted.
-    const limitedResults = jobResults.slice(0, args.limit ?? 50);
+    const parsedLimit =
+      typeof args.limit === "string"
+        ? parseInt(args.limit, 10)
+        : args.limit;
+    const safeLimit = Number.isFinite(parsedLimit ?? NaN)
+      ? (parsedLimit as number)
+      : 50;
+    const limitedResults = jobResults.slice(0, safeLimit ?? 50);
     
     // Enrichment: Add studio info to enriched results from geo.ts
     const enrichedJobs = await Promise.all(
       limitedResults.map(async (match) => {
-        // match already has most fields from findJobsForInstructor
-        const studio = await ctx.db.get(match._id as any); // Double narrowing check
-        
         // Fetch full job for relations if needed, but match contains the key data
         const jobDoc = await ctx.db.get(match._id);
         if (!jobDoc) return null;
@@ -166,17 +197,40 @@ export const getJobsForMap = query({
     if (!user.latitude || !user.longitude) {
       return { jobs: [], userLocation: null };
     }
-    
-    const radiusKm = user.radiusKm ?? 5;
-    
-    // 2026 GEOSPATIAL SEARCH
-    const jobResults = await findJobsForInstructor(
-      ctx,
-      { latitude: user.latitude, longitude: user.longitude },
-      radiusKm,
-      user.categories || ["general"],
-      user.isVerified
-    );
+
+    const categories =
+      user.categories && user.categories.length > 0
+        ? user.categories
+        : ["general"];
+
+    let jobResults: Array<{
+      _id: Id<"jobs">;
+      title: string;
+      category: string;
+      latitude: number;
+      longitude: number;
+      sosBoostApplied: boolean;
+      currentRate: number;
+      distanceMeters: number;
+    }> = [];
+
+    if (user.dispatchMode === "zone") {
+      jobResults = await findJobsForInstructorByZones(
+        ctx,
+        user,
+        user.zoneIds ?? [],
+        categories
+      );
+    } else {
+      const radiusKm = user.radiusKm ?? 5;
+      jobResults = await findJobsForInstructor(
+        ctx,
+        { latitude: user.latitude, longitude: user.longitude },
+        radiusKm,
+        categories,
+        user.isVerified
+      );
+    }
     
     return {
       jobs: jobResults,
@@ -184,6 +238,153 @@ export const getJobsForMap = query({
     };
   },
 });
+
+/**
+ * Zone-mode jobs for map/list. Optional zoneIds override for preview.
+ */
+export const getZoneJobsForInstructor = query({
+  args: {
+    zoneIds: v.optional(v.string()),
+    categories: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return [];
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!user || user.role !== "instructor") return [];
+
+    const categories =
+      args.categories?.split(",").map((c) => c.trim()).filter(Boolean) ??
+      (user.categories && user.categories.length > 0
+        ? user.categories
+        : ["general"]);
+
+    let zoneIds: Id<"zones">[] = user.zoneIds ?? [];
+    if (args.zoneIds) {
+      try {
+        const parsed = JSON.parse(args.zoneIds) as string[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          zoneIds = parsed as Id<"zones">[];
+        }
+      } catch {}
+    }
+
+    if (zoneIds.length === 0) return [];
+
+    return await findJobsForInstructorByZones(ctx, user, zoneIds, categories);
+  },
+});
+
+async function findJobsForInstructorByZones(
+  ctx: { db: any },
+  user: any,
+  zoneIds: Id<"zones">[],
+  categories: string[]
+): Promise<Array<{
+  _id: Id<"jobs">;
+  title: string;
+  category: string;
+  latitude: number;
+  longitude: number;
+  sosBoostApplied: boolean;
+  currentRate: number;
+  distanceMeters: number;
+}>> {
+  const MAX_RESULTS = 200;
+  const jobsMap = new Map<string, any>();
+  const hasUserLocation = !!(user.latitude && user.longitude);
+
+  for (const zoneId of zoneIds) {
+    if (jobsMap.size >= MAX_RESULTS) break;
+
+    if (categories.length > 0) {
+      for (const category of categories) {
+        const jobs = await ctx.db
+          .query("jobs")
+          .withIndex("by_zone_category_status", (q: any) =>
+            q.eq("zoneId", zoneId).eq("category", category).eq("status", "open")
+          )
+          .collect();
+
+        for (const job of jobs) {
+          if (!user.isVerified && job.requiresVerification) continue;
+          if (!jobsMap.has(job._id)) {
+            const distanceMeters = hasUserLocation
+              ? Math.round(
+                  haversineDistanceMeters(
+                    user.latitude,
+                    user.longitude,
+                    job.latitude,
+                    job.longitude
+                  )
+                )
+              : 0;
+            jobsMap.set(job._id, {
+              _id: job._id,
+              title: job.title,
+              category: job.category,
+              latitude: job.latitude,
+              longitude: job.longitude,
+              sosBoostApplied: job.sosBoostApplied,
+              currentRate: job.currentRate,
+              distanceMeters,
+              createdAt: job.createdAt,
+            });
+            if (jobsMap.size >= MAX_RESULTS) break;
+          }
+        }
+        if (jobsMap.size >= MAX_RESULTS) break;
+      }
+    } else {
+      const jobs = await ctx.db
+        .query("jobs")
+        .withIndex("by_zone_status", (q: any) =>
+          q.eq("zoneId", zoneId).eq("status", "open")
+        )
+        .collect();
+
+      for (const job of jobs) {
+        if (!user.isVerified && job.requiresVerification) continue;
+        if (!jobsMap.has(job._id)) {
+          const distanceMeters = hasUserLocation
+            ? Math.round(
+                haversineDistanceMeters(
+                  user.latitude,
+                  user.longitude,
+                  job.latitude,
+                  job.longitude
+                )
+              )
+            : 0;
+          jobsMap.set(job._id, {
+            _id: job._id,
+            title: job.title,
+            category: job.category,
+            latitude: job.latitude,
+            longitude: job.longitude,
+            sosBoostApplied: job.sosBoostApplied,
+            currentRate: job.currentRate,
+            distanceMeters,
+            createdAt: job.createdAt,
+          });
+          if (jobsMap.size >= MAX_RESULTS) break;
+        }
+      }
+    }
+  }
+
+  const results = Array.from(jobsMap.values());
+  if (hasUserLocation) {
+    results.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  } else {
+    results.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  }
+  return results;
+}
 
 /**
  * Get instructor statistics for dashboard.
@@ -307,7 +508,7 @@ export const postJob = mutation({
     longitude: v.float64(),
     requiresVerification: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Id<"jobs">> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
     
@@ -329,9 +530,10 @@ export const postJob = mutation({
     const currentRate = isSOS ? args.baseRate * 1.15 : args.baseRate;
     
     const durationMinutes = Math.round((args.endTime - args.startTime) / (1000 * 60));
-    
-    // H3 HEX SPATIAL INDEXING
-    const locationHex11 = latLngToHex11(args.latitude, args.longitude);
+    const zoneId = await ctx.runQuery(internal.zones.detectZoneForLocation, {
+      lat: args.latitude,
+      lng: args.longitude,
+    });
     
     const jobId = await ctx.db.insert("jobs", {
       studioId: user._id,
@@ -348,7 +550,7 @@ export const postJob = mutation({
       latitude: args.latitude,
       longitude: args.longitude,
       address: args.address,
-      locationHex11,  // H3 hex for O(1) matching
+      zoneId: zoneId ?? undefined,
       status: "open",
       requiresVerification: args.requiresVerification ?? true,
       notificationsSent: false,
@@ -380,10 +582,8 @@ export const postJob = mutation({
       });
     }
     
-    // Schedule notification dispatch
-    await ctx.scheduler.runAfter(0, internal.notifications.dispatchJobNotifications, {
-      jobId,
-    });
+    // Schedule notification dispatch with version guard
+    await scheduleJobDispatch(ctx, jobId);
     
     return jobId;
   },
@@ -393,6 +593,37 @@ export const postJob = mutation({
 // CONFIGURATION
 // ==========================================
 const MVP_SKIP_CERTIFICATION = true; // Set to true to allow non-verified instructors for MVP
+const MAX_RADIUS_KM = 15;
+const CLAIM_RESPONSE_TIMEOUT_MS = 2 * 60 * 1000;
+const DISPATCH_MAX_RETRIES = 4;
+const DISPATCH_BASE_DELAY_MS = 2 * 1000;
+const DISPATCH_MAX_DELAY_MS = 60 * 1000;
+
+async function scheduleJobDispatch(
+  ctx: { db: any; scheduler: any },
+  jobId: Id<"jobs">,
+) {
+  const job = await ctx.db.get(jobId);
+  if (!job || job.status !== "open") return;
+
+  const nextVersion = (job.dispatchVersion ?? 0) + 1;
+  const now = Date.now();
+
+  await ctx.db.patch(jobId, {
+    dispatchVersion: nextVersion,
+    dispatchAttempt: 0,
+    dispatchScheduledAt: now,
+    dispatchLastError: undefined,
+    notificationsSent: false,
+    notifiedInstructors: undefined,
+    updatedAt: now,
+  });
+
+  await ctx.scheduler.runAfter(0, internal.notifications.dispatchJobNotifications, {
+    jobId,
+    dispatchVersion: nextVersion,
+  });
+}
 
 export const claimJob = mutation({
   args: {
@@ -414,6 +645,35 @@ export const claimJob = mutation({
     
     const job = await ctx.db.get(args.jobId);
     if (!job) throw new Error("Job not found");
+
+    const isZoneMode = user.dispatchMode === "zone";
+    if (!isZoneMode && (!user.latitude || !user.longitude || !user.radiusKm)) {
+      throw new Error("Complete your profile location and radius before claiming jobs");
+    }
+
+    const hasCategory =
+      (user.categories && user.categories.includes(job.category)) ||
+      user.primaryCategory === job.category;
+    if (!hasCategory) {
+      throw new Error("This job category does not match your profile");
+    }
+
+    let distanceKm = 0;
+    if (!isZoneMode) {
+      const radiusKm = Math.min(user.radiusKm ?? MAX_RADIUS_KM, MAX_RADIUS_KM);
+      distanceKm = Math.round(
+        haversineDistanceKm(
+          user.latitude!,
+          user.longitude!,
+          job.latitude,
+          job.longitude
+        ) * 100
+      ) / 100;
+
+      if (distanceKm > radiusKm) {
+        throw new Error("Job is outside your search radius");
+      }
+    }
     
     // BACKUP QUEUE LOGIC
     // First instructor becomes primary, second becomes backup
@@ -426,15 +686,6 @@ export const claimJob = mutation({
       }
       
       // Use Haversine for precise distance
-      const distanceKm = user.latitude && user.longitude
-        ? Math.round(haversineDistanceKm(
-            user.latitude,
-            user.longitude,
-            job.latitude,
-            job.longitude
-          ) * 100) / 100
-        : 0;
-      
       const claimId = await ctx.db.insert("claims", {
         jobId: args.jobId,
         instructorId: user._id,
@@ -475,15 +726,6 @@ export const claimJob = mutation({
       if (!MVP_SKIP_CERTIFICATION && job.requiresVerification && !user.isVerified) {
         throw new Error("This job requires a verified instructor");
       }
-      
-      const distanceKm = user.latitude && user.longitude
-        ? Math.round(haversineDistanceKm(
-            user.latitude,
-            user.longitude,
-            job.latitude,
-            job.longitude
-          ) * 100) / 100
-        : 0;
       
       // Create backup claim
       const backupClaimId = await ctx.db.insert("claims", {
@@ -600,6 +842,8 @@ export const withdrawClaim = mutation({
           job.requiresVerification,
           job.currentRate
         );
+
+        await scheduleJobDispatch(ctx, args.jobId);
       }
       
     } else if (job.backupClaimedBy === user._id) {
@@ -638,40 +882,17 @@ export const respondToClaim = mutation({
       throw new Error("Only the studio owner can respond to claims");
     }
     
-    const now = Date.now();
-    
-    if (args.accept) {
-      await ctx.db.patch(args.claimId, {
-        status: "accepted",
-        respondedAt: now,
-      });
-      
-      await ctx.db.patch(claim.jobId, {
-        status: "confirmed",
-        confirmedAt: now,
-        updatedAt: now,
-      });
-      
-      await ctx.scheduler.runAfter(0, internal.notifications.notifyClaimAccepted, {
-        claimId: args.claimId,
-      });
-    } else {
-      await ctx.db.patch(args.claimId, {
-        status: "rejected",
-        respondedAt: now,
-      });
-      
-      await ctx.db.patch(claim.jobId, {
-        status: "open",
-        claimedBy: undefined,
-        claimedAt: undefined,
-        updatedAt: now,
-      });
-      
-      await ctx.scheduler.runAfter(0, internal.notifications.notifyClaimRejected, {
-        claimId: args.claimId,
-      });
-    }
+    await applyRespondToClaim(ctx, args.claimId, args.accept);
+  },
+});
+
+export const respondToClaimInternal = internalMutation({
+  args: {
+    claimId: v.id("claims"),
+    accept: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await applyRespondToClaim(ctx, args.claimId, args.accept);
   },
 });
 
@@ -708,6 +929,229 @@ export const cancelJob = mutation({
         instructorId: job.claimedBy,
       });
     }
+  },
+});
+
+async function applyRespondToClaim(
+  ctx: { db: any; scheduler: any },
+  claimId: any,
+  accept: boolean
+) {
+  const claim = await ctx.db.get(claimId);
+  if (!claim) throw new Error("Claim not found");
+
+  const job = await ctx.db.get(claim.jobId);
+  if (!job) throw new Error("Job not found");
+
+  const now = Date.now();
+
+  if (accept) {
+    await ctx.db.patch(claimId, {
+      status: "accepted",
+      respondedAt: now,
+    });
+
+    await ctx.db.patch(claim.jobId, {
+      status: "confirmed",
+      confirmedAt: now,
+      updatedAt: now,
+      backupClaimedBy: undefined,
+      backupClaimedAt: undefined,
+      backupAutoPromoted: undefined,
+    });
+
+    // Reject any other pending claims (including backup)
+    const otherClaims = await ctx.db
+      .query("claims")
+      .withIndex("by_job", (q: any) => q.eq("jobId", claim.jobId))
+      .collect();
+    for (const other of otherClaims) {
+      if (other._id === claim._id) continue;
+      if (other.status !== "pending") continue;
+      await ctx.db.patch(other._id, {
+        status: "rejected",
+        respondedAt: now,
+      });
+      await ctx.scheduler.runAfter(0, internal.notifications.notifyClaimRejected, {
+        claimId: other._id,
+      });
+    }
+
+    await ctx.scheduler.runAfter(0, internal.notifications.notifyClaimAccepted, {
+      claimId,
+    });
+    return;
+  }
+
+  await ctx.db.patch(claimId, {
+    status: "rejected",
+    respondedAt: now,
+  });
+
+  if (job.backupClaimedBy) {
+    // Promote backup to primary
+    await ctx.db.patch(claim.jobId, {
+      status: "claimed",
+      claimedBy: job.backupClaimedBy,
+      claimedAt: job.backupClaimedAt ?? now,
+      backupClaimedBy: undefined,
+      backupClaimedAt: undefined,
+      backupAutoPromoted: true,
+      updatedAt: now,
+    });
+
+    await ctx.scheduler.runAfter(0, internal.notifications.notifyBackupPromoted, {
+      jobId: claim.jobId,
+      newPrimaryInstructorId: job.backupClaimedBy,
+    });
+  } else {
+    await ctx.db.patch(claim.jobId, {
+      status: "open",
+      claimedBy: undefined,
+      claimedAt: undefined,
+      updatedAt: now,
+    });
+
+    // Re-add job to geospatial index so it appears in searches again
+    await syncJobLocation(
+      ctx as any, // Cast to MutationCtx for geo component compatibility
+      claim.jobId,
+      { latitude: job.latitude, longitude: job.longitude },
+      job.category,
+      "open",
+      job.requiresVerification,
+      job.currentRate
+    );
+
+    await scheduleJobDispatch(ctx, claim.jobId);
+  }
+
+  await ctx.scheduler.runAfter(0, internal.notifications.notifyClaimRejected, {
+    claimId,
+  });
+}
+
+/**
+ * Expire stale claims and reopen jobs.
+ * Runs on a cron (see convex/crons.ts).
+ */
+export const expireStaleClaims = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const cutoff = now - CLAIM_RESPONSE_TIMEOUT_MS;
+
+    let expiredCount = 0;
+    const statuses: Array<"claimed" | "backup_claimed"> = ["claimed", "backup_claimed"];
+
+    for (const status of statuses) {
+      const staleJobs = await ctx.db
+        .query("jobs")
+        .withIndex("by_status", (q) => q.eq("status", status))
+        .filter((q) => q.lt(q.field("claimedAt"), cutoff))
+        .collect();
+
+      for (const job of staleJobs) {
+        const current = await ctx.db.get(job._id);
+        if (!current) continue;
+        if (
+          current.status !== status ||
+          !current.claimedAt ||
+          current.claimedAt >= cutoff
+        ) {
+          continue;
+        }
+
+        await ctx.db.patch(current._id, {
+          status: "open",
+          claimedBy: undefined,
+          claimedAt: undefined,
+          backupClaimedBy: undefined,
+          backupClaimedAt: undefined,
+          backupAutoPromoted: undefined,
+          updatedAt: now,
+        });
+
+        // Re-add job to geospatial index so it appears in searches again
+        await syncJobLocation(
+          ctx,
+          current._id,
+          { latitude: current.latitude, longitude: current.longitude },
+          current.category,
+          "open",
+          current.requiresVerification,
+          current.currentRate
+        );
+
+        await scheduleJobDispatch(ctx, current._id);
+
+        // Reject any pending claims for this job
+        const pendingClaims = await ctx.db
+          .query("claims")
+          .withIndex("by_job_status", (q) =>
+            q.eq("jobId", current._id).eq("status", "pending")
+          )
+          .collect();
+        for (const claim of pendingClaims) {
+          await ctx.db.patch(claim._id, {
+            status: "rejected",
+            respondedAt: now,
+          });
+        }
+
+        expiredCount++;
+      }
+    }
+
+    return { expiredCount };
+  },
+});
+
+export const scheduleDispatchRetry = internalMutation({
+  args: {
+    jobId: v.id("jobs"),
+    dispatchVersion: v.number(),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, { jobId, dispatchVersion, error }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return { scheduled: false, reason: "missing" };
+    if (job.status !== "open") return { scheduled: false, reason: "not_open" };
+    if ((job.dispatchVersion ?? 0) !== dispatchVersion) {
+      return { scheduled: false, reason: "stale_version" };
+    }
+    if (job.notificationsSent) {
+      return { scheduled: false, reason: "already_notified" };
+    }
+
+    const attempt = (job.dispatchAttempt ?? 0) + 1;
+    if (attempt > DISPATCH_MAX_RETRIES) {
+      await ctx.db.patch(jobId, {
+        dispatchLastError: error ?? "dispatch_retry_exhausted",
+        updatedAt: Date.now(),
+      });
+      return { scheduled: false, reason: "max_retries" };
+    }
+
+    const delay = Math.min(
+      DISPATCH_BASE_DELAY_MS * Math.pow(2, attempt - 1),
+      DISPATCH_MAX_DELAY_MS
+    );
+    const now = Date.now();
+
+    await ctx.db.patch(jobId, {
+      dispatchAttempt: attempt,
+      dispatchLastError: error,
+      dispatchScheduledAt: now + delay,
+      updatedAt: now,
+    });
+
+    await ctx.scheduler.runAfter(delay, internal.notifications.dispatchJobNotifications, {
+      jobId,
+      dispatchVersion,
+    });
+
+    return { scheduled: true, attempt, delay };
   },
 });
 

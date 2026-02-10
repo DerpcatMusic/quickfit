@@ -1,6 +1,7 @@
 // Post Job Screen - Studio job posting
 // lib/features/jobs/presentation/post_job_screen.dart
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +13,8 @@ import '../../../core/constants/categories.dart';
 import '../../../core/router/app_router.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/jobs_provider.dart';
+import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
+import 'package:quickfit/core/utils/platform.dart';
 
 class PostJobScreen extends ConsumerStatefulWidget {
   const PostJobScreen({super.key});
@@ -164,16 +167,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Post a Job',
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      appBar: adaptiveAppBar(
+        context,
+        title: 'Post a Job',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -207,7 +203,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
               const SizedBox(height: 24),
 
               // Rate
-              _buildSectionTitle('Rate (₪)'),
+              _buildSectionTitle('Rate (ILS)'),
               const SizedBox(height: 12),
               _buildRateInput(),
               const SizedBox(height: 24),
@@ -432,7 +428,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       child: Row(
         children: [
           const Text(
-            '₪',
+            'ILS ',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -554,35 +550,63 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   }
 
   Widget _buildSubmitButton() {
+    final isCupertino = isCupertinoPlatform(context);
     return SizedBox(
       width: double.infinity,
       height: 56,
-      child: FilledButton(
-        onPressed: _isSubmitting ? null : _submit,
-        child: _isSubmitting
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(LucideIcons.send, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Post Job • ₪$_displayRate',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+      child: isCupertino
+          ? CupertinoButton.filled(
+              onPressed: _isSubmitting ? null : _submit,
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(LucideIcons.send, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Post Job • ILS $_displayRate',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-      ),
+            )
+          : FilledButton(
+              onPressed: _isSubmitting ? null : _submit,
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(LucideIcons.send, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Post Job • ILS $_displayRate',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
     );
   }
 }

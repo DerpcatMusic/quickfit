@@ -61,6 +61,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
   final _searchController = TextEditingController();
   bool _isMapReady = false;
   List<CityCluster> _cityClusters = [];
+  int _jobsSignature = 0;
 
   // Click delay for web - distinguish click from drag
   DateTime? _pointerDownTime;
@@ -140,8 +141,12 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
         _updateSources();
       }
     }
-    if (widget.jobs != oldWidget.jobs && _isMapReady) {
-      _updateJobSource();
+    if (_isMapReady && widget.jobs != null) {
+      final nextSignature = _computeJobsSignature(widget.jobs!);
+      if (nextSignature != _jobsSignature) {
+        _jobsSignature = nextSignature;
+        _updateJobSource();
+      }
     }
     if (widget.initialSelectedZones != oldWidget.initialSelectedZones) {
       _selectedZoneIds = Set.from(widget.initialSelectedZones);
@@ -189,9 +194,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
     final zoneSelectedBorder = isDark ? '#BBDEFB' : '#0D47A1';
     final zoneLabelColor = isDark ? '#E3F2FD' : '#1A237E';
 
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     // ZONES - Visible at ALL zoom levels
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
 
     // Zone fills - always visible (opacity varies by zoom would be nice but keep simple)
     await controller.addFillLayer(
@@ -216,9 +221,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       // NO minzoom - zones always visible!
     );
 
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     // SELECTED ZONES - Prominent highlight
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
 
     await controller.addFillLayer(
       'zones-selected',
@@ -239,9 +244,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       ),
     );
 
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     // CITY LABELS - Just text, no ugly polygons
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
 
     await controller.addCircleLayer(
       'cities',
@@ -272,9 +277,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       maxzoom: MapConstants.cityToZoneZoomThreshold,
     );
 
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     // ZONE LABELS - At higher zoom
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
 
     await controller.addSymbolLayer(
       'zones-static',
@@ -315,7 +320,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
         SymbolLayerProperties(
           textField: [
             'concat',
-            '₪',
+            'ILS ',
             [
               'to-string',
               ['get', 'rate']
@@ -329,6 +334,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
           textAnchor: 'top',
         ),
       );
+    }
+    if (widget.jobs != null) {
+      _jobsSignature = _computeJobsSignature(widget.jobs!);
     }
   }
 
@@ -391,6 +399,22 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
     if (widget.jobs != null && widget.jobs!.isNotEmpty) {
       _updateJobSource();
     }
+  }
+
+  int _computeJobsSignature(List<QuickFitJobMarker> jobs) {
+    var hash = jobs.length;
+    for (final job in jobs) {
+      hash = Object.hash(
+        hash,
+        job.id,
+        job.position.latitude.toStringAsFixed(5),
+        job.position.longitude.toStringAsFixed(5),
+        job.isSos,
+        job.label,
+        job.currentRate,
+      );
+    }
+    return hash;
   }
 
   Future<void> _addStaticZoneSource() async {
@@ -515,9 +539,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
     if (_controller == null) return;
     final zoom = _controller!.cameraPosition?.zoom ?? 0;
 
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     // 1. Check for Jobs First (Any Zoom)
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     if (widget.jobs != null) {
       final jobFeatures = await _controller!.queryRenderedFeatures(
           screenPoint, ['jobs-circles', 'jobs-labels'], null);
@@ -532,9 +556,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       }
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     // 2. ZONE CLICK - Try zones at ALL zoom levels
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     // Query zone layers - they're now visible at all zooms
     final zoneFeatures = await _controller!.queryRenderedFeatures(
       screenPoint,
@@ -559,9 +583,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       }
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     // 3. CITY LABEL CLICK - At low zoom, toggle city zones
-    // ─────────────────────────────────────────────────────────────
+    // --------------------------------------------------------------------------
     if (zoom < MapConstants.cityToZoneZoomThreshold) {
       final cityFeatures = await _controller!.queryRenderedFeatures(
         screenPoint,
@@ -656,6 +680,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final media = MediaQuery.of(context);
+    final topInset = media.padding.top;
+    final bottomInset = media.padding.bottom;
 
     // Filter zones for search
     final results = _filteredZones;
@@ -682,7 +709,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
 
         // Search & Results
         Positioned(
-          top: 16 + widget.topPadding,
+          top: 16 + widget.topPadding + topInset,
           left: 16,
           right: 16,
           child: Column(
@@ -835,7 +862,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
 
         // Selected Badge
         Positioned(
-          bottom: 16,
+          bottom: 16 + bottomInset,
           left: 16,
           child: Card(
             color: theme.colorScheme.primaryContainer,
@@ -855,7 +882,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
         // Clear Button
         if (_selectedZoneIds.isNotEmpty)
           Positioned(
-            bottom: 16,
+            bottom: 16 + bottomInset,
             right: 16,
             child: FloatingActionButton.extended(
               heroTag: 'clearZones',

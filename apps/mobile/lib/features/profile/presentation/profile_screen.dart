@@ -1,6 +1,7 @@
 // Profile Screen - User profile and settings
 // lib/features/profile/presentation/profile_screen.dart
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,10 +11,16 @@ import 'package:quickfit/core/constants/app_constants.dart';
 import 'package:quickfit/core/constants/categories.dart';
 import 'package:quickfit/core/router/app_router.dart';
 import 'package:quickfit/core/services/location_service.dart';
+import 'package:quickfit/core/services/notification_service.dart';
+import 'package:quickfit/core/services/settings_service.dart';
+import 'package:quickfit/core/providers/settings_provider.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:quickfit/core/theme/app_colors.dart';
+import 'package:quickfit/core/utils/platform.dart';
+import 'package:quickfit/shared/widgets/adaptive_dialog.dart' as qf_dialog;
+import 'package:quickfit/l10n/app_localizations.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -33,6 +40,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   double _radiusKm = AppConstants.defaultRadiusKm;
   double? _lat;
   double? _lng;
+  String _languageCode = UserSettings.defaults.languageCode;
+  bool _notificationsEnabled = UserSettings.defaults.notificationsEnabled;
+  bool _regularJobAlerts = UserSettings.defaults.regularJobAlerts;
+  bool _sosJobAlerts = UserSettings.defaults.sosJobAlerts;
+
+  AppLocalizations get _l10n => AppLocalizations.of(context)!;
 
   @override
   void initState() {
@@ -46,12 +59,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _selectedCategories = Set.from(authState.categories ?? []);
     _radiusKm = authState.radiusKm ?? AppConstants.defaultRadiusKm;
     _initData();
+    _loadSettings();
   }
 
   void _initData() {
     final authState = ref.read(authProvider);
     _radiusKm = authState.radiusKm ?? AppConstants.defaultRadiusKm;
     _selectedCategories = Set.from(authState.categories ?? []);
+  }
+
+  Future<void> _loadSettings() async {
+    final cached = ref.read(settingsProvider).value;
+    final settings = cached ?? await SettingsService.instance.load();
+    if (!mounted) return;
+    setState(() {
+      _languageCode = settings.languageCode;
+      _notificationsEnabled = settings.notificationsEnabled;
+      _regularJobAlerts = settings.regularJobAlerts;
+      _sosJobAlerts = settings.sosJobAlerts;
+    });
   }
 
   @override
@@ -86,7 +112,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully')),
+        SnackBar(content: Text(_l10n.profileUpdated)),
       );
       setState(() => _isEditing = false);
     } finally {
@@ -145,10 +171,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildEditForm(ThemeData theme) {
+    final isCupertino = isCupertinoPlatform(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Profile Info'),
+        _buildSectionTitle(_l10n.profileInfo),
         const SizedBox(height: 12),
         Card(
           elevation: 0,
@@ -162,16 +189,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               children: [
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Display Name',
+                  decoration: InputDecoration(
+                    labelText: _l10n.displayNameLabel,
                     prefixIcon: Icon(LucideIcons.user),
                   ),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
+                  decoration: InputDecoration(
+                    labelText: _l10n.phoneNumber,
                     prefixIcon: Icon(LucideIcons.phone),
                   ),
                   keyboardType: TextInputType.phone,
@@ -182,8 +209,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   builder: (context, controller, focusNode) => TextFormField(
                     controller: controller,
                     focusNode: focusNode,
-                    decoration: const InputDecoration(
-                      labelText: 'Home Address',
+                    decoration: InputDecoration(
+                      labelText: _l10n.homeAddress,
                       prefixIcon: Icon(LucideIcons.mapPin),
                     ),
                   ),
@@ -213,7 +240,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        _buildSectionTitle('Search Radius'),
+        _buildSectionTitle(_l10n.searchRadius),
         const SizedBox(height: 12),
         Card(
           elevation: 0,
@@ -228,9 +255,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Maximum Distance', style: theme.textTheme.bodyLarge),
+                    Text(_l10n.maximumDistance,
+                        style: theme.textTheme.bodyLarge),
                     Text(
-                      '${_radiusKm.toStringAsFixed(1)} km',
+                      _l10n.radiusKmLabel(_radiusKm.toStringAsFixed(1)),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: theme.colorScheme.primary,
@@ -239,29 +267,68 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Slider(
-                  value: _radiusKm.clamp(0.5, 50.0),
-                  min: 0.5,
-                  max: 50.0,
-                  divisions: 99,
-                  onChanged: (value) {
-                    setState(() {
-                      _radiusKm = value;
-                    });
-                  },
-                ),
+                isCupertino
+                    ? CupertinoSlider(
+                        value: _radiusKm.clamp(0.5, 15.0),
+                        min: 0.5,
+                        max: 15.0,
+                        divisions: 29,
+                        onChanged: (value) {
+                          setState(() {
+                            _radiusKm = value;
+                          });
+                        },
+                      )
+                    : Slider(
+                        value: _radiusKm.clamp(0.5, 15.0),
+                        min: 0.5,
+                        max: 15.0,
+                        divisions: 29,
+                        onChanged: (value) {
+                          setState(() {
+                            _radiusKm = value;
+                          });
+                        },
+                      ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 24),
-        _buildSectionTitle('Expertise'),
+        _buildSectionTitle(_l10n.expertise),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: FitnessCategory.values.map((cat) {
             final isSelected = _selectedCategories.contains(cat.id);
+            if (isCupertino) {
+              return CupertinoButton(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : CupertinoColors.systemGrey5,
+                borderRadius: BorderRadius.circular(14),
+                onPressed: () {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedCategories.remove(cat.id);
+                    } else {
+                      _selectedCategories.add(cat.id);
+                    }
+                  });
+                },
+                child: Text(
+                  '${cat.emoji} ${cat.nameEn}',
+                  style: TextStyle(
+                    color: isSelected
+                        ? Colors.white
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+              );
+            }
             return FilterChip(
               label: Text('${cat.emoji} ${cat.nameEn}'),
               selected: isSelected,
@@ -282,20 +349,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildSaveBar(ThemeData theme) {
+    final isCupertino = isCupertinoPlatform(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: FilledButton(
-          onPressed: _isSaving ? null : _saveProfile,
-          child: _isSaving
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : const Text('Save Changes'),
-        ),
+        child: isCupertino
+            ? CupertinoButton.filled(
+                onPressed: _isSaving ? null : _saveProfile,
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text(_l10n.saveChanges),
+              )
+            : FilledButton(
+                onPressed: _isSaving ? null : _saveProfile,
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text(_l10n.saveChanges),
+              ),
       ),
     );
   }
@@ -311,25 +391,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildAccountSection(
       firebase_auth.User? user, String? role, ThemeData theme) {
     return _buildSection(
-      title: 'Account',
+      title: _l10n.account,
       children: [
         _buildMenuItem(
           icon: LucideIcons.user,
-          title: 'Display Name',
-          trailing: Text(user?.displayName ?? 'Not set',
+          title: _l10n.displayNameLabel,
+          trailing: Text(user?.displayName ?? _l10n.notSet,
               style: TextStyle(color: Colors.grey[600])),
         ),
         _buildMenuItem(
           icon: LucideIcons.mail,
-          title: 'Email',
-          trailing: Text(user?.email ?? 'Not set',
+          title: _l10n.email,
+          trailing: Text(user?.email ?? _l10n.notSet,
               style: TextStyle(color: Colors.grey[600])),
         ),
         if (role == 'instructor')
           _buildMenuItem(
             icon: LucideIcons.mapPin,
-            title: 'Work Radius',
-            trailing: Text('${_radiusKm.round()} km',
+            title: _l10n.workRadius,
+            trailing: Text(
+                _l10n.radiusKmLabel(_radiusKm.round().toString()),
                 style: TextStyle(color: Colors.grey[600])),
           ),
       ],
@@ -338,7 +419,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildCategoriesSection(String? role, ThemeData theme) {
     return _buildSection(
-      title: role == 'instructor' ? 'Teaching Categories' : 'Class Types',
+      title: role == 'instructor'
+          ? _l10n.teachingCategories
+          : _l10n.classTypes,
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
@@ -396,28 +479,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             onTap: () => _showAddPasswordDialog(),
           ),
         _buildMenuItem(
-            icon: LucideIcons.bell, title: 'Notifications', onTap: () {}),
+          icon: LucideIcons.bell,
+          title: 'Notifications',
+          trailing: Text(
+            _notificationLabel(),
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          onTap: _showNotificationSettings,
+        ),
         _buildMenuItem(
           icon: LucideIcons.refreshCw,
           title: 'Redo Onboarding',
           onTap: () async {
-            final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Redo Onboarding?'),
-                content: const Text(
-                    'This will let you choose your role and profile data again.'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Redo'),
-                  ),
-                ],
+            final isCupertino = isCupertinoPlatform(context);
+            final confirmed = await qf_dialog.showAdaptiveDialog<bool>(
+              context,
+              title: const Text('Redo Onboarding?'),
+              content: const Text(
+                'This will let you choose your role and profile data again.',
               ),
+              actions: isCupertino
+                  ? [
+                      CupertinoDialogAction(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      CupertinoDialogAction(
+                        onPressed: () => Navigator.pop(context, true),
+                        isDestructiveAction: true,
+                        child: const Text('Redo'),
+                      ),
+                    ]
+                  : [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Redo'),
+                      ),
+                    ],
             );
 
             if (confirmed == true) {
@@ -429,18 +531,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             icon: LucideIcons.globe,
             title: 'Language',
             trailing:
-                Text('English', style: TextStyle(color: Colors.grey[600])),
-            onTap: () {}),
+                Text(_languageLabel(), style: TextStyle(color: Colors.grey[600])),
+            onTap: _showLanguagePicker),
         _buildMenuItem(
             icon: LucideIcons.helpCircle,
             title: 'Help & Support',
-            onTap: () {}),
+            onTap: () => _showInfoSheet(
+                  title: 'Help & Support',
+                  body:
+                      'Support contact is not configured yet. Add support details in your app settings when ready.',
+                )),
         _buildMenuItem(
             icon: LucideIcons.fileText,
             title: 'Terms of Service',
-            onTap: () {}),
+            onTap: () => _showInfoSheet(
+                  title: 'Terms of Service',
+                  body:
+                      'Terms of Service are not configured yet. Add your terms copy here when ready.',
+                )),
         _buildMenuItem(
-            icon: LucideIcons.shield, title: 'Privacy Policy', onTap: () {}),
+            icon: LucideIcons.shield,
+            title: 'Privacy Policy',
+            onTap: () => _showInfoSheet(
+                  title: 'Privacy Policy',
+                  body:
+                      'Privacy Policy is not configured yet. Add your policy copy here when ready.',
+                )),
       ],
     );
   }
@@ -468,56 +584,64 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildHeader(
       BuildContext context, AuthState authState, AppColors colors) {
     final theme = Theme.of(context);
+    final isCupertino = isCupertinoPlatform(context);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 64, 24, 24),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainer,
         border: Border(
           bottom: BorderSide(color: colors.divider),
         ),
       ),
-      child: Column(
-        children: [
-          Row(
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
             children: [
-              InkWell(
-                onTap: () => _showAccountSwitcher(context),
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        authState.role == 'studio'
-                            ? 'Studio Account'
-                            : 'Instructor Profile',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
+              Row(
+                children: [
+                  InkWell(
+                    onTap: () => _showAccountSwitcher(context),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            authState.role == 'studio'
+                                ? 'Studio Account'
+                                : 'Instructor Profile',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(LucideIcons.chevronDown,
+                              size: 16, color: theme.colorScheme.primary),
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      Icon(LucideIcons.chevronDown,
-                          size: 16, color: theme.colorScheme.primary),
-                    ],
+                    ),
                   ),
-                ),
+                  const Spacer(),
+                  isCupertino
+                      ? CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: _showSettingsQuickActions,
+                          child: const Icon(CupertinoIcons.settings),
+                        )
+                      : IconButton(
+                          icon: const Icon(LucideIcons.settings),
+                          onPressed: _showSettingsQuickActions,
+                        ),
+                ],
               ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(LucideIcons.settings),
-                onPressed: () {
-                  // Settings logic
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
+              const SizedBox(height: 16),
+              Row(
+                children: [
               CircleAvatar(
                 radius: 40,
                 backgroundColor: theme.colorScheme.primaryContainer,
@@ -550,8 +674,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
             ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -691,6 +817,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     String? title,
     required List<Widget> children,
   }) {
+    final isCupertino = isCupertinoPlatform(context);
+    if (isCupertino) {
+      return CupertinoListSection.insetGrouped(
+        header: title != null ? Text(title) : null,
+        children: children,
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -727,6 +861,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     Widget? trailing,
     VoidCallback? onTap,
   }) {
+    final isCupertino = isCupertinoPlatform(context);
+    if (isCupertino) {
+      return CupertinoListTile(
+        leading: Icon(icon, size: 20, color: titleColor ?? Colors.grey[600]),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontSize: 15,
+            color: titleColor ?? Colors.black87,
+          ),
+        ),
+        subtitle: subtitle != null
+            ? Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[500],
+                ),
+              )
+            : null,
+        trailing: trailing ??
+            (onTap != null
+                ? const Icon(CupertinoIcons.chevron_forward, size: 18)
+                : null),
+        onTap: onTap,
+      );
+    }
+
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -771,6 +933,501 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  String _languageLabel() {
+    switch (_languageCode) {
+      case 'he':
+        return 'עברית';
+      case 'en':
+      default:
+        return 'English';
+    }
+  }
+
+  String _notificationLabel() {
+    if (!_notificationsEnabled) return 'Off';
+    if (_regularJobAlerts && _sosJobAlerts) return 'All';
+    if (_sosJobAlerts && !_regularJobAlerts) return 'SOS only';
+    if (_regularJobAlerts && !_sosJobAlerts) return 'Regular only';
+    return 'Muted';
+  }
+
+  Future<void> _showNotificationSettings() async {
+    final current = await SettingsService.instance.load();
+    if (!mounted) return;
+
+    bool enabled = current.notificationsEnabled;
+    bool regular = current.regularJobAlerts;
+    bool sos = current.sosJobAlerts;
+    final isCupertino = isCupertinoPlatform(context);
+
+    Future<void> save() async {
+      final updated = current.copyWith(
+        notificationsEnabled: enabled,
+        regularJobAlerts: regular,
+        sosJobAlerts: sos,
+      );
+      await ref.read(settingsProvider.notifier).saveSettings(updated);
+      await NotificationService.instance.applySettings(updated);
+      if (!mounted) return;
+      setState(() {
+        _notificationsEnabled = updated.notificationsEnabled;
+        _regularJobAlerts = updated.regularJobAlerts;
+        _sosJobAlerts = updated.sosJobAlerts;
+      });
+    }
+
+    if (isCupertino) {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoPopupSurface(
+          child: SafeArea(
+            top: false,
+            child: StatefulBuilder(
+              builder: (context, setSheetState) => Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Notifications',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    CupertinoFormSection.insetGrouped(
+                      children: [
+                        CupertinoFormRow(
+                          prefix: const Text('Enable Alerts'),
+                          child: CupertinoSwitch(
+                            value: enabled,
+                            onChanged: (value) {
+                              setSheetState(() => enabled = value);
+                            },
+                          ),
+                        ),
+                        CupertinoFormRow(
+                          prefix: const Text('Regular Jobs'),
+                          child: CupertinoSwitch(
+                            value: regular,
+                            onChanged: enabled
+                                ? (value) {
+                                    setSheetState(() => regular = value);
+                                  }
+                                : null,
+                          ),
+                        ),
+                        CupertinoFormRow(
+                          prefix: const Text('SOS Jobs'),
+                          child: CupertinoSwitch(
+                            value: sos,
+                            onChanged: enabled
+                                ? (value) {
+                                    setSheetState(() => sos = value);
+                                  }
+                                : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton.filled(
+                        onPressed: () async {
+                          await save();
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Save'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Notifications',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                title: const Text('Enable Alerts'),
+                value: enabled,
+                onChanged: (value) => setSheetState(() => enabled = value),
+              ),
+              SwitchListTile(
+                title: const Text('Regular Jobs'),
+                value: regular,
+                onChanged: enabled
+                    ? (value) => setSheetState(() => regular = value)
+                    : null,
+              ),
+              SwitchListTile(
+                title: const Text('SOS Jobs'),
+                value: sos,
+                onChanged:
+                    enabled ? (value) => setSheetState(() => sos = value) : null,
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    await save();
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Save'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showLanguagePicker() async {
+    final current = await SettingsService.instance.load();
+    if (!mounted) return;
+    String selected = current.languageCode;
+    final isCupertino = isCupertinoPlatform(context);
+
+    Future<void> save(String code) async {
+      final updated = current.copyWith(languageCode: code);
+      await ref.read(settingsProvider.notifier).saveSettings(updated);
+      if (!mounted) return;
+      setState(() => _languageCode = code);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Restart app to apply language.')),
+      );
+    }
+
+    if (isCupertino) {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoActionSheet(
+          title: const Text('Language'),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () async {
+                selected = 'en';
+                await save(selected);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+              },
+              child: const Text('English'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () async {
+                selected = 'he';
+                await save(selected);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+              },
+              child: const Text('עברית'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Language',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selected,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'en',
+                    child: Text('English'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'he',
+                    child: Text('עברית'),
+                  ),
+                ],
+                onChanged: (value) =>
+                    setSheetState(() => selected = value ?? 'en'),
+                decoration: const InputDecoration(
+                  labelText: 'Language',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    await save(selected);
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Save'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showInfoSheet({
+    required String title,
+    required String body,
+  }) async {
+    final isCupertino = isCupertinoPlatform(context);
+    if (isCupertino) {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoPopupSurface(
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  Text(body, style: const TextStyle(fontSize: 14)),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton.filled(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Text(body),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSettingsQuickActions() {
+    final isCupertino = isCupertinoPlatform(context);
+    if (isCupertino) {
+      showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoActionSheet(
+          title: const Text('Settings'),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                setState(() => _isEditing = true);
+              },
+              child: const Text('Edit Profile'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _showNotificationSettings();
+              },
+              child: const Text('Notifications'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _showLanguagePicker();
+              },
+              child: const Text('Language'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _showInfoSheet(
+                  title: 'Help & Support',
+                  body:
+                      'Support contact is not configured yet. Add support details in your app settings when ready.',
+                );
+              },
+              child: const Text('Help & Support'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _showInfoSheet(
+                  title: 'Terms of Service',
+                  body:
+                      'Terms of Service are not configured yet. Add your terms copy here when ready.',
+                );
+              },
+              child: const Text('Terms of Service'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _showInfoSheet(
+                  title: 'Privacy Policy',
+                  body:
+                      'Privacy Policy is not configured yet. Add your policy copy here when ready.',
+                );
+              },
+              child: const Text('Privacy Policy'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(LucideIcons.user),
+              title: const Text('Edit Profile'),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _isEditing = true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.bell),
+              title: const Text('Notifications'),
+              onTap: () {
+                Navigator.pop(context);
+                _showNotificationSettings();
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.globe),
+              title: const Text('Language'),
+              onTap: () {
+                Navigator.pop(context);
+                _showLanguagePicker();
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.helpCircle),
+              title: const Text('Help & Support'),
+              onTap: () {
+                Navigator.pop(context);
+                _showInfoSheet(
+                  title: 'Help & Support',
+                  body:
+                      'Support contact is not configured yet. Add support details in your app settings when ready.',
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.fileText),
+              title: const Text('Terms of Service'),
+              onTap: () {
+                Navigator.pop(context);
+                _showInfoSheet(
+                  title: 'Terms of Service',
+                  body:
+                      'Terms of Service are not configured yet. Add your terms copy here when ready.',
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.shield),
+              title: const Text('Privacy Policy'),
+              onTap: () {
+                Navigator.pop(context);
+                _showInfoSheet(
+                  title: 'Privacy Policy',
+                  body:
+                      'Privacy Policy is not configured yet. Add your policy copy here when ready.',
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Show dialog to add password for Google-only users.
   Future<void> _showAddPasswordDialog() async {
     final passwordController = TextEditingController();
@@ -780,69 +1437,137 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final authState = ref.read(authProvider);
     final email = authState.user?.email ?? '';
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Password'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Add a password to allow signing in with email ($email)',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: Icon(LucideIcons.lock),
+    final isCupertino = isCupertinoPlatform(context);
+    final confirmed = await (isCupertino
+        ? showCupertinoDialog<bool>(
+            context: context,
+            builder: (context) {
+              String? errorText;
+              return StatefulBuilder(
+                builder: (context, setState) => CupertinoAlertDialog(
+                  title: const Text('Add Password'),
+                  content: Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      Text(
+                        'Add a password to allow signing in with email ($email)',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                      CupertinoTextField(
+                        controller: passwordController,
+                        placeholder: 'Password (6+ chars)',
+                        obscureText: true,
+                      ),
+                      const SizedBox(height: 8),
+                      CupertinoTextField(
+                        controller: confirmController,
+                        placeholder: 'Confirm Password',
+                        obscureText: true,
+                      ),
+                      if (errorText != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          errorText!,
+                          style: const TextStyle(
+                            color: CupertinoColors.systemRed,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  actions: [
+                    CupertinoDialogAction(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    CupertinoDialogAction(
+                      isDefaultAction: true,
+                      onPressed: () {
+                        final password = passwordController.text.trim();
+                        final confirm = confirmController.text.trim();
+                        if (password.length < 6) {
+                          setState(() =>
+                              errorText = 'Password must be at least 6 characters');
+                          return;
+                        }
+                        if (password != confirm) {
+                          setState(() => errorText = 'Passwords do not match');
+                          return;
+                        }
+                        Navigator.pop(context, true);
+                      },
+                      child: const Text('Add Password'),
+                    ),
+                  ],
                 ),
-                validator: (value) {
-                  if (value == null || value.length < 6) {
-                    return 'Password must be at least 6 characters';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: confirmController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm Password',
-                  prefixIcon: Icon(LucideIcons.lock),
-                ),
-                validator: (value) {
-                  if (value != passwordController.text) {
-                    return 'Passwords do not match';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(context, true);
-              }
+              );
             },
-            child: const Text('Add Password'),
-          ),
-        ],
-      ),
-    );
+          )
+        : showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Add Password'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Add a password to allow signing in with email ($email)',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: Icon(LucideIcons.lock),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: confirmController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirm Password',
+                        prefixIcon: Icon(LucideIcons.lock),
+                      ),
+                      validator: (value) {
+                        if (value != passwordController.text) {
+                          return 'Passwords do not match';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (formKey.currentState!.validate()) {
+                      Navigator.pop(context, true);
+                    }
+                  },
+                  child: const Text('Add Password'),
+                ),
+              ],
+            ),
+          ));
 
     if (confirmed == true) {
       final success = await ref.read(authProvider.notifier).linkEmailPassword(

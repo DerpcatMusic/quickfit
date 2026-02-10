@@ -1,137 +1,145 @@
 // convex/notifications.ts
 // Push notification handling
-// Uses H3 hex-based matching (O(1) vs O(n) geospatial)
+// Dual-mode dispatch: radius (geospatial) + zone (indexed table)
 
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 // ==========================================
 // NOTIFICATION DISPATCH
 // ==========================================
 
 /**
- * Dispatch notifications to all matching instructors.
- * Filters by:
- * 1. H3 hex intersection (O(1) lookup!)
- * 2. Category match (skill-based)
- * 3. Verification requirements (relaxed for MVP)
- * 4. Notification preferences (opt-in by default)
+ * Unified dispatch for dual-mode instructor matching.
  * 
- * H3 Resolution 11 = ~50m precision.
- * Uses 1-ring expansion for "neighborhood" coverage (~150m radius).
+ * Queries two systems in parallel:
+ * 1. RADIUS MODE: Geospatial index for instructors within job radius
+ * 2. ZONE MODE: Indexed table for instructors subscribed to job's zone
+ * 
+ * Results are merged, deduped, and batch-notified via FCM.
  */
 export const dispatchJobNotifications = internalAction({
-  args: { jobId: v.id("jobs") },
-  handler: async (ctx, { jobId }) => {
+  args: { jobId: v.id("jobs"), dispatchVersion: v.optional(v.number()) },
+  handler: async (ctx, { jobId, dispatchVersion }) => {
     const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
     if (!job || job.status !== "open") return;
+    if (dispatchVersion !== undefined && job.dispatchVersion !== dispatchVersion) return;
+    if (job.notificationsSent) return;
+
+    // ========================================
+    // 1. RADIUS MODE: Geospatial query
+    // ========================================
+    const radiusMatches = await ctx.runQuery(internal.geo.findInstructorsForJobQuery, {
+      jobPoint: { latitude: job.latitude, longitude: job.longitude },
+      jobCategory: job.category,
+      requiresVerification: job.requiresVerification,
+    });
+    console.log(`[dispatch] Radius mode: ${radiusMatches.length} instructors`);
+
+    // ========================================
+    // 2. ZONE MODE: Indexed table query
+    // ========================================
+    let zoneMatches: Array<{ instructorId: Id<"users"> }> = [];
+    if (job.zoneId) {
+      zoneMatches = await ctx.runQuery(internal.zoneSubscriptions.findZoneInstructors, {
+        zoneId: job.zoneId,
+        category: job.category,
+        requiresVerification: job.requiresVerification,
+      });
+      console.log(`[dispatch] Zone mode: ${zoneMatches.length} instructors`);
+    }
+
+    // ========================================
+    // 3. Merge & dedupe instructor IDs
+    // ========================================
+    const instructorIds = new Set<Id<"users">>([
+      ...radiusMatches.map((m: { instructorId: Id<"users"> }) => m.instructorId),
+      ...zoneMatches.map((m: { instructorId: Id<"users"> }) => m.instructorId),
+    ]);
     
-    if (!job.locationHex11) {
-      console.log("[dispatchJobNotifications] Job has no H3 hex, skipping");
+    if (instructorIds.size === 0) {
+      console.log(`[dispatch] No instructors matched for job ${jobId}`);
+      return;
+    }
+    console.log(`[dispatch] Total unique instructors: ${instructorIds.size}`);
+
+    // ========================================
+    // 4. Fetch instructor details for FCM tokens
+    // ========================================
+    const instructors = await Promise.all(
+      Array.from(instructorIds).map((id) =>
+        ctx.runQuery(internal.users.getUserById, { userId: id })
+      )
+    );
+
+    const toNotify = instructors.filter((i: any): i is NonNullable<typeof i> => !!i && !!i.fcmToken);
+    if (toNotify.length === 0) {
+      console.log(`[dispatch] No instructors with FCM tokens for job ${jobId}`);
       return;
     }
 
-    // 1-RING EXPANSION (Neighborhood coverage)
-    // gridDisk with k=1 returns the center hex + its 6 neighbors
-    const hexesToMatch = [job.locationHex11];
-    try {
-      // We import h3-js dynamically or use the local utility if it wraps gridDisk
-      // Accessing h3 utilities via internal action helpers if available
-      const neighbors = await ctx.runQuery(internal.h3.getNeighbors, { 
-        hex: job.locationHex11 
-      });
-      hexesToMatch.push(...neighbors);
-    } catch (e) {
-      console.error("[dispatchJobNotifications] Error getting hex neighbors:", e);
-    }
-    
-    // Find all unique instructors in these hexes
-    const instructorMap = new Map();
-    
-    for (const hex of hexesToMatch) {
-      const matches = await ctx.runQuery(internal.notifications.getMatchingInstructors, {
-        locationHex11: hex,
-        category: job.category
-      });
-      
-      for (const inst of matches) {
-        instructorMap.set(inst._id, inst);
-      }
-    }
-    
-    const matchingInstructors = Array.from(instructorMap.values());
-    console.log(`[dispatchJobNotifications] Found ${matchingInstructors.length} instructors across ${hexesToMatch.length} hexes`);
-    
-    if (matchingInstructors.length === 0) return;
-    
+    // ========================================
+    // 5. Batch push notifications
+    // ========================================
     const sosPrefix = job.sosBoostApplied ? "🚨 SOS " : "";
     const title = `${sosPrefix}New ${job.category} job nearby!`;
     const body = `₪${job.currentRate.toFixed(0)} • ${job.address}`;
     
-    for (const instructor of matchingInstructors) {
-      if (!instructor.fcmToken) continue;
-      
-      await ctx.runAction(internal.actions.sendPush.send, {
-        fcmToken: instructor.fcmToken,
+    const BATCH_SIZE = 500;
+    let dispatchFailed = false;
+    let dispatchError: string | undefined;
+
+    for (let i = 0; i < toNotify.length; i += BATCH_SIZE) {
+      const batch = toNotify.slice(i, i + BATCH_SIZE);
+
+      const result = await ctx.runAction(internal.actions.sendPush.sendBatch, {
+        fcmTokens: batch.map((instructor: { fcmToken?: string }) => instructor.fcmToken!),
         title,
         body,
-        data: { 
-          type: "new_job", 
+        data: {
+          type: "new_job",
           jobId: job._id,
         },
       });
       
-      await ctx.runMutation(internal.notifications.logNotification, {
-        userId: instructor._id,
-        jobId: job._id,
-        type: "new_job",
-        title,
-        body,
-      });
+      if (!result?.success) {
+        dispatchFailed = true;
+        dispatchError = result?.error ?? "dispatch_failed";
+        break;
+      }
+
+      // Log each notification
+      await Promise.all(
+        batch.map((instructor: { _id: Id<"users"> }) =>
+          ctx.runMutation(internal.notifications.logNotification, {
+            userId: instructor._id,
+            jobId: job._id,
+            type: "new_job",
+            title,
+            body,
+          })
+        )
+      );
     }
-    
+
+    if (dispatchFailed) {
+      await ctx.runMutation(internal.jobs.scheduleDispatchRetry, {
+        jobId,
+        dispatchVersion: dispatchVersion ?? job.dispatchVersion ?? 0,
+        error: dispatchError,
+      });
+      return;
+    }
+
     await ctx.runMutation(internal.jobs.markNotified, {
       jobId,
-      instructorIds: matchingInstructors.map(i => i._id),
+      instructorIds: toNotify.map((m: { _id: Id<"users"> }) => m._id),
     });
   },
 });
 
-/**
- * Internal query to find instructors matching an H3 hex and category.
- * Used by dispatchJobNotifications.
- */
-export const getMatchingInstructors = internalQuery({
-  args: {
-    locationHex11: v.string(),
-    category: v.string(),
-  },
-  handler: async (ctx, args) => {
-    // We query by role and then filter by category and work area.
-    // Given the scale, this is efficient. Optimization via workAreaHexes11 index
-    // can be added later if needed.
-    const instructors = await ctx.db
-      .query("users")
-      .withIndex("by_role", (q) => q.eq("role", "instructor"))
-      .filter((q) => 
-        q.and(
-          q.eq(q.field("notificationsEnabled"), true),
-          // Verification check relaxed for MVP, but we log if they aren't verified
-        )
-      )
-      .collect();
-
-    return instructors.filter(i => {
-      // Match category
-      const hasCategory = i.categories?.includes(args.category) || i.primaryCategory === args.category;
-      // Match H3 hex intersection
-      const inWorkArea = (i.workAreaHexes11 || []).includes(args.locationHex11);
-      
-      return hasCategory && inWorkArea;
-    });
-  },
-});
 
 
 export const notifyStudioOfClaim = internalAction({
@@ -388,7 +396,18 @@ export const logNotification = internalMutation({
   args: {
     userId: v.id("users"),
     jobId: v.optional(v.id("jobs")),
-    type: v.string(),
+    type: v.union(
+      v.literal("new_job"),
+      v.literal("job_claimed"),
+      v.literal("claim_accepted"),
+      v.literal("claim_rejected"),
+      v.literal("job_cancelled"),
+      v.literal("backup_claimed"),
+      v.literal("backup_promoted"),
+      v.literal("backup_promoted_studio"),
+      v.literal("verification_complete"),
+      v.literal("reminder")
+    ),
     title: v.string(),
     body: v.string(),
   },
@@ -396,7 +415,7 @@ export const logNotification = internalMutation({
     await ctx.db.insert("notificationLogs", {
       userId: args.userId,
       jobId: args.jobId,
-      type: args.type as any,
+      type: args.type,
       title: args.title,
       body: args.body,
       sent: true,

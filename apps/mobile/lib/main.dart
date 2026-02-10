@@ -15,6 +15,7 @@ import 'core/services/offline_queue_manager.dart';
 import 'core/services/background_sync_service.dart';
 import 'core/constants/app_constants.dart';
 import 'features/auth/services/auth_service.dart';
+import 'core/services/settings_service.dart';
 
 // Background message handler
 @pragma('vm:entry-point')
@@ -38,10 +39,11 @@ void main() async {
   };
 
   // Core initialization that must happen before runApp
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   await Future.wait([
-    Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    ),
     // Initialize Google Sign In (Required for Web)
     AuthService().initialize(),
     ConvexClient.initialize(
@@ -52,6 +54,7 @@ void main() async {
     ),
     // Initialize Hive for offline queue storage
     HiveService().init(),
+    SettingsService.instance.load(),
   ]);
 
   // Initialize offline queue manager

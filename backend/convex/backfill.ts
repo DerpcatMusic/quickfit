@@ -22,7 +22,11 @@ export const runGeospatialMigration = mutation({
           ctx,
           instructor._id,
           { latitude: instructor.latitude, longitude: instructor.longitude },
-          instructor.primaryCategory ?? instructor.categories?.[0] ?? "general",
+          instructor.dispatchMode ?? "radius", // Default to radius for existing users
+          instructor.categories ??
+            (instructor.primaryCategory
+              ? [instructor.primaryCategory]
+              : ["general"]),
           instructor.isVerified,
           instructor.notificationsEnabled ?? true,
           instructor.radiusKm ?? 5
