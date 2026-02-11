@@ -1742,6 +1742,180 @@ abstract class AppLocalizations {
   /// **'Auto-issue invoices for instructor payments'**
   String get profileStudioBillingSubtitle;
 
+  /// No description provided for @studioBillingProviderMorning.
+  ///
+  /// In en, this message translates to:
+  /// **'Morning (Green Invoice)'**
+  String get studioBillingProviderMorning;
+
+  /// No description provided for @studioBillingProviderIcount.
+  ///
+  /// In en, this message translates to:
+  /// **'iCount'**
+  String get studioBillingProviderIcount;
+
+  /// No description provided for @studioBillingSummaryNotConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected'**
+  String get studioBillingSummaryNotConnected;
+
+  /// No description provided for @studioBillingSummaryMorningActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Morning active'**
+  String get studioBillingSummaryMorningActive;
+
+  /// No description provided for @studioBillingSummaryIcountActive.
+  ///
+  /// In en, this message translates to:
+  /// **'iCount active'**
+  String get studioBillingSummaryIcountActive;
+
+  /// No description provided for @studioBillingSummaryConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get studioBillingSummaryConnected;
+
+  /// No description provided for @studioBillingPlatformManagedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Payments are managed by QuickFit (Rapyd/BitPay). No studio payment setup is required.'**
+  String get studioBillingPlatformManagedNotice;
+
+  /// No description provided for @studioBillingInvoicingSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Invoicing'**
+  String get studioBillingInvoicingSectionTitle;
+
+  /// No description provided for @studioBillingNoProviderConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'No provider connected yet.'**
+  String get studioBillingNoProviderConnected;
+
+  /// No description provided for @studioBillingStatusActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get studioBillingStatusActive;
+
+  /// No description provided for @studioBillingStatusInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'Inactive'**
+  String get studioBillingStatusInactive;
+
+  /// No description provided for @studioBillingMenuEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get studioBillingMenuEdit;
+
+  /// No description provided for @studioBillingMenuSetInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'Set inactive'**
+  String get studioBillingMenuSetInactive;
+
+  /// No description provided for @studioBillingMenuSetActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Set active'**
+  String get studioBillingMenuSetActive;
+
+  /// No description provided for @studioBillingMenuRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get studioBillingMenuRemove;
+
+  /// No description provided for @studioBillingConnectMorning.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect Morning'**
+  String get studioBillingConnectMorning;
+
+  /// No description provided for @studioBillingConnectIcount.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect iCount'**
+  String get studioBillingConnectIcount;
+
+  /// No description provided for @studioBillingBaseUrlRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Base URL is required'**
+  String get studioBillingBaseUrlRequired;
+
+  /// No description provided for @studioBillingBaseUrlHttpsRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Base URL must start with https://'**
+  String get studioBillingBaseUrlHttpsRequired;
+
+  /// No description provided for @studioBillingApiTokenRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'API token is required'**
+  String get studioBillingApiTokenRequired;
+
+  /// No description provided for @studioBillingApiKeyRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'API key is required'**
+  String get studioBillingApiKeyRequired;
+
+  /// No description provided for @studioBillingConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'{provider} connected'**
+  String studioBillingConnected(Object provider);
+
+  /// No description provided for @studioBillingConnectProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect {provider}'**
+  String studioBillingConnectProvider(Object provider);
+
+  /// No description provided for @studioBillingEditProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit {provider}'**
+  String studioBillingEditProvider(Object provider);
+
+  /// No description provided for @studioBillingBaseUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Base URL'**
+  String get studioBillingBaseUrlLabel;
+
+  /// No description provided for @studioBillingApiTokenLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'API token (leave empty to keep existing)'**
+  String get studioBillingApiTokenLabel;
+
+  /// No description provided for @studioBillingApiKeyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'API key (leave empty to keep existing)'**
+  String get studioBillingApiKeyLabel;
+
+  /// No description provided for @studioBillingAccountIdOptionalLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Account ID (optional)'**
+  String get studioBillingAccountIdOptionalLabel;
+
+  /// No description provided for @studioBillingDefaultVatOptionalLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Default VAT rate (optional)'**
+  String get studioBillingDefaultVatOptionalLabel;
+
   /// No description provided for @profileStudioPricingTitle.
   ///
   /// In en, this message translates to:

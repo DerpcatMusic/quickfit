@@ -918,6 +918,104 @@ class AppLocalizationsEn extends AppLocalizations {
       'Auto-issue invoices for instructor payments';
 
   @override
+  String get studioBillingProviderMorning => 'Morning (Green Invoice)';
+
+  @override
+  String get studioBillingProviderIcount => 'iCount';
+
+  @override
+  String get studioBillingSummaryNotConnected => 'Not connected';
+
+  @override
+  String get studioBillingSummaryMorningActive => 'Morning active';
+
+  @override
+  String get studioBillingSummaryIcountActive => 'iCount active';
+
+  @override
+  String get studioBillingSummaryConnected => 'Connected';
+
+  @override
+  String get studioBillingPlatformManagedNotice =>
+      'Payments are managed by QuickFit (Rapyd/BitPay). No studio payment setup is required.';
+
+  @override
+  String get studioBillingInvoicingSectionTitle => 'Invoicing';
+
+  @override
+  String get studioBillingNoProviderConnected => 'No provider connected yet.';
+
+  @override
+  String get studioBillingStatusActive => 'Active';
+
+  @override
+  String get studioBillingStatusInactive => 'Inactive';
+
+  @override
+  String get studioBillingMenuEdit => 'Edit';
+
+  @override
+  String get studioBillingMenuSetInactive => 'Set inactive';
+
+  @override
+  String get studioBillingMenuSetActive => 'Set active';
+
+  @override
+  String get studioBillingMenuRemove => 'Remove';
+
+  @override
+  String get studioBillingConnectMorning => 'Connect Morning';
+
+  @override
+  String get studioBillingConnectIcount => 'Connect iCount';
+
+  @override
+  String get studioBillingBaseUrlRequired => 'Base URL is required';
+
+  @override
+  String get studioBillingBaseUrlHttpsRequired =>
+      'Base URL must start with https://';
+
+  @override
+  String get studioBillingApiTokenRequired => 'API token is required';
+
+  @override
+  String get studioBillingApiKeyRequired => 'API key is required';
+
+  @override
+  String studioBillingConnected(Object provider) {
+    return '$provider connected';
+  }
+
+  @override
+  String studioBillingConnectProvider(Object provider) {
+    return 'Connect $provider';
+  }
+
+  @override
+  String studioBillingEditProvider(Object provider) {
+    return 'Edit $provider';
+  }
+
+  @override
+  String get studioBillingBaseUrlLabel => 'Base URL';
+
+  @override
+  String get studioBillingApiTokenLabel =>
+      'API token (leave empty to keep existing)';
+
+  @override
+  String get studioBillingApiKeyLabel =>
+      'API key (leave empty to keep existing)';
+
+  @override
+  String get studioBillingAccountIdOptionalLabel => 'Account ID (optional)';
+
+  @override
+  String get studioBillingDefaultVatOptionalLabel =>
+      'Default VAT rate (optional)';
+
+  @override
   String get profileStudioPricingTitle => 'Default Pricing';
 
   @override

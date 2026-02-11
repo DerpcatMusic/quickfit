@@ -60,6 +60,7 @@ Legend:
 - Category chips without emoji/icon clutter: `live`
 - Studio radius controls hidden outside instructor role: `live`
 - Studio-facing auth/error/action copy localization coverage: `partial`
+- Studio billing/invoicing sheet extracted to feature module and localized (no hardcoded UI copy): `live`
 - Studio post-job sticky bottom submit CTA: `live`
 - Studio jobs list query hot-path optimized to reduce timeout risk: `partial`
 - Projection-backed studio jobs and instructor availability feed (with lifecycle sync + fallback): `partial`
@@ -79,6 +80,7 @@ Legend:
 - Studio/instructor projection read models: `partial`
 - Payment/payout timeline projection: `planned`
 - Backend domain modularization (wrapper exports + extracted internals): `partial`
+- Shared backend auth guard/error standardization utilities (adopted in `users.ts`/`billing.ts`): `partial`
 - Legacy per-studio payment integration runtime dependency removal: `partial`
 
 ## Security and Operations
@@ -89,5 +91,6 @@ Legend:
 
 ## Release Readiness (Production)
 - End-to-end payment/payout sandbox test flow: `partial`
+- Backend test harness runtime now deterministic across local push-config variance: `live`
 - Webhook delivery verification in production env: `partial`
 - Ops visibility for `needs_attention` payouts: `planned`

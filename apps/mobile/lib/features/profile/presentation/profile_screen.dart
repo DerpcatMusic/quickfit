@@ -180,7 +180,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   String _billingSummaryText() {
-    return StudioBillingSheet.summaryFromIntegrations(_billingIntegrations);
+    return StudioBillingSheet.summaryFromIntegrations(
+      _billingIntegrations,
+      context: context,
+    );
   }
 
   Future<void> _openStudioBillingSheet() async {
@@ -247,13 +250,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   String _studioPricingSummaryText() {
-    final compactRules = _studioLeadTimeRules
-        .map((rule) {
-          final hours = ((rule['maxHoursBeforeStart'] as num?) ?? 0).round();
-          final boost = ((rule['boostPercent'] as num?) ?? 0).round();
-          return _l10n.profileStudioPricingRuleCompact(hours, boost);
-        })
-        .join(', ');
+    final compactRules = _studioLeadTimeRules.map((rule) {
+      final hours = ((rule['maxHoursBeforeStart'] as num?) ?? 0).round();
+      final boost = ((rule['boostPercent'] as num?) ?? 0).round();
+      return _l10n.profileStudioPricingRuleCompact(hours, boost);
+    }).join(', ');
     return _l10n.profileStudioPricingSummary(
       _studioDefaultBaseRate.toStringAsFixed(0),
       compactRules,
@@ -313,7 +314,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           labelText: _l10n.profileStudioPricingRuleHours,
                         ),
                         initialValue:
-                            ((rulesDraft[i]['maxHoursBeforeStart'] as num?) ?? 0)
+                            ((rulesDraft[i]['maxHoursBeforeStart'] as num?) ??
+                                    0)
                                 .toStringAsFixed(1),
                         onChanged: (value) {
                           final parsed = double.tryParse(value);
@@ -374,8 +376,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   onPressed: isSaving
                       ? null
                       : () async {
-                          final parsedRate =
-                              double.tryParse(defaultRateController.text.trim());
+                          final parsedRate = double.tryParse(
+                              defaultRateController.text.trim());
                           if (parsedRate == null || parsedRate <= 0) return;
                           final messenger = ScaffoldMessenger.of(this.context);
                           final navigator = Navigator.of(context);
@@ -385,7 +387,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           try {
                             final normalizedRules =
                                 _normalizeStudioPricingRules(rulesDraft);
-                            await ConvexService.instance.setMyStudioPricingSettings(
+                            await ConvexService.instance
+                                .setMyStudioPricingSettings(
                               defaultBaseRate: parsedRate,
                               leadTimeSurgeRules: normalizedRules,
                             );
@@ -397,8 +400,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             });
                             messenger.showSnackBar(
                               SnackBar(
-                                content:
-                                    Text(_l10n.profileStudioPricingSaved),
+                                content: Text(_l10n.profileStudioPricingSaved),
                               ),
                             );
                             navigator.pop();

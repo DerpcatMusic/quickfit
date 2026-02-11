@@ -401,6 +401,50 @@
   "authGoToLogin": "Go to login",
   "profileStudioBillingTitle": "Billing & Invoicing",
   "profileStudioBillingSubtitle": "Auto-issue invoices for instructor payments",
+  "studioBillingProviderMorning": "Morning (Green Invoice)",
+  "studioBillingProviderIcount": "iCount",
+  "studioBillingSummaryNotConnected": "Not connected",
+  "studioBillingSummaryMorningActive": "Morning active",
+  "studioBillingSummaryIcountActive": "iCount active",
+  "studioBillingSummaryConnected": "Connected",
+  "studioBillingPlatformManagedNotice": "Payments are managed by QuickFit (Rapyd/BitPay). No studio payment setup is required.",
+  "studioBillingInvoicingSectionTitle": "Invoicing",
+  "studioBillingNoProviderConnected": "No provider connected yet.",
+  "studioBillingStatusActive": "Active",
+  "studioBillingStatusInactive": "Inactive",
+  "studioBillingMenuEdit": "Edit",
+  "studioBillingMenuSetInactive": "Set inactive",
+  "studioBillingMenuSetActive": "Set active",
+  "studioBillingMenuRemove": "Remove",
+  "studioBillingConnectMorning": "Connect Morning",
+  "studioBillingConnectIcount": "Connect iCount",
+  "studioBillingBaseUrlRequired": "Base URL is required",
+  "studioBillingBaseUrlHttpsRequired": "Base URL must start with https://",
+  "studioBillingApiTokenRequired": "API token is required",
+  "studioBillingApiKeyRequired": "API key is required",
+  "studioBillingConnected": "{provider} connected",
+  "@studioBillingConnected": {
+    "placeholders": {
+      "provider": {}
+    }
+  },
+  "studioBillingConnectProvider": "Connect {provider}",
+  "@studioBillingConnectProvider": {
+    "placeholders": {
+      "provider": {}
+    }
+  },
+  "studioBillingEditProvider": "Edit {provider}",
+  "@studioBillingEditProvider": {
+    "placeholders": {
+      "provider": {}
+    }
+  },
+  "studioBillingBaseUrlLabel": "Base URL",
+  "studioBillingApiTokenLabel": "API token (leave empty to keep existing)",
+  "studioBillingApiKeyLabel": "API key (leave empty to keep existing)",
+  "studioBillingAccountIdOptionalLabel": "Account ID (optional)",
+  "studioBillingDefaultVatOptionalLabel": "Default VAT rate (optional)",
   "profileStudioPricingTitle": "Default Pricing",
   "profileStudioPricingSubtitle": "Base rate and lead-time surge rules",
   "profileStudioPricingDefaultRate": "Default base rate (ILS)",

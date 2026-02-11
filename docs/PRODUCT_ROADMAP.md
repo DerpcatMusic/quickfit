@@ -186,6 +186,15 @@ Status values:
   - Studio and instructor "my jobs" screens use consistent lifecycle semantics.
   - Studio loading UX has deterministic timeout/error behavior.
 
+### RM-162 Flutter Feature Modularization + Localization Hardening
+- Status: `partial`
+- Owner: Mobile
+- Goal: reduce monolithic UI surfaces and eliminate hardcoded strings in studio/payment-critical flows.
+- Exit criteria:
+  - Studio billing sheet lives under feature-owned module (`features/studio/billing/**`) with shared adapter only.
+  - Hardcoded billing/payment copy removed from studio-facing widgets and covered by l10n regression tests.
+  - Top hotspot screens (`profile`, `onboarding`, `post_job`) begin section/widget extraction with clear ownership boundaries.
+
 ## Active Priority Order
 1. RM-101
 2. RM-102
