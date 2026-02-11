@@ -76,6 +76,8 @@ import type * as http from "../http.js";
 import type * as invoicing from "../invoicing.js";
 import type * as jobReadModels from "../jobReadModels.js";
 import type * as jobs from "../jobs.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as lib_errors from "../lib/errors.js";
 import type * as lib_secrets from "../lib/secrets.js";
 import type * as lib_urlSecurity from "../lib/urlSecurity.js";
 import type * as notifications from "../notifications.js";
@@ -170,6 +172,8 @@ declare const fullApi: ApiFromModules<{
   invoicing: typeof invoicing;
   jobReadModels: typeof jobReadModels;
   jobs: typeof jobs;
+  "lib/auth": typeof lib_auth;
+  "lib/errors": typeof lib_errors;
   "lib/secrets": typeof lib_secrets;
   "lib/urlSecurity": typeof lib_urlSecurity;
   notifications: typeof notifications;
