@@ -20,7 +20,10 @@ import 'package:quickfit/core/theme/app_colors.dart';
 import 'package:quickfit/core/utils/platform.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:quickfit/features/profile/presentation/models/profile_settings_draft.dart';
+import 'package:quickfit/features/profile/presentation/widgets/profile_account_block.dart';
 import 'package:quickfit/features/profile/presentation/widgets/profile_primitives.dart';
+import 'package:quickfit/features/profile/presentation/widgets/profile_settings_block.dart';
+import 'package:quickfit/features/profile/presentation/widgets/profile_studio_billing_block.dart';
 import 'package:quickfit/features/jobs/providers/studio_jobs_provider.dart';
 import 'package:quickfit/l10n/app_localizations.dart';
 import 'package:quickfit/shared/widgets/studio_billing_sheet.dart';
@@ -1000,55 +1003,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ? authState.homeAddress!
             : _l10n.notSet);
 
-    final entries = <_AccountEntry>[
-      _AccountEntry(
-        icon: LucideIcons.user,
-        title: _l10n.displayNameLabel,
-        value: displayName,
-        onTap: _isSaving ? null : _editDisplayName,
-      ),
-      _AccountEntry(
-        icon: LucideIcons.mail,
-        title: _l10n.email,
-        value: email.isNotEmpty ? email : _l10n.notSet,
-        onTap: () => _showEmailActions(authState),
-      ),
-      if (phone.isNotEmpty)
-        _AccountEntry(
-          icon: LucideIcons.phone,
-          title: _l10n.phoneNumber,
-          value: phone,
-        ),
-      _AccountEntry(
-        icon: LucideIcons.mapPin,
-        title: _l10n.homeAddress,
-        value: address,
-        onTap: _isSaving ? null : _editAddress,
-      ),
-      if (authState.role == 'instructor')
-        _AccountEntry(
-          icon: LucideIcons.mapPin,
-          title: _l10n.workRadius,
-          value: _l10n.radiusKmLabel(_radiusKm.toStringAsFixed(1)),
-          onTap: _isSaving ? null : _editRadius,
-        ),
-    ];
-
-    return ProfileSectionCard(
+    return ProfileAccountBlock(
       title: _l10n.account,
-      children: [
-        for (var i = 0; i < entries.length; i++)
-          ProfileTile(
-            icon: entries[i].icon,
-            title: entries[i].title,
-            trailing: _buildTrailingText(
-              entries[i].value,
-              isActionable: entries[i].onTap != null,
-            ),
-            onTap: entries[i].onTap,
-            showDivider: i != entries.length - 1,
-          ),
-      ],
+      displayName: displayName,
+      displayNameTitle: _l10n.displayNameLabel,
+      email: email.isNotEmpty ? email : _l10n.notSet,
+      emailTitle: _l10n.email,
+      phone: phone,
+      phoneTitle: _l10n.phoneNumber,
+      address: address,
+      homeAddressTitle: _l10n.homeAddress,
+      isInstructor: authState.role == 'instructor',
+      workRadiusLabel: _l10n.radiusKmLabel(_radiusKm.toStringAsFixed(1)),
+      workRadiusTitle: _l10n.workRadius,
+      isBusy: _isSaving,
+      onEditDisplayName: _editDisplayName,
+      onEmailActions: () => _showEmailActions(authState),
+      onEditAddress: _editAddress,
+      onEditRadius: _editRadius,
     );
   }
 
@@ -2000,94 +1972,68 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         authState.user?.providerData.any((p) => p.providerId == 'password') ??
             false;
 
-    return ProfileSectionCard(
+    ProfileStudioBillingBlock? studioBillingBlock;
+    if (authState.role == 'studio') {
+      studioBillingBlock = ProfileStudioBillingBlock(
+        pricingTitle: _l10n.profileStudioPricingTitle,
+        pricingSubtitle: _l10n.profileStudioPricingSubtitle,
+        pricingSummary: _studioPricingSummaryText(),
+        onOpenPricing: _openStudioPricingSheet,
+        billingTitle: _l10n.profileStudioBillingTitle,
+        billingSubtitle: _l10n.profileStudioBillingSubtitle,
+        billingSummary: _billingSummaryText(),
+        onOpenBilling: _openStudioBillingSheet,
+        publicJobsTitle: authState.convexUserId != null
+            ? _l10n.profileStudioPublicJobsTitle
+            : null,
+        publicJobsSubtitle: authState.convexUserId != null
+            ? _l10n.profileStudioPublicJobsSubtitle
+            : null,
+        publicJobsSummary: authState.convexUserId != null
+            ? _l10n.profileStudioActiveJobsCount(studioActiveJobsCount)
+            : null,
+        onOpenPublicJobs: authState.convexUserId != null
+            ? () => context.push(
+                  AppRoutes.studioPublicProfile
+                      .replaceFirst(':id', authState.convexUserId!),
+                )
+            : null,
+      );
+    }
+
+    return ProfileSettingsBlock(
       title: _l10n.settings,
-      children: [
-        ProfileTile(
-          icon: LucideIcons.link,
-          title: _l10n.linkedAccounts,
-          trailing: _buildTrailingText(
-              providers.isNotEmpty ? providers.join(', ') : _l10n.none),
-        ),
-        if (!hasPassword)
-          ProfileTile(
-            icon: LucideIcons.keyRound,
-            title: _l10n.addPassword,
-            subtitle: _l10n.enableEmailLogin,
-            onTap: _showAddPasswordDialog,
-          ),
-        ProfileTile(
-          icon: LucideIcons.bell,
-          title: _l10n.notifications,
-          trailing: _buildTrailingText(_notificationLabel()),
-          onTap: _showNotificationSettings,
-        ),
-        ProfileTile(
-          icon: LucideIcons.globe,
-          title: _l10n.language,
-          trailing: _buildTrailingText(_languageLabel()),
-          onTap: _showLanguagePicker,
-        ),
-        if (authState.role == 'studio')
-          ProfileTile(
-            icon: LucideIcons.trendingUp,
-            title: _l10n.profileStudioPricingTitle,
-            subtitle: _l10n.profileStudioPricingSubtitle,
-            trailing: _buildTrailingText(_studioPricingSummaryText()),
-            onTap: _openStudioPricingSheet,
-          ),
-        if (authState.role == 'studio')
-          ProfileTile(
-            icon: LucideIcons.creditCard,
-            title: _l10n.profileStudioBillingTitle,
-            subtitle: _l10n.profileStudioBillingSubtitle,
-            trailing: _buildTrailingText(_billingSummaryText()),
-            onTap: _openStudioBillingSheet,
-          ),
-        if (authState.role == 'studio' && authState.convexUserId != null)
-          ProfileTile(
-            icon: LucideIcons.briefcase,
-            title: _l10n.profileStudioPublicJobsTitle,
-            subtitle: _l10n.profileStudioPublicJobsSubtitle,
-            trailing: _buildTrailingText(
-              _l10n.profileStudioActiveJobsCount(studioActiveJobsCount),
-            ),
-            onTap: () => context.push(
-              AppRoutes.studioPublicProfile
-                  .replaceFirst(':id', authState.convexUserId!),
-            ),
-          ),
-        ProfileTile(
-          icon: LucideIcons.refreshCw,
-          title: _l10n.redoOnboarding,
-          onTap: _confirmRedoOnboarding,
-        ),
-        ProfileTile(
-          icon: LucideIcons.helpCircle,
-          title: _l10n.helpSupport,
-          onTap: () => _showInfoSheet(
-            title: _l10n.helpSupport,
-            body: _l10n.supportPlaceholder,
-          ),
-        ),
-        ProfileTile(
-          icon: LucideIcons.fileText,
-          title: _l10n.termsOfService,
-          onTap: () => _showInfoSheet(
-            title: _l10n.termsOfService,
-            body: _l10n.termsPlaceholder,
-          ),
-        ),
-        ProfileTile(
-          icon: LucideIcons.shield,
-          title: _l10n.privacyPolicy,
-          onTap: () => _showInfoSheet(
-            title: _l10n.privacyPolicy,
-            body: _l10n.privacyPlaceholder,
-          ),
-          showDivider: false,
-        ),
-      ],
+      linkedAccountsTitle: _l10n.linkedAccounts,
+      linkedAccountsSummary:
+          providers.isNotEmpty ? providers.join(', ') : _l10n.none,
+      showAddPassword: !hasPassword,
+      addPasswordTitle: _l10n.addPassword,
+      addPasswordSubtitle: _l10n.enableEmailLogin,
+      onAddPassword: _showAddPasswordDialog,
+      notificationsTitle: _l10n.notifications,
+      notificationsSummary: _notificationLabel(),
+      onOpenNotifications: _showNotificationSettings,
+      languageTitle: _l10n.language,
+      languageSummary: _languageLabel(),
+      onOpenLanguage: _showLanguagePicker,
+      studioBillingBlock: studioBillingBlock,
+      redoOnboardingTitle: _l10n.redoOnboarding,
+      onRedoOnboarding: _confirmRedoOnboarding,
+      helpSupportTitle: _l10n.helpSupport,
+      onShowHelp: () => _showInfoSheet(
+        title: _l10n.helpSupport,
+        body: _l10n.supportPlaceholder,
+      ),
+      termsTitle: _l10n.termsOfService,
+      onShowTerms: () => _showInfoSheet(
+        title: _l10n.termsOfService,
+        body: _l10n.termsPlaceholder,
+      ),
+      privacyTitle: _l10n.privacyPolicy,
+      onShowPrivacy: () => _showInfoSheet(
+        title: _l10n.privacyPolicy,
+        body: _l10n.privacyPlaceholder,
+      ),
     );
   }
 
@@ -2176,28 +2122,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: Text(_l10n.verify),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTrailingText(
-    String text, {
-    bool isActionable = false,
-  }) {
-    final theme = Theme.of(context);
-    final colors = context.colors;
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 170),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.right,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: isActionable ? theme.colorScheme.primary : colors.mutedText,
-          fontWeight: FontWeight.w600,
-        ),
       ),
     );
   }
@@ -2826,18 +2750,4 @@ class _AddressEditResult {
   final String address;
   final double? latitude;
   final double? longitude;
-}
-
-class _AccountEntry {
-  const _AccountEntry({
-    required this.icon,
-    required this.title,
-    required this.value,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String value;
-  final VoidCallback? onTap;
 }

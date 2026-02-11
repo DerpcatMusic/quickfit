@@ -59,6 +59,7 @@ test("test harness happy path", { timeout: 20000 }, async () => {
   assert.equal(result.postingVisibilityForUnverifiedCorrect, true);
   assert.equal(result.readModelProjectionConsistencyCorrect, true);
   assert.equal(result.centralizedMyJobsQueryConsistent, true);
+  assert.equal(result.studioJobsCanonicalFallbackCorrect, true);
 });
 
 test("test harness rejects invalid token", async () => {

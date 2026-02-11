@@ -106,13 +106,13 @@ class StudioJobsState {
 @riverpod
 class StudioJobsNotifier extends _$StudioJobsNotifier {
   static const String _cacheKeyPrefix = 'studio_jobs';
+  static const String _studioJobsQueryName = 'jobs:getStudioJobs';
   static const String _myJobsQueryName = 'jobs:getMyJobs';
-  static const String _legacyStudioJobsQueryName = 'jobs:getStudioJobs';
   static const Duration _initialLoadTimeout = Duration(seconds: 10);
 
   SubscriptionHandle? _subscription;
   String? _subscriptionSessionKey;
-  String _activeQueryName = _myJobsQueryName;
+  String _activeQueryName = _studioJobsQueryName;
   Timer? _initialLoadWatchdog;
   StudioJobsState _lastState = const StudioJobsState();
 
@@ -135,7 +135,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         _subscription?.cancel();
         _subscription = null;
         _subscriptionSessionKey = sessionKey;
-        _activeQueryName = _myJobsQueryName;
+        _activeQueryName = _studioJobsQueryName;
 
         final cached = _loadFromCache(user.uid);
         _lastState = cached.copyWith(
@@ -203,15 +203,24 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         name: queryName,
         args: const {},
         onUpdate: (data) {
-          _cancelLoadWatchdog();
-          _handleJobsUpdate(data, sessionKey, userUid);
+          try {
+            _handleJobsUpdate(data, sessionKey, userUid);
+          } catch (e) {
+            if (_subscriptionSessionKey != sessionKey) return;
+            _cancelLoadWatchdog();
+            log.e('Studio jobs update handler failed [$queryName]: $e');
+            _setState(_lastState.copyWith(
+              isLoading: false,
+              error: 'Failed to load studio jobs',
+            ));
+          }
         },
         onError: (message, value) {
           if (_subscriptionSessionKey != sessionKey) return;
-          if (queryName == _myJobsQueryName &&
+          if (queryName == _studioJobsQueryName &&
               message.contains('Could not find function')) {
             unawaited(_subscribeWithQueryName(
-              _legacyStudioJobsQueryName,
+              _myJobsQueryName,
               sessionKey,
               userUid,
             ));
@@ -227,10 +236,10 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
       );
     } catch (e) {
       if (_subscriptionSessionKey != sessionKey) return;
-      if (queryName == _myJobsQueryName &&
+      if (queryName == _studioJobsQueryName &&
           e.toString().contains('Could not find function')) {
         await _subscribeWithQueryName(
-          _legacyStudioJobsQueryName,
+          _myJobsQueryName,
           sessionKey,
           userUid,
         );
@@ -248,11 +257,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
   }
 
   Future<String> _bootstrapFromQuery(String sessionKey, String userUid) async {
-    var shouldTryLegacyFallback = false;
-    for (final queryName in [_myJobsQueryName, _legacyStudioJobsQueryName]) {
-      if (queryName == _legacyStudioJobsQueryName && !shouldTryLegacyFallback) {
-        continue;
-      }
+    for (final queryName in [_studioJobsQueryName, _myJobsQueryName]) {
       try {
         final payload = await ConvexClient.instance.query(queryName, const {});
         if (_subscriptionSessionKey != sessionKey) return queryName;
@@ -267,13 +272,6 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         ));
         return queryName;
       } catch (e) {
-        final isMissingFn = e.toString().contains('Could not find function');
-        if (queryName == _myJobsQueryName) {
-          shouldTryLegacyFallback = isMissingFn;
-          if (isMissingFn) {
-            continue;
-          }
-        }
         log.e('Studio jobs bootstrap query failed [$queryName]: $e');
       }
     }
@@ -326,8 +324,9 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     return const [];
   }
 
-  void _handleJobsUpdate(String data, String sessionKey, String userUid) {
+  void _handleJobsUpdate(dynamic data, String sessionKey, String userUid) {
     if (_subscriptionSessionKey != sessionKey) return;
+    _cancelLoadWatchdog();
 
     try {
       final rows = _decodeRowsFromPayload(data);
@@ -432,7 +431,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         'requiresVerification': requiresVerification,
         if (description != null) 'description': description,
       };
-      final rawResult = await ConvexClient.instance
+      final dynamic rawResult = await ConvexClient.instance
           .mutation(
             name: 'jobs:postJob',
             args: requestArgs,
@@ -444,19 +443,43 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
             ),
           );
 
-      final normalized = rawResult.trim();
-      String jobId = normalized.replaceAll('"', '');
-      if (normalized.startsWith('{') || normalized.startsWith('[')) {
-        try {
-          final decoded = json.decode(normalized);
-          if (decoded is Map) {
-            final mapped = Map<String, dynamic>.from(decoded);
-            final candidate = mapped['_id'] ?? mapped['jobId'] ?? mapped['id'];
-            jobId = candidate?.toString().trim() ?? jobId;
+      String jobId = '';
+      if (rawResult is String) {
+        final normalized = rawResult.trim();
+        jobId = normalized.replaceAll('"', '');
+        if (normalized.startsWith('{') || normalized.startsWith('[')) {
+          try {
+            final decoded = json.decode(normalized);
+            if (decoded is Map) {
+              final mapped = Map<String, dynamic>.from(decoded);
+              final candidate =
+                  mapped['_id'] ?? mapped['jobId'] ?? mapped['id'];
+              jobId = candidate?.toString().trim() ?? jobId;
+            }
+          } catch (_) {
+            // Keep raw string parse as fallback.
           }
-        } catch (_) {
-          // Keep raw string parse as fallback.
         }
+      } else if (rawResult is Map) {
+        final mapped = Map<String, dynamic>.from(rawResult);
+        final candidate = mapped['_id'] ?? mapped['jobId'] ?? mapped['id'];
+        jobId = candidate?.toString().trim() ?? '';
+      } else if (rawResult != null) {
+        final text = rawResult.toString().trim();
+        if (text.startsWith('{') || text.startsWith('[')) {
+          try {
+            final decoded = json.decode(text);
+            if (decoded is Map) {
+              final mapped = Map<String, dynamic>.from(decoded);
+              final candidate =
+                  mapped['_id'] ?? mapped['jobId'] ?? mapped['id'];
+              jobId = candidate?.toString().trim() ?? '';
+            }
+          } catch (_) {
+            // Fallback below.
+          }
+        }
+        jobId = jobId.isNotEmpty ? jobId : text.replaceAll('"', '');
       }
 
       if (jobId.isEmpty) {

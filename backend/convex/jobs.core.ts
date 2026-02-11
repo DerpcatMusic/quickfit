@@ -870,45 +870,9 @@ async function getStudioJobsForStudio(
   ctx: { db: QueryCtx["db"] },
   studioId: Id<"users">,
 ) {
-  const projectedRows = await ctx.db
-    .query("readModel_studioJobs")
-    .withIndex("by_studio_updatedAt", (q) => q.eq("studioId", studioId))
-    .order("desc")
-    .take(80);
-
-  if (projectedRows.length > 0) {
-    const projected = projectedRows.map((row) => ({
-      _id: row.jobId,
-      _creationTime: row.createdAt,
-      studioId: row.studioId,
-      title: row.title,
-      description: row.description,
-      category: row.category,
-      startTime: row.startTime,
-      endTime: row.endTime,
-      durationMinutes: row.durationMinutes,
-      baseRate: row.baseRate,
-      currentRate: row.currentRate,
-      sosBoostApplied: row.sosBoostApplied,
-      sosBoostPercentage: row.sosBoostPercentage,
-      latitude: row.latitude,
-      longitude: row.longitude,
-      address: row.address,
-      status: row.status,
-      claimedBy: row.claimedBy,
-      claimedAt: row.claimedAt,
-      confirmedAt: row.confirmedAt,
-      backupClaimedBy: row.backupClaimedBy,
-      backupClaimedAt: row.backupClaimedAt,
-      requiresVerification: row.requiresVerification,
-      claimedInstructor: row.claimedInstructor ?? null,
-      claimId: row.claimId,
-      createdAt: row.createdAt,
-    }));
-    return sortStudioJobsByPriority(projected);
-  }
-
-  // Preserve existing behavior until read models are fully backfilled.
+  // Canonical studio dashboard path intentionally reads from jobs table index.
+  // This keeps list/read reliability even if projections are stale or still
+  // backfilling after deploy.
   return await getStudioJobsForStudioLegacy(ctx, studioId);
 }
 
@@ -1056,11 +1020,22 @@ const postJob = mutation({
     );
     let zoneId: Id<"zones"> | undefined;
     try {
-      const detected = await ctx.runQuery(internal.zones.detectZoneForLocation, {
-        lat: args.latitude,
-        lng: args.longitude,
-      });
-      zoneId = detected ?? undefined;
+      // Bound zone detection latency so posting never blocks on polygon scans.
+      const detectedOrTimeout = await Promise.race<
+        Id<"zones"> | null | "__timeout__"
+      >([
+        ctx.runQuery(internal.zones.detectZoneForLocation, {
+          lat: args.latitude,
+          lng: args.longitude,
+        }),
+        new Promise<"__timeout__">((resolve) => {
+          setTimeout(() => resolve("__timeout__"), 1200);
+        }),
+      ]);
+      zoneId =
+        detectedOrTimeout && detectedOrTimeout !== "__timeout__"
+          ? detectedOrTimeout
+          : undefined;
     } catch (error) {
       // Do not block posting on zone detection latency; geospatial dispatch still
       // works from the job coordinates and we can backfill zone assignments later.
@@ -1095,15 +1070,24 @@ const postJob = mutation({
 
     // 2026 GEOSPATIAL SYNC
     // ==========================================
-    await syncJobLocation(
-      ctx,
-      jobId,
-      { latitude: args.latitude, longitude: args.longitude },
-      args.category,
-      "open",
-      args.requiresVerification ?? false,
-      currentRate,
-    );
+    try {
+      await syncJobLocation(
+        ctx,
+        jobId,
+        { latitude: args.latitude, longitude: args.longitude },
+        args.category,
+        "open",
+        args.requiresVerification ?? false,
+        currentRate,
+      );
+    } catch (error) {
+      // Geospatial indexing is best-effort. A transient geo failure should not
+      // block posting or hide the job from studio dashboards.
+      console.warn(
+        `[postJob] Geospatial sync failed for job ${jobId}, continuing`,
+        error,
+      );
+    }
     await syncJobReadModels(ctx as any, jobId);
 
     // If SOS, add to priority queue

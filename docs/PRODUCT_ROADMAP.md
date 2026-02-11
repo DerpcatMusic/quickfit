@@ -30,6 +30,7 @@ Status values:
   - Studio jobs list query avoids timeout-prone N+1 claim lookups on hot path.
   - Studio post action reports success even if follow-up list refresh times out.
   - Studio `My Jobs` screen cannot remain in indefinite loading state (watchdog + query bootstrap).
+  - Studio `My Jobs` provider must tolerate dynamic subscription payloads and still terminate loading/error state deterministically.
   - Studio and instructor "my jobs" clients can consume a role-aware shared query endpoint.
   - Studio jobs bootstrap should not downgrade to legacy query path on transient timeout.
   - Profile billing bootstrap does not retry timeouting queries on every rebuild.
@@ -95,6 +96,7 @@ Status values:
 - Exit criteria:
   - `readModel_studioJobs` and `readModel_instructorFeed` in place with lifecycle sync hooks. ✅
   - Mobile list/map feeds switched to projection-backed queries with legacy fallback during backfill. ✅
+  - Studio dashboard reads remain correct when projections are partial by falling back to canonical `jobs` index during burn-in. ✅
   - Old hot-path query joins removed (remaining legacy fallback paths removed after backfill + burn-in).
 
 ### RM-121 Payment and Payout Timeline Projection

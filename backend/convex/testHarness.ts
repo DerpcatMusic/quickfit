@@ -168,6 +168,21 @@ export const getJobProjectionState = internalQuery({
   },
 });
 
+export const dropStudioProjectionForJob = internalMutation({
+  args: {
+    jobId: v.id("jobs"),
+  },
+  handler: async (ctx, { jobId }) => {
+    const studioProjection = await ctx.db
+      .query("readModel_studioJobs")
+      .withIndex("by_job", (q) => q.eq("jobId", jobId))
+      .first();
+    if (studioProjection) {
+      await ctx.db.delete(studioProjection._id);
+    }
+  },
+});
+
 export const claimJobAs = internalMutation({
   args: { jobId: v.id("jobs"), instructorId: v.id("users") },
   handler: async (ctx, { jobId, instructorId }) => {
@@ -414,6 +429,7 @@ export const runTestSuite = action({
     postingVisibilityForUnverifiedCorrect: boolean;
     readModelProjectionConsistencyCorrect: boolean;
     centralizedMyJobsQueryConsistent: boolean;
+    studioJobsCanonicalFallbackCorrect: boolean;
   }> => {
     const expected = process.env.TEST_HARNESS_TOKEN;
     if (!expected || token !== expected) {
@@ -1098,6 +1114,33 @@ export const runTestSuite = action({
       confirmedVisibilityJob?.status === "confirmed" &&
       pendingVisibilityClaim?.status === "pending" &&
       acceptedVisibilityClaim?.status === "accepted";
+
+    const canonicalFallbackJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Canonical Fallback Job",
+        category: "pilates",
+        latitude: 32.0856,
+        longitude: 34.7818,
+        address: "Tel Aviv",
+        baseRate: 170,
+        startTimeMs: Date.now() + 96 * 60 * 60 * 1000,
+        endTimeMs: Date.now() + 97 * 60 * 60 * 1000,
+        status: "open",
+      },
+    );
+    await ctx.runMutation(internal.testHarness.dropStudioProjectionForJob, {
+      jobId: canonicalFallbackJobId,
+    });
+    const canonicalFallbackStudioJobs = await ctx.runQuery(
+      internal.jobs.getStudioJobsForStudioInternal,
+      { studioId },
+    );
+    const studioJobsCanonicalFallbackCorrect = canonicalFallbackStudioJobs.some(
+      (job: { _id: Id<"jobs"> }) => job._id === canonicalFallbackJobId,
+    );
+
     const studioMyJobsSnapshot = await ctx.runQuery(
       internal.jobs.getMyJobsInternal,
       { userId: studioId },
@@ -1161,6 +1204,7 @@ export const runTestSuite = action({
       postingVisibilityForUnverifiedCorrect,
       readModelProjectionConsistencyCorrect,
       centralizedMyJobsQueryConsistent,
+      studioJobsCanonicalFallbackCorrect,
     };
 
     if (cleanup) {
@@ -1187,6 +1231,10 @@ export const runTestSuite = action({
       await ctx.runMutation(internal.testHarness.cleanupTestJob, {
         jobId: visibilityJobId,
         claimIds: [visibilityClaimId],
+      });
+      await ctx.runMutation(internal.testHarness.cleanupTestJob, {
+        jobId: canonicalFallbackJobId,
+        claimIds: [],
       });
       await ctx.runMutation(internal.testHarness.cleanupTestJob, {
         jobId: visibilityPublicJobId,
