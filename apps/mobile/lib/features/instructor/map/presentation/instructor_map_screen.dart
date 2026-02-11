@@ -343,6 +343,8 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
       }
 
       final List<dynamic> parsed = json.decode(data) as List<dynamic>;
+      final studioFallback =
+          AppLocalizations.of(context)?.jobDetailDefaultStudio ?? 'Studio';
       final studioBuckets = <String, Map<String, dynamic>>{};
       for (final raw in parsed) {
         final job = Map<String, dynamic>.from(raw as Map);
@@ -360,7 +362,7 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
               (job['_creationTime'] as num?)?.toInt();
           studioBuckets[studioId] = {
             'studioId': studioId,
-            'studioName': (job['studioName'] as String?) ?? 'Studio',
+            'studioName': (job['studioName'] as String?) ?? studioFallback,
             'latitude': lat,
             'longitude': lng,
             'jobCount': 1,
@@ -392,11 +394,12 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
 
       final jobs = studioBuckets.values.map((bucket) {
         final count = bucket['jobCount'] as int;
-        final studioName = bucket['studioName'] as String? ?? 'Studio';
+        final studioName = bucket['studioName'] as String? ?? studioFallback;
         final latestPostedAt = bucket['latestPostedAt'] as int?;
         final postedLabel = _formatPostedAt(latestPostedAt);
         final countLabel = count > 1 ? '$studioName ($count)' : studioName;
-        final label = postedLabel != null ? '$countLabel • $postedLabel' : countLabel;
+        final label =
+            postedLabel != null ? '$countLabel - $postedLabel' : countLabel;
         return QuickFitJobMarker(
           id: bucket['studioId'] as String,
           studioId: bucket['studioId'] as String,
@@ -644,3 +647,5 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
     );
   }
 }
+
+

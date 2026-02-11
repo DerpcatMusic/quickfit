@@ -46,7 +46,7 @@ enum FitnessCategory {
   static List<FitnessCategory> get all => FitnessCategory.values;
 
   static FitnessCategory? inferFromFreeText(String rawInput) {
-    final text = rawInput.trim().toLowerCase();
+    final text = _normalizeLessonText(rawInput);
     if (text.isEmpty) return null;
 
     final rules = <FitnessCategory, List<String>>{
@@ -54,9 +54,23 @@ enum FitnessCategory {
         'reformer',
         'cadillac',
         'tower pilates',
+        'reformer pilates',
+        'פילאטיס רפורמר',
+        'רפורמר',
       ],
-      FitnessCategory.matPilates: ['mat pilates', 'floor pilates', 'pilates mat'],
-      FitnessCategory.pilates: ['pilates', 'core flow'],
+      FitnessCategory.matPilates: [
+        'mat pilates',
+        'floor pilates',
+        'pilates mat',
+        'פילאטיס מזרן',
+        'מזרן',
+      ],
+      FitnessCategory.pilates: [
+        'pilates',
+        'core flow',
+        'פילאטיס',
+        'פילטיס',
+      ],
       FitnessCategory.yoga: [
         'yoga',
         'vinyasa',
@@ -64,26 +78,90 @@ enum FitnessCategory {
         'yin',
         'ashtanga',
         'power yoga',
+        'יוגה',
+        'ויניאסה',
       ],
-      FitnessCategory.barre: ['barre'],
-      FitnessCategory.hiit: ['hiit', 'interval', 'tabata'],
-      FitnessCategory.functional: ['functional', 'trx', 'cross training'],
-      FitnessCategory.strength: ['strength', 'weights', 'resistance', 'barbell', 'dumbbell'],
-      FitnessCategory.mobility: ['mobility', 'stretch', 'flexibility', 'recovery'],
-      FitnessCategory.spinning: ['spinning', 'spin', 'indoor cycling', 'cycle'],
-      FitnessCategory.dance: ['dance', 'zumba', 'hip hop', 'salsa', 'choreo'],
-      FitnessCategory.personalTraining: ['personal training', 'pt session', '1 on 1'],
+      FitnessCategory.barre: ['barre', 'באר'],
+      FitnessCategory.hiit: ['hiit', 'interval', 'tabata', 'אינטנסיבי'],
+      FitnessCategory.functional: [
+        'functional',
+        'trx',
+        'cross training',
+        'crossfit',
+        'פונקציונלי',
+      ],
+      FitnessCategory.strength: [
+        'strength',
+        'weights',
+        'resistance',
+        'barbell',
+        'dumbbell',
+        'כוח',
+      ],
+      FitnessCategory.mobility: [
+        'mobility',
+        'stretch',
+        'flexibility',
+        'recovery',
+        'שיקום',
+        'ניידות',
+      ],
+      FitnessCategory.spinning: [
+        'spinning',
+        'spin',
+        'indoor cycling',
+        'cycle',
+        'ספינינג',
+      ],
+      FitnessCategory.dance: [
+        'dance',
+        'zumba',
+        'hip hop',
+        'salsa',
+        'choreo',
+        'ריקוד',
+      ],
+      FitnessCategory.personalTraining: [
+        'personal training',
+        'pt session',
+        '1 on 1',
+        '1:1',
+        'אימון אישי',
+      ],
     };
 
+    FitnessCategory? bestCategory;
+    var bestScore = 0;
+    var bestKeywordLength = 0;
     for (final entry in rules.entries) {
       for (final keyword in entry.value) {
-        if (text.contains(keyword)) {
-          return entry.key;
+        final normalizedKeyword = _normalizeLessonText(keyword);
+        if (normalizedKeyword.isEmpty || !text.contains(normalizedKeyword)) {
+          continue;
+        }
+        final score = normalizedKeyword.split(' ').where((s) => s.isNotEmpty).length;
+        final keywordLength = normalizedKeyword.length;
+        if (score > bestScore ||
+            (score == bestScore && keywordLength > bestKeywordLength)) {
+          bestCategory = entry.key;
+          bestScore = score;
+          bestKeywordLength = keywordLength;
         }
       }
     }
 
-    return null;
+    return bestCategory;
+  }
+
+  static String _normalizeLessonText(String value) {
+    final normalizedWhitespace = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[_\-\/]+'), ' ')
+        .replaceAll(RegExp(r'[^\p{L}\p{N}\s]+', unicode: true), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return normalizedWhitespace;
   }
 }
 

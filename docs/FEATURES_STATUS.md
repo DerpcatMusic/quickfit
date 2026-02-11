@@ -57,6 +57,7 @@ Legend:
 - Instructor map studio-pin tap -> studio public profile: `live`
 - Studio profile quick access to own available jobs: `live`
 - Free-text lesson type auto-tagging to existing categories: `partial`
+- Free-text lesson type auto-tagging now scores English + Hebrew synonyms before selecting category: `partial`
 - Category chips without emoji/icon clutter: `live`
 - Post-job category chips are l10n-backed (no hardcoded category labels): `live`
 - Studio radius controls hidden outside instructor role: `live`
