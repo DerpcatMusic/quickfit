@@ -401,6 +401,28 @@
   "authGoToLogin": "Go to login",
   "profileStudioBillingTitle": "Billing & Invoicing",
   "profileStudioBillingSubtitle": "Auto-issue invoices for instructor payments",
+  "profileStudioPricingTitle": "Default Pricing",
+  "profileStudioPricingSubtitle": "Base rate and lead-time surge rules",
+  "profileStudioPricingDefaultRate": "Default base rate (ILS)",
+  "profileStudioPricingRuleHours": "Window (hours before start)",
+  "profileStudioPricingRuleBoost": "Boost (%)",
+  "profileStudioPricingAddRule": "Add rule",
+  "profileStudioPricingSaved": "Studio pricing updated.",
+  "profileStudioPricingSaveFailed": "Failed to update studio pricing.",
+  "profileStudioPricingSummary": "ILS {rate}, {rules}",
+  "@profileStudioPricingSummary": {
+    "placeholders": {
+      "rate": {},
+      "rules": {}
+    }
+  },
+  "profileStudioPricingRuleCompact": "{hours}h:+{boost}%",
+  "@profileStudioPricingRuleCompact": {
+    "placeholders": {
+      "hours": {},
+      "boost": {}
+    }
+  },
   "profileStudioPublicJobsTitle": "My Available Jobs",
   "profileStudioPublicJobsSubtitle": "View public profile with active jobs",
   "profileStudioActiveJobsCount": "{count} active",

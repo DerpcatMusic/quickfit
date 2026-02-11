@@ -50,6 +50,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isBillingLoading = false;
   bool _billingLoaded = false;
   List<Map<String, dynamic>> _billingIntegrations = const [];
+  bool _isStudioPricingLoading = false;
+  bool _studioPricingLoaded = false;
+  double _studioDefaultBaseRate = 120;
+  List<Map<String, dynamic>> _studioLeadTimeRules = const [
+    {'maxHoursBeforeStart': 6.0, 'boostPercent': 10.0},
+    {'maxHoursBeforeStart': 3.0, 'boostPercent': 15.0},
+  ];
 
   AppLocalizations get _l10n => AppLocalizations.of(context)!;
 
@@ -183,6 +190,246 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  List<Map<String, dynamic>> _normalizeStudioPricingRules(
+    List<Map<String, dynamic>> rules,
+  ) {
+    final normalized = rules
+        .map((rule) => {
+              'maxHoursBeforeStart':
+                  ((rule['maxHoursBeforeStart'] as num?) ?? 0).toDouble(),
+              'boostPercent': ((rule['boostPercent'] as num?) ?? 0).toDouble(),
+            })
+        .where((rule) => rule['maxHoursBeforeStart']! > 0)
+        .toList(growable: false)
+      ..sort((a, b) => a['maxHoursBeforeStart']!.compareTo(
+            b['maxHoursBeforeStart']!,
+          ));
+    if (normalized.isEmpty) {
+      return const [
+        {'maxHoursBeforeStart': 6.0, 'boostPercent': 10.0},
+        {'maxHoursBeforeStart': 3.0, 'boostPercent': 15.0},
+      ];
+    }
+    return normalized.take(3).toList(growable: false);
+  }
+
+  Future<void> _loadStudioPricingSettings() async {
+    if (_isStudioPricingLoading) return;
+    setState(() => _isStudioPricingLoading = true);
+    try {
+      final payload = await ConvexService.instance.getMyStudioPricingSettings();
+      if (!mounted) return;
+      if (payload == null) {
+        setState(() {
+          _studioPricingLoaded = true;
+        });
+        return;
+      }
+      final defaultBaseRate =
+          (payload['defaultBaseRate'] as num?)?.toDouble() ?? 120;
+      final rules = ((payload['leadTimeSurgeRules'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+      setState(() {
+        _studioDefaultBaseRate = defaultBaseRate;
+        _studioLeadTimeRules = _normalizeStudioPricingRules(rules);
+        _studioPricingLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _studioPricingLoaded = true;
+      });
+    } finally {
+      if (mounted) setState(() => _isStudioPricingLoading = false);
+    }
+  }
+
+  String _studioPricingSummaryText() {
+    final compactRules = _studioLeadTimeRules
+        .map((rule) {
+          final hours = ((rule['maxHoursBeforeStart'] as num?) ?? 0).round();
+          final boost = ((rule['boostPercent'] as num?) ?? 0).round();
+          return _l10n.profileStudioPricingRuleCompact(hours, boost);
+        })
+        .join(', ');
+    return _l10n.profileStudioPricingSummary(
+      _studioDefaultBaseRate.toStringAsFixed(0),
+      compactRules,
+    );
+  }
+
+  Future<void> _openStudioPricingSheet() async {
+    final defaultRateController = TextEditingController(
+      text: _studioDefaultBaseRate.toStringAsFixed(0),
+    );
+    var rulesDraft = _studioLeadTimeRules
+        .map((rule) => Map<String, dynamic>.from(rule))
+        .toList(growable: true);
+    var isSaving = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            20 + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _l10n.profileStudioPricingTitle,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: defaultRateController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _l10n.profileStudioPricingDefaultRate,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (var i = 0; i < rulesDraft.length; i++) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _l10n.profileStudioPricingRuleHours,
+                        ),
+                        initialValue:
+                            ((rulesDraft[i]['maxHoursBeforeStart'] as num?) ?? 0)
+                                .toStringAsFixed(1),
+                        onChanged: (value) {
+                          final parsed = double.tryParse(value);
+                          if (parsed == null) return;
+                          rulesDraft[i]['maxHoursBeforeStart'] = parsed;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextFormField(
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _l10n.profileStudioPricingRuleBoost,
+                        ),
+                        initialValue:
+                            ((rulesDraft[i]['boostPercent'] as num?) ?? 0)
+                                .toStringAsFixed(0),
+                        onChanged: (value) {
+                          final parsed = double.tryParse(value);
+                          if (parsed == null) return;
+                          rulesDraft[i]['boostPercent'] = parsed;
+                        },
+                      ),
+                    ),
+                    if (rulesDraft.length > 1)
+                      IconButton(
+                        onPressed: isSaving
+                            ? null
+                            : () => setSheetState(() {
+                                  rulesDraft.removeAt(i);
+                                }),
+                        icon: const Icon(LucideIcons.trash2, size: 18),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (rulesDraft.length < 3)
+                OutlinedButton.icon(
+                  onPressed: isSaving
+                      ? null
+                      : () => setSheetState(() {
+                            rulesDraft.add({
+                              'maxHoursBeforeStart': 2.0,
+                              'boostPercent': 10.0,
+                            });
+                          }),
+                  icon: const Icon(LucideIcons.plus, size: 16),
+                  label: Text(_l10n.profileStudioPricingAddRule),
+                ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final parsedRate =
+                              double.tryParse(defaultRateController.text.trim());
+                          if (parsedRate == null || parsedRate <= 0) return;
+                          final messenger = ScaffoldMessenger.of(this.context);
+                          final navigator = Navigator.of(context);
+                          final errorColor =
+                              Theme.of(this.context).colorScheme.error;
+                          setSheetState(() => isSaving = true);
+                          try {
+                            final normalizedRules =
+                                _normalizeStudioPricingRules(rulesDraft);
+                            await ConvexService.instance.setMyStudioPricingSettings(
+                              defaultBaseRate: parsedRate,
+                              leadTimeSurgeRules: normalizedRules,
+                            );
+                            if (!mounted) return;
+                            setState(() {
+                              _studioDefaultBaseRate = parsedRate;
+                              _studioLeadTimeRules = normalizedRules;
+                              _studioPricingLoaded = true;
+                            });
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content:
+                                    Text(_l10n.profileStudioPricingSaved),
+                              ),
+                            );
+                            navigator.pop();
+                          } catch (_) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  _l10n.profileStudioPricingSaveFailed,
+                                ),
+                                backgroundColor: errorColor,
+                              ),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setSheetState(() => isSaving = false);
+                            }
+                          }
+                        },
+                  child: Text(
+                    isSaving ? _l10n.saving : _l10n.save,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _startEditing() async {
     setState(() {
       _isEditing = true;
@@ -306,6 +553,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _hydrateFromAuth(authState);
     if (authState.role == 'studio' && !_billingLoaded && !_isBillingLoading) {
       unawaited(_loadBillingIntegrations());
+    }
+    if (authState.role == 'studio' &&
+        !_studioPricingLoaded &&
+        !_isStudioPricingLoading) {
+      unawaited(_loadStudioPricingSettings());
     }
 
     final theme = Theme.of(context);
@@ -1774,6 +2026,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           trailing: _buildTrailingText(_languageLabel()),
           onTap: _showLanguagePicker,
         ),
+        if (authState.role == 'studio')
+          ProfileTile(
+            icon: LucideIcons.trendingUp,
+            title: _l10n.profileStudioPricingTitle,
+            subtitle: _l10n.profileStudioPricingSubtitle,
+            trailing: _buildTrailingText(_studioPricingSummaryText()),
+            onTap: _openStudioPricingSheet,
+          ),
         if (authState.role == 'studio')
           ProfileTile(
             icon: LucideIcons.creditCard,

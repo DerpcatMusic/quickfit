@@ -918,6 +918,42 @@ class AppLocalizationsEn extends AppLocalizations {
       'Auto-issue invoices for instructor payments';
 
   @override
+  String get profileStudioPricingTitle => 'Default Pricing';
+
+  @override
+  String get profileStudioPricingSubtitle =>
+      'Base rate and lead-time surge rules';
+
+  @override
+  String get profileStudioPricingDefaultRate => 'Default base rate (ILS)';
+
+  @override
+  String get profileStudioPricingRuleHours => 'Window (hours before start)';
+
+  @override
+  String get profileStudioPricingRuleBoost => 'Boost (%)';
+
+  @override
+  String get profileStudioPricingAddRule => 'Add rule';
+
+  @override
+  String get profileStudioPricingSaved => 'Studio pricing updated.';
+
+  @override
+  String get profileStudioPricingSaveFailed =>
+      'Failed to update studio pricing.';
+
+  @override
+  String profileStudioPricingSummary(Object rate, Object rules) {
+    return 'ILS $rate, $rules';
+  }
+
+  @override
+  String profileStudioPricingRuleCompact(Object hours, Object boost) {
+    return '${hours}h:+$boost%';
+  }
+
+  @override
   String get profileStudioPublicJobsTitle => 'My Available Jobs';
 
   @override

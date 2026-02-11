@@ -1742,6 +1742,66 @@ abstract class AppLocalizations {
   /// **'Auto-issue invoices for instructor payments'**
   String get profileStudioBillingSubtitle;
 
+  /// No description provided for @profileStudioPricingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Default Pricing'**
+  String get profileStudioPricingTitle;
+
+  /// No description provided for @profileStudioPricingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Base rate and lead-time surge rules'**
+  String get profileStudioPricingSubtitle;
+
+  /// No description provided for @profileStudioPricingDefaultRate.
+  ///
+  /// In en, this message translates to:
+  /// **'Default base rate (ILS)'**
+  String get profileStudioPricingDefaultRate;
+
+  /// No description provided for @profileStudioPricingRuleHours.
+  ///
+  /// In en, this message translates to:
+  /// **'Window (hours before start)'**
+  String get profileStudioPricingRuleHours;
+
+  /// No description provided for @profileStudioPricingRuleBoost.
+  ///
+  /// In en, this message translates to:
+  /// **'Boost (%)'**
+  String get profileStudioPricingRuleBoost;
+
+  /// No description provided for @profileStudioPricingAddRule.
+  ///
+  /// In en, this message translates to:
+  /// **'Add rule'**
+  String get profileStudioPricingAddRule;
+
+  /// No description provided for @profileStudioPricingSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio pricing updated.'**
+  String get profileStudioPricingSaved;
+
+  /// No description provided for @profileStudioPricingSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to update studio pricing.'**
+  String get profileStudioPricingSaveFailed;
+
+  /// No description provided for @profileStudioPricingSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'ILS {rate}, {rules}'**
+  String profileStudioPricingSummary(Object rate, Object rules);
+
+  /// No description provided for @profileStudioPricingRuleCompact.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h:+{boost}%'**
+  String profileStudioPricingRuleCompact(Object hours, Object boost);
+
   /// No description provided for @profileStudioPublicJobsTitle.
   ///
   /// In en, this message translates to:

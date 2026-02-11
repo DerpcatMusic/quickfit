@@ -65,6 +65,7 @@ Legend:
 - Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
 - Instructor map studio markers show studio + posted-time context for open jobs: `live`
 - Studio post-job verification requirement is explicitly configurable (defaults open): `live`
+- Studio default base rate + lead-time surge settings (profile) wired to backend: `partial`
 
 ## Architecture Modernization
 - Domain event outbox (`domainEvents`): `partial`
