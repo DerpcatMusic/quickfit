@@ -220,8 +220,16 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             requiresVerification: _requiresVerification,
           );
 
-      // Do not block UX on refresh timeout; posting success is the mutation.
-      unawaited(ref.read(studioJobsProvider.notifier).refresh());
+      // Try to warm the studio jobs list before navigation. Do not fail success
+      // flow if refresh takes too long.
+      try {
+        await ref
+            .read(studioJobsProvider.notifier)
+            .refresh()
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // Posting success remains canonical even if list refresh lags.
+      }
       if (!mounted) return;
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
