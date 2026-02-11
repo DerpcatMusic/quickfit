@@ -5,8 +5,11 @@ import 'dart:developer' as developer;
 import 'package:convex_flutter/convex_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+import 'package:quickfit/core/router/app_routes.dart';
+import 'package:quickfit/core/constants/categories.dart';
 import 'package:quickfit/core/providers/zone_provider.dart';
 import 'package:quickfit/core/services/location_service.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
@@ -235,13 +238,15 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
   }
 
   Map<String, String> _buildMapJobsArgs() {
-    final auth = ref.read(authProvider);
+    final mapCategories =
+        FitnessCategory.values.map((c) => c.id).join(',');
     return {
       'latitude': _currentLocation!.latitude.toString(),
       'longitude': _currentLocation!.longitude.toString(),
       'radiusKm': _radiusKm.toString(),
-      'categories': auth.categories?.join(',') ?? 'general',
-      'isVerified': auth.isVerified.toString(),
+      // Map discovery should surface all nearby studios with open jobs.
+      'categories': mapCategories,
+      'isVerified': ref.read(authProvider).isVerified.toString(),
     };
   }
 
@@ -257,13 +262,13 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
       return;
     }
 
-    final auth = ref.read(authProvider);
     final args = _mode == SelectionMode.radius
         ? _buildMapJobsArgs()
         : <String, String>{};
     final zoneArgs = <String, String>{
       'zoneIds': json.encode(_selectedZoneIds.toList()),
-      'categories': auth.categories?.join(',') ?? 'general',
+      // Keep map consistent across radius/zone mode: show all available studios.
+      'categories': FitnessCategory.values.map((c) => c.id).join(','),
     };
     final key = json.encode(_mode == SelectionMode.zones ? zoneArgs : args);
 
@@ -307,17 +312,72 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
       }
 
       final List<dynamic> parsed = json.decode(data) as List<dynamic>;
-      final jobs = parsed.map((job) {
+      final studioBuckets = <String, Map<String, dynamic>>{};
+      for (final raw in parsed) {
+        final job = Map<String, dynamic>.from(raw as Map);
+        final studioId =
+            (job['studioId'] as String?) ?? (job['_id'] as String?) ?? '';
+        if (studioId.isEmpty) continue;
+
+        final lat = (job['latitude'] as num?)?.toDouble();
+        final lng = (job['longitude'] as num?)?.toDouble();
+        if (lat == null || lng == null) continue;
+
+        final existing = studioBuckets[studioId];
+        if (existing == null) {
+          final createdAt = (job['createdAt'] as num?)?.toInt() ??
+              (job['_creationTime'] as num?)?.toInt();
+          studioBuckets[studioId] = {
+            'studioId': studioId,
+            'studioName': (job['studioName'] as String?) ?? 'Studio',
+            'latitude': lat,
+            'longitude': lng,
+            'jobCount': 1,
+            'isSos': job['sosBoostApplied'] as bool? ?? false,
+            'currentRate': (job['currentRate'] as num?)?.toDouble(),
+            'distanceKm': ((job['distanceMeters'] as num?) ?? 0) / 1000,
+            'latestPostedAt': createdAt,
+          };
+          continue;
+        }
+        existing['jobCount'] = (existing['jobCount'] as int) + 1;
+        existing['isSos'] =
+            (existing['isSos'] as bool) || (job['sosBoostApplied'] as bool? ?? false);
+        final candidateRate = (job['currentRate'] as num?)?.toDouble();
+        if (candidateRate != null) {
+          final existingRate = existing['currentRate'] as double?;
+          if (existingRate == null || candidateRate > existingRate) {
+            existing['currentRate'] = candidateRate;
+          }
+        }
+        final createdAt = (job['createdAt'] as num?)?.toInt() ??
+            (job['_creationTime'] as num?)?.toInt();
+        final latestPostedAt = existing['latestPostedAt'] as int?;
+        if (createdAt != null &&
+            (latestPostedAt == null || createdAt > latestPostedAt)) {
+          existing['latestPostedAt'] = createdAt;
+        }
+      }
+
+      final jobs = studioBuckets.values.map((bucket) {
+        final count = bucket['jobCount'] as int;
+        final studioName = bucket['studioName'] as String? ?? 'Studio';
+        final latestPostedAt = bucket['latestPostedAt'] as int?;
+        final postedLabel = _formatPostedAt(latestPostedAt);
+        final countLabel = count > 1 ? '$studioName ($count)' : studioName;
+        final label = postedLabel != null ? '$countLabel • $postedLabel' : countLabel;
         return QuickFitJobMarker(
-          id: job['_id'] as String,
+          id: bucket['studioId'] as String,
+          studioId: bucket['studioId'] as String,
           position: LatLng(
-            (job['latitude'] as num).toDouble(),
-            (job['longitude'] as num).toDouble(),
+            bucket['latitude'] as double,
+            bucket['longitude'] as double,
           ),
-          label: job['title'] as String? ?? 'Job',
-          isSos: job['sosBoostApplied'] as bool? ?? false,
-          currentRate: (job['currentRate'] as num?)?.toDouble(),
-          distanceKm: ((job['distanceMeters'] as num?) ?? 0) / 1000,
+          label: label,
+          isSos: bucket['isSos'] as bool,
+          currentRate: bucket['currentRate'] as double?,
+          distanceKm: bucket['distanceKm'] as double?,
+          jobCount: count,
         );
       }).toList();
 
@@ -329,6 +389,21 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
     } catch (e) {
       developer.log('Error parsing map jobs', name: 'instructor_map', error: e);
     }
+  }
+
+  String? _formatPostedAt(int? timestampMs) {
+    if (timestampMs == null || timestampMs <= 0) return null;
+    final postedAt = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+    final now = DateTime.now();
+    final isToday = postedAt.year == now.year &&
+        postedAt.month == now.month &&
+        postedAt.day == now.day;
+    if (isToday) {
+      final hh = postedAt.hour.toString().padLeft(2, '0');
+      final mm = postedAt.minute.toString().padLeft(2, '0');
+      return '$hh:$mm';
+    }
+    return '${postedAt.month}/${postedAt.day}';
   }
 
   int _computeJobsSignature(List<QuickFitJobMarker> jobs) {
@@ -489,6 +564,11 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
                 _scheduleAutoApply(delay: Duration.zero);
                 _mapKey.currentState?.updateHomePin(point);
               }
+            },
+            onJobTapped: (studioId) {
+              context.push(
+                AppRoutes.studioPublicProfile.replaceFirst(':id', studioId),
+              );
             },
           ),
           Positioned(

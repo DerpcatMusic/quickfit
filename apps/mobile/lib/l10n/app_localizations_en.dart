@@ -955,6 +955,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get studioPublicProfileRateCurrency => 'ILS';
 
   @override
+  String studioPublicProfilePostedAt(Object time) {
+    return 'Posted $time';
+  }
+
+  @override
   String get jobDetailClaimQueued => 'Claim request queued.';
 
   @override

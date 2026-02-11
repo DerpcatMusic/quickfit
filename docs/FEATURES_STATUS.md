@@ -62,6 +62,7 @@ Legend:
 - Studio post-job sticky bottom submit CTA: `live`
 - Studio jobs list query hot-path optimized to reduce timeout risk: `partial`
 - Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
+- Instructor map studio markers show studio + posted-time context for open jobs: `live`
 
 ## Architecture Modernization
 - Domain event outbox (`domainEvents`): `partial`

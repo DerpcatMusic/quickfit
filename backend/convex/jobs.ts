@@ -178,13 +178,21 @@ export const getNearbyJobs = query({
 
     let jobResults: Array<{
       _id: Id<"jobs">;
+      studioId: Id<"users">;
+      studioName: string;
       title: string;
       category: string;
+      startTime: number;
+      endTime: number;
+      baseRate: number;
+      address: string;
+      status: string;
       latitude: number;
       longitude: number;
       sosBoostApplied: boolean;
       currentRate: number;
       distanceMeters: number;
+      createdAt: number;
     }> = [];
 
     if (user.dispatchMode === "zone") {
@@ -214,27 +222,11 @@ export const getNearbyJobs = query({
       : 50;
     const limitedResults = jobResults.slice(0, safeLimit ?? 50);
 
-    // Enrichment: Add studio info to enriched results from geo.ts
-    const enrichedJobs = await Promise.all(
-      limitedResults.map(async (match) => {
-        // Fetch full job for relations if needed, but match contains the key data
-        const jobDoc = await ctx.db.get(match._id);
-        if (!jobDoc) return null;
-
-        const studioDoc = await ctx.db.get(jobDoc.studioId);
-
-        return {
-          ...jobDoc,
-          distanceMeters: match.distanceMeters,
-          distanceKm: match.distanceMeters / 1000,
-          studioName:
-            studioDoc?.businessName || studioDoc?.name || "Unknown Studio",
-          studioAvatarUrl: studioDoc?.avatarUrl,
-        };
-      }),
-    );
-
-    return enrichedJobs.filter((j): j is NonNullable<typeof j> => j !== null);
+    return limitedResults.map((match) => ({
+      ...match,
+      distanceKm: match.distanceMeters / 1000,
+      studioAvatarUrl: undefined,
+    }));
   },
 });
 
@@ -353,15 +345,21 @@ async function findJobsForInstructorByZones(
 ): Promise<
   Array<{
     _id: Id<"jobs">;
-    title: string;
-    category: string;
     studioId: Id<"users">;
     studioName: string;
+    title: string;
+    category: string;
+    startTime: number;
+    endTime: number;
+    baseRate: number;
+    address: string;
+    status: string;
     latitude: number;
     longitude: number;
     sosBoostApplied: boolean;
     currentRate: number;
     distanceMeters: number;
+    createdAt: number;
   }>
 > {
   const MAX_RESULTS = 200;
@@ -399,11 +397,16 @@ async function findJobsForInstructorByZones(
               : 0;
             jobsMap.set(job._id, {
               _id: job._id,
-              title: job.title,
-              category: job.category,
               studioId: job.studioId,
               studioName:
                 studioDoc?.businessName || studioDoc?.name || "Studio",
+              title: job.title,
+              category: job.category,
+              startTime: job.startTime,
+              endTime: job.endTime,
+              baseRate: job.baseRate,
+              address: job.address,
+              status: job.status,
               latitude: job.latitude,
               longitude: job.longitude,
               sosBoostApplied: job.sosBoostApplied,
@@ -440,11 +443,16 @@ async function findJobsForInstructorByZones(
             : 0;
           jobsMap.set(job._id, {
             _id: job._id,
-            title: job.title,
-            category: job.category,
             studioId: job.studioId,
             studioName:
               studioDoc?.businessName || studioDoc?.name || "Studio",
+            title: job.title,
+            category: job.category,
+            startTime: job.startTime,
+            endTime: job.endTime,
+            baseRate: job.baseRate,
+            address: job.address,
+            status: job.status,
             latitude: job.latitude,
             longitude: job.longitude,
             sosBoostApplied: job.sosBoostApplied,
@@ -588,11 +596,13 @@ async function getStudioJobsForStudio(
   );
 
   // Keep claim actions functional with bounded lookups only for claimable rows.
-  const claimableJobs = jobs.filter(
-    (job) =>
-      (job.status === "claimed" || job.status === "backup_claimed") &&
-      Boolean(job.claimedBy ?? job.backupClaimedBy),
-  );
+  const claimableJobs = jobs
+    .filter(
+      (job) =>
+        (job.status === "claimed" || job.status === "backup_claimed") &&
+        Boolean(job.claimedBy ?? job.backupClaimedBy),
+    )
+    .slice(0, 20);
   const claimEntries = await Promise.all(
     claimableJobs.map(async (job) => {
       const instructorId = job.claimedBy ?? job.backupClaimedBy;
@@ -625,7 +635,33 @@ async function getStudioJobsForStudio(
       }
     }
 
-    return { ...job, claimedInstructor, claimId: claimIdByJobId.get(job._id) };
+    return {
+      _id: job._id,
+      _creationTime: job._creationTime,
+      studioId: job.studioId,
+      title: job.title,
+      description: job.description,
+      category: job.category,
+      startTime: job.startTime,
+      endTime: job.endTime,
+      durationMinutes: job.durationMinutes,
+      baseRate: job.baseRate,
+      currentRate: job.currentRate,
+      sosBoostApplied: job.sosBoostApplied,
+      sosBoostPercentage: job.sosBoostPercentage,
+      latitude: job.latitude,
+      longitude: job.longitude,
+      address: job.address,
+      status: job.status,
+      claimedBy: job.claimedBy,
+      claimedAt: job.claimedAt,
+      confirmedAt: job.confirmedAt,
+      backupClaimedBy: job.backupClaimedBy,
+      backupClaimedAt: job.backupClaimedAt,
+      requiresVerification: job.requiresVerification,
+      claimedInstructor,
+      claimId: claimIdByJobId.get(job._id),
+    };
   });
 
   return sortStudioJobsByPriority(jobsWithDetails);

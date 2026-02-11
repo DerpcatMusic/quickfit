@@ -57,6 +57,7 @@ Status values:
 - Exit criteria:
   - Instructor can tap studio pin and open public studio profile.
   - Public studio profile shows currently available jobs.
+  - Instructor map markers include studio name and recency (posted-time) context.
   - Studio profile includes direct access to own available jobs view.
 
 ## Phase 1: Event Backbone (Domain Outbox)

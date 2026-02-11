@@ -1802,6 +1802,12 @@ abstract class AppLocalizations {
   /// **'ILS'**
   String get studioPublicProfileRateCurrency;
 
+  /// No description provided for @studioPublicProfilePostedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Posted {time}'**
+  String studioPublicProfilePostedAt(Object time);
+
   /// No description provided for @jobDetailClaimQueued.
   ///
   /// In en, this message translates to:

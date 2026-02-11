@@ -426,6 +426,12 @@
   "studioPublicProfileUntitledClass": "Untitled class",
   "studioPublicProfileCategoryFallback": "general",
   "studioPublicProfileRateCurrency": "ILS",
+  "studioPublicProfilePostedAt": "Posted {time}",
+  "@studioPublicProfilePostedAt": {
+    "placeholders": {
+      "time": {}
+    }
+  },
   "jobDetailClaimQueued": "Claim request queued.",
   "jobDetailWithdrawalQueued": "Withdrawal request queued.",
   "jobDetailNoActiveClaim": "No active claim found.",

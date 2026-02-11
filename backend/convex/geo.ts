@@ -8,7 +8,7 @@ import { components } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { ActionCtx, MutationCtx, QueryCtx, query, mutation, internalQuery, internalMutation } from "./_generated/server";
 
-const MVP_SKIP_CERTIFICATION = true; // Set to true to bypass verification checks for MVP
+const MVP_SKIP_CERTIFICATION = process.env.MVP_SKIP_CERTIFICATION === "true";
 const MAX_RADIUS_KM = 15;
 
 // ============================================
@@ -50,9 +50,16 @@ export const findInstructorsForJobQuery = internalQuery({
     jobPoint: v.object({ latitude: v.number(), longitude: v.number() }),
     jobCategory: v.string(),
     requiresVerification: v.boolean(),
+    isSos: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    return await findInstructorsForJob(ctx, args.jobPoint, args.jobCategory, args.requiresVerification);
+    return await findInstructorsForJob(
+      ctx,
+      args.jobPoint,
+      args.jobCategory,
+      args.requiresVerification,
+      args.isSos ?? false,
+    );
   },
 });
 
@@ -181,7 +188,8 @@ export async function findInstructorsForJob(
   ctx: QueryCtx,
   jobPoint: Point,
   jobCategory: string,
-  requiresVerification: boolean
+  requiresVerification: boolean,
+  isSos: boolean,
 ): Promise<Array<{ instructorId: Id<"users">; distanceMeters: number; radiusKm: number }>> {
   const MAX_RADIUS_METERS = MAX_RADIUS_KM * 1000;
 
@@ -216,6 +224,9 @@ export async function findInstructorsForJob(
   for (const result of results) {
     const instructor = await ctx.db.get(result.key);
     if (!instructor) continue;
+    if (instructor.notificationsEnabled === false) continue;
+    if (isSos && instructor.sosJobAlerts === false) continue;
+    if (!isSos && instructor.regularJobAlerts === false) continue;
 
     const distanceMeters = haversineDistanceMeters(
       instructor.latitude ?? result.coordinates.latitude,
@@ -252,25 +263,41 @@ export async function findJobsForInstructor(
   isVerified: boolean
 ): Promise<Array<{ 
   _id: Id<"jobs">; 
+  studioId: Id<"users">;
+  studioName: string;
   title: string;
   category: string;
+  startTime: number;
+  endTime: number;
+  baseRate: number;
+  address: string;
+  status: string;
   latitude: number;
   longitude: number;
   sosBoostApplied: boolean;
   currentRate: number;
   distanceMeters: number;
+  createdAt: number;
 }>> {
   const effectiveRadiusKm = Math.min(radiusKm, MAX_RADIUS_KM);
   const radiusMeters = effectiveRadiusKm * 1000;
   const allJobs: Array<{ 
     _id: Id<"jobs">; 
+    studioId: Id<"users">;
+    studioName: string;
     title: string;
     category: string;
+    startTime: number;
+    endTime: number;
+    baseRate: number;
+    address: string;
+    status: string;
     latitude: number;
     longitude: number;
     sosBoostApplied: boolean;
     currentRate: number;
     distanceMeters: number;
+    createdAt: number;
   }> = [];
   
   for (const category of categories) {
@@ -290,6 +317,7 @@ export async function findJobsForInstructor(
     for (const result of results) {
       const job = await ctx.db.get(result.key);
       if (!job) continue;
+      const studioDoc = await ctx.db.get(job.studioId);
 
       const jobCoords = result.coordinates;
       const distanceMeters = haversineDistanceMeters(
@@ -301,13 +329,21 @@ export async function findJobsForInstructor(
       
       allJobs.push({
         _id: result.key,
+        studioId: job.studioId,
+        studioName: studioDoc?.businessName || studioDoc?.name || "Studio",
         title: job.title,
         category: job.category,
+        startTime: job.startTime,
+        endTime: job.endTime,
+        baseRate: job.baseRate,
+        address: job.address,
+        status: job.status,
         latitude: jobCoords.latitude,
         longitude: jobCoords.longitude,
         sosBoostApplied: job.sosBoostApplied,
         currentRate: job.currentRate,
         distanceMeters: Math.round(distanceMeters),
+        createdAt: job.createdAt,
       });
     }
   }

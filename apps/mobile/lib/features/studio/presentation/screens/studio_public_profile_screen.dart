@@ -148,6 +148,14 @@ class _StudioPublicProfileScreenState extends State<StudioPublicProfileScreen> {
               ...jobs.map((job) {
                 final jobId = (job['_id'] as String?) ?? '';
                 final rate = ((job['currentRate'] as num?) ?? 0).toStringAsFixed(0);
+                final createdAt = (job['createdAt'] as num?)?.toInt();
+                String? postedAtLabel;
+                if (createdAt != null && createdAt > 0) {
+                  final postedAt = DateTime.fromMillisecondsSinceEpoch(createdAt);
+                  final hh = postedAt.hour.toString().padLeft(2, '0');
+                  final mm = postedAt.minute.toString().padLeft(2, '0');
+                  postedAtLabel = l10n.studioPublicProfilePostedAt('$hh:$mm');
+                }
                 return Card(
                   child: ListTile(
                     title: Text(
@@ -155,7 +163,9 @@ class _StudioPublicProfileScreenState extends State<StudioPublicProfileScreen> {
                           l10n.studioPublicProfileUntitledClass,
                     ),
                     subtitle: Text(
-                      '${job['category'] ?? l10n.studioPublicProfileCategoryFallback} - ${l10n.currencyAmount(l10n.studioPublicProfileRateCurrency, rate)}',
+                      postedAtLabel == null
+                          ? '${job['category'] ?? l10n.studioPublicProfileCategoryFallback} - ${l10n.currencyAmount(l10n.studioPublicProfileRateCurrency, rate)}'
+                          : '${job['category'] ?? l10n.studioPublicProfileCategoryFallback} - ${l10n.currencyAmount(l10n.studioPublicProfileRateCurrency, rate)} - $postedAtLabel',
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: jobId.isEmpty

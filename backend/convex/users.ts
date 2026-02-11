@@ -283,16 +283,29 @@ export const getStudioPublicProfile = query({
     const studio = await ctx.db.get(studioId);
     if (!studio || studio.role !== "studio") return null;
 
-    const recentJobs = await ctx.db
+    const openJobs = await ctx.db
       .query("jobs")
-      .withIndex("by_studio", (q) => q.eq("studioId", studioId))
+      .withIndex("by_studio_status", (q) =>
+        q.eq("studioId", studioId).eq("status", "open"),
+      )
       .order("desc")
-      .take(40);
+      .take(50);
 
-    const openJobs = recentJobs.filter((job) => job.status === "open");
-    const activeJobs = recentJobs.filter((job) =>
-      ["open", "claimed", "backup_claimed", "confirmed"].includes(job.status),
+    const activeStatuses: Array<
+      "claimed" | "backup_claimed" | "confirmed"
+    > = ["claimed", "backup_claimed", "confirmed"];
+    const activeBuckets = await Promise.all(
+      activeStatuses.map((status) =>
+        ctx.db
+          .query("jobs")
+          .withIndex("by_studio_status", (q) =>
+            q.eq("studioId", studioId).eq("status", status),
+          )
+          .order("desc")
+          .take(50),
+      ),
     );
+    const activeJobs = [...openJobs, ...activeBuckets.flat()];
 
     return {
       studio: {
@@ -314,6 +327,7 @@ export const getStudioPublicProfile = query({
         title: job.title,
         category: job.category,
         status: job.status,
+        createdAt: job.createdAt,
         startTime: job.startTime,
         endTime: job.endTime,
         currentRate: job.currentRate,
