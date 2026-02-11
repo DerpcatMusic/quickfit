@@ -44,6 +44,7 @@ Legend:
 - Invoicing integration model + issue pipeline: `partial`
 - Morning/iCount production-grade adapters: `planned`
 - Invoice URL/deep integration consistency: `partial`
+- Studio billing settings timeout retry loop guarded in mobile profile: `live`
 
 ## Mobile Instructor Payments UX
 - Payment history list: `live`

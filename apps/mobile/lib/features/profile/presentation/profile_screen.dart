@@ -159,6 +159,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _billingIntegrations = rows;
         _billingLoaded = true;
       });
+    } catch (_) {
+      if (!mounted) return;
+      // Avoid repeated timeout loops on every rebuild; user can still open
+      // billing sheet to retry explicitly.
+      setState(() {
+        _billingIntegrations = const [];
+        _billingLoaded = true;
+      });
     } finally {
       if (mounted) setState(() => _isBillingLoading = false);
     }
