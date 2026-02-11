@@ -73,6 +73,7 @@ Legend:
 - Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
 - Studio post-job no longer hard-fails when zone detection is unavailable/slow (posts without `zoneId` and continues dispatch): `live`
 - Instructor map studio markers show studio + posted-time context for open jobs: `live`
+- Instructor map radius mode falls back to canonical `jobs:getJobsForMap` if geo feed fails: `live`
 - Studio post-job verification requirement is explicitly configurable (defaults open): `live`
 - Studio default base rate + lead-time surge settings (profile) wired to backend: `partial`
 - Post-job form now applies studio default base rate unless user manually overrides rate: `live`

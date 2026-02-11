@@ -50,6 +50,7 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
   Timer? _radiusPreviewThrottle;
   StreamSubscription<Position>? _locationSubscription;
   String? _lastHydratedAuthSnapshot;
+  bool _fallbackQueryInFlight = false;
 
   @override
   void initState() {
@@ -293,11 +294,41 @@ class _InstructorMapScreenState extends ConsumerState<InstructorMapScreen> {
             name: 'instructor_map',
             error: value,
           );
+          if (_mode == SelectionMode.radius) {
+            unawaited(_loadRadiusMapJobsFallback());
+          }
         },
       );
     } catch (e) {
       developer.log('Error subscribing to jobs',
           name: 'instructor_map', error: e);
+      if (_mode == SelectionMode.radius) {
+        unawaited(_loadRadiusMapJobsFallback());
+      }
+    }
+  }
+
+  Future<void> _loadRadiusMapJobsFallback() async {
+    if (_fallbackQueryInFlight || _mode != SelectionMode.radius) return;
+    _fallbackQueryInFlight = true;
+    try {
+      final payload = await ConvexClient.instance.query('jobs:getJobsForMap', {});
+      if (!mounted) return;
+      final mapped = Map<String, dynamic>.from(json.decode(payload) as Map);
+      final rows = mapped['jobs'];
+      if (rows is List) {
+        _handleMapJobsUpdate(json.encode(rows));
+        return;
+      }
+      _handleMapJobsUpdate('[]');
+    } catch (e) {
+      developer.log(
+        'Fallback map jobs query failed',
+        name: 'instructor_map',
+        error: e,
+      );
+    } finally {
+      _fallbackQueryInFlight = false;
     }
   }
 
