@@ -135,6 +135,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         _subscription?.cancel();
         _subscription = null;
         _subscriptionSessionKey = sessionKey;
+        _activeQueryName = _myJobsQueryName;
 
         final cached = _loadFromCache(user.uid);
         _lastState = cached.copyWith(
@@ -247,10 +248,11 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
   }
 
   Future<String> _bootstrapFromQuery(String sessionKey, String userUid) async {
-    for (final queryName in [
-      _myJobsQueryName,
-      _legacyStudioJobsQueryName,
-    ]) {
+    var shouldTryLegacyFallback = false;
+    for (final queryName in [_myJobsQueryName, _legacyStudioJobsQueryName]) {
+      if (queryName == _legacyStudioJobsQueryName && !shouldTryLegacyFallback) {
+        continue;
+      }
       try {
         final payload = await ConvexClient.instance.query(queryName, const {});
         if (_subscriptionSessionKey != sessionKey) return queryName;
@@ -266,8 +268,11 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         return queryName;
       } catch (e) {
         final isMissingFn = e.toString().contains('Could not find function');
-        if (queryName == _myJobsQueryName && isMissingFn) {
-          continue;
+        if (queryName == _myJobsQueryName) {
+          shouldTryLegacyFallback = isMissingFn;
+          if (isMissingFn) {
+            continue;
+          }
         }
         log.e('Studio jobs bootstrap query failed [$queryName]: $e');
       }

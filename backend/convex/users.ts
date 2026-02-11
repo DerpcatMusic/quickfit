@@ -282,60 +282,29 @@ export const getStudioPublicProfile = query({
   handler: async (ctx, { studioId }) => {
     const studio = await ctx.db.get(studioId);
     if (!studio || studio.role !== "studio") return null;
-
-    const activeStatuses: Array<
-      "claimed" | "backup_claimed" | "confirmed"
-    > = ["claimed", "backup_claimed", "confirmed"];
-    let openJobs = await ctx.db
-      .query("readModel_studioJobs")
-      .withIndex("by_studio_status_createdAt", (q) =>
-        q.eq("studioId", studioId).eq("status", "open"),
-      )
-      .order("desc")
-      .take(50);
-    let activeBuckets = await Promise.all(
-      activeStatuses.map((status) =>
-        ctx.db
-          .query("readModel_studioJobs")
-          .withIndex("by_studio_status_createdAt", (q) =>
-            q.eq("studioId", studioId).eq("status", status),
-          )
-          .order("desc")
-          .take(50),
-      ),
+    const studioJobs: Array<{
+      _id: string;
+      title: string;
+      category: string;
+      status: string;
+      createdAt?: number;
+      _creationTime?: number;
+      startTime: number;
+      endTime: number;
+      currentRate: number;
+      address: string;
+      sosBoostApplied?: boolean;
+    }> = await ctx.runQuery(
+      internal.jobs.getStudioJobsForStudioInternal,
+      { studioId },
     );
-
-    // Fallback keeps legacy jobs visible before projection backfill completes.
-    if (openJobs.length === 0 && activeBuckets.every((bucket) => bucket.length === 0)) {
-      const legacyOpenJobs = await ctx.db
-        .query("jobs")
-        .withIndex("by_studio_status", (q) =>
-          q.eq("studioId", studioId).eq("status", "open"),
-        )
-        .order("desc")
-        .take(50);
-
-      const legacyActiveBuckets = await Promise.all(
-        activeStatuses.map((status) =>
-          ctx.db
-            .query("jobs")
-            .withIndex("by_studio_status", (q) =>
-              q.eq("studioId", studioId).eq("status", status),
-            )
-            .order("desc")
-            .take(50),
-        ),
-      );
-
-      openJobs = legacyOpenJobs.map((job) => ({
-        ...job,
-        jobId: job._id,
-      })) as any;
-      activeBuckets = legacyActiveBuckets as any;
-    }
-
-    const activeJobsCount =
-      openJobs.length + activeBuckets.reduce((sum, bucket) => sum + bucket.length, 0);
+    const openJobs = studioJobs.filter((job: (typeof studioJobs)[number]) => job.status === "open");
+    const activeJobsCount = studioJobs.filter((job) =>
+      job.status === "open" ||
+      job.status === "claimed" ||
+      job.status === "backup_claimed" ||
+      job.status === "confirmed",
+    ).length;
 
     return {
       studio: {
@@ -353,11 +322,11 @@ export const getStudioPublicProfile = query({
         activeJobs: activeJobsCount,
       },
       jobs: openJobs.map((job) => ({
-        _id: job.jobId ?? job._id,
+        _id: job._id,
         title: job.title,
         category: job.category,
         status: job.status,
-        createdAt: job.createdAt,
+        createdAt: job.createdAt ?? job._creationTime ?? 0,
         startTime: job.startTime,
         endTime: job.endTime,
         currentRate: job.currentRate,

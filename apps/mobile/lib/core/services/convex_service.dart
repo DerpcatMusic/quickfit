@@ -1,6 +1,7 @@
 // Convex Service - Backend API abstraction
 // lib/core/services/convex_service.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:convex_flutter/convex_flutter.dart';
 import 'package:flutter/foundation.dart';
@@ -347,7 +348,9 @@ class ConvexService {
     Object? lastError;
     for (final name in names) {
       try {
-        return await ConvexClient.instance.query(name, args);
+        return await ConvexClient.instance
+            .query(name, args)
+            .timeout(const Duration(seconds: 8));
       } catch (e) {
         lastError = e;
       }
@@ -361,7 +364,7 @@ class ConvexService {
       final result = await ConvexClient.instance.query(
         'billing:listMyInvoicingIntegrations',
         {},
-      );
+      ).timeout(const Duration(seconds: 8));
       if (result.isEmpty || result == 'null') return <Map<String, dynamic>>[];
       final decoded = json.decode(result);
       if (decoded is! List) return <Map<String, dynamic>>[];

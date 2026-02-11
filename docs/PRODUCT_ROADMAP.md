@@ -31,6 +31,7 @@ Status values:
   - Studio post action reports success even if follow-up list refresh times out.
   - Studio `My Jobs` screen cannot remain in indefinite loading state (watchdog + query bootstrap).
   - Studio and instructor "my jobs" clients can consume a role-aware shared query endpoint.
+  - Studio jobs bootstrap should not downgrade to legacy query path on transient timeout.
   - Profile billing bootstrap does not retry timeouting queries on every rebuild.
   - Foreground offline sync binds Convex auth before replay.
   - Sign-out clears/quarantines pending mutations by user scope.
@@ -168,7 +169,7 @@ Status values:
 ## Phase 6: Modularization and Boundary Hardening
 
 ### RM-160 Backend Modular Monolith Decomposition
-- Status: `planned`
+- Status: `partial`
 - Owner: Backend
 - Goal: reduce oversized Convex domain files while preserving API contracts.
 - Exit criteria:

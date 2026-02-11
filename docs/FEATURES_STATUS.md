@@ -65,8 +65,10 @@ Legend:
 - Projection-backed studio jobs and instructor availability feed (with lifecycle sync + fallback): `partial`
 - Role-aware `jobs:getMyJobs` endpoint shared by studio/instructor "my jobs" flows: `partial`
 - Studio `My Jobs` loading watchdog + bootstrap fallback (prevents infinite spinner): `live`
+- Studio jobs bootstrap now falls back to legacy query only when `jobs:getMyJobs` is missing (not on transient timeout): `live`
 - Studio post-job mutation timeout guard with explicit failure surface: `live`
 - Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
+- Studio post-job no longer hard-fails when zone detection is unavailable/slow (posts without `zoneId` and continues dispatch): `live`
 - Instructor map studio markers show studio + posted-time context for open jobs: `live`
 - Studio post-job verification requirement is explicitly configurable (defaults open): `live`
 - Studio default base rate + lead-time surge settings (profile) wired to backend: `partial`
@@ -76,7 +78,7 @@ Legend:
 - Event consumer checkpoints: `partial`
 - Studio/instructor projection read models: `partial`
 - Payment/payout timeline projection: `planned`
-- Backend domain modularization (wrapper exports + extracted internals): `planned`
+- Backend domain modularization (wrapper exports + extracted internals): `partial`
 - Legacy per-studio payment integration runtime dependency removal: `partial`
 
 ## Security and Operations
