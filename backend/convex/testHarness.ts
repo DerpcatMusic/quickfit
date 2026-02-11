@@ -1,9 +1,9 @@
 // convex/testHarness.ts
 // Test harness for end-to-end job flow (post -> notify -> claim -> accept)
 
-import { action, internalMutation } from "./_generated/server";
+import { action, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import {
   syncInstructorLocation,
@@ -12,6 +12,7 @@ import {
   removeJobLocation,
   haversineDistanceKm,
 } from "./geo";
+import { syncJobReadModels } from "./jobReadModels";
 
 const DEFAULT_RADIUS_KM = 5;
 
@@ -33,6 +34,7 @@ export const createTestUser = internalMutation({
     longitude: v.number(),
     radiusKm: v.optional(v.number()),
     dispatchMode: v.optional(v.union(v.literal("radius"), v.literal("zone"))),
+    isVerified: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const dispatchMode = args.dispatchMode ?? "radius";
@@ -42,7 +44,7 @@ export const createTestUser = internalMutation({
       name: args.name,
       role: args.role,
       hasCompletedOnboarding: true,
-      isVerified: true,
+      isVerified: args.isVerified ?? true,
       categories: args.categories,
       primaryCategory: args.categories[0] ?? "general",
       dispatchMode: args.role === "instructor" ? dispatchMode : undefined,
@@ -59,12 +61,12 @@ export const createTestUser = internalMutation({
         ctx,
         userId,
         { latitude: args.latitude, longitude: args.longitude },
-        dispatchMode,
-        args.categories,
-        true,
-        true,
-        args.radiusKm ?? DEFAULT_RADIUS_KM,
-      );
+      dispatchMode,
+      args.categories,
+      args.isVerified ?? true,
+      true,
+      args.radiusKm ?? DEFAULT_RADIUS_KM,
+    );
     }
 
     return userId;
@@ -92,6 +94,7 @@ export const createTestJob = internalMutation({
         v.literal("cancelled"),
       ),
     ),
+    requiresVerification: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const startTime = args.startTimeMs ?? nowPlusMinutes(60);
@@ -118,7 +121,7 @@ export const createTestJob = internalMutation({
       longitude: args.longitude,
       address: args.address,
       status,
-      requiresVerification: false,
+      requiresVerification: args.requiresVerification ?? false,
       notificationsSent: false,
       createdAt: now,
       updatedAt: now,
@@ -131,12 +134,37 @@ export const createTestJob = internalMutation({
         { latitude: args.latitude, longitude: args.longitude },
         args.category,
         "open",
-        false,
+        args.requiresVerification ?? false,
         args.baseRate,
       );
     }
+    await syncJobReadModels(ctx as any, jobId);
 
     return jobId;
+  },
+});
+
+export const getJobProjectionState = internalQuery({
+  args: {
+    jobId: v.id("jobs"),
+  },
+  handler: async (ctx, { jobId }) => {
+    const studioProjection = await ctx.db
+      .query("readModel_studioJobs")
+      .withIndex("by_job", (q) => q.eq("jobId", jobId))
+      .first();
+    const instructorProjection = await ctx.db
+      .query("readModel_instructorFeed")
+      .withIndex("by_job", (q) => q.eq("jobId", jobId))
+      .first();
+
+    return {
+      studioProjectionExists: Boolean(studioProjection),
+      studioStatus: studioProjection?.status,
+      studioClaimId: studioProjection?.claimId,
+      instructorProjectionExists: Boolean(instructorProjection),
+      instructorStatus: instructorProjection?.status,
+    };
   },
 });
 
@@ -175,6 +203,7 @@ export const claimJobAs = internalMutation({
 
       // Remove from geo index while claimed
       await removeJobLocation(ctx, jobId);
+      await syncJobReadModels(ctx as any, jobId);
 
       return claimId;
     }
@@ -198,6 +227,7 @@ export const claimJobAs = internalMutation({
         backupClaimedAt: now,
         updatedAt: now,
       });
+      await syncJobReadModels(ctx as any, jobId);
 
       return claimId;
     }
@@ -227,6 +257,7 @@ export const respondToClaimAs = internalMutation({
         confirmedAt: Date.now(),
         updatedAt: Date.now(),
       });
+      await syncJobReadModels(ctx as any, job._id);
     } else {
       await ctx.db.patch(claimId, {
         status: "rejected",
@@ -248,6 +279,7 @@ export const respondToClaimAs = internalMutation({
         job.requiresVerification,
         job.currentRate,
       );
+      await syncJobReadModels(ctx as any, job._id);
     }
   },
 });
@@ -343,6 +375,7 @@ export const runTestSuite = action({
     matchCount: number;
     mismatchCount: number;
     jobStatus: string | undefined;
+    completedJobStatus: string | undefined;
     notificationsSent: boolean | undefined;
     staleJobStatus: string | undefined;
     backupJobStatus: string | undefined;
@@ -358,6 +391,8 @@ export const runTestSuite = action({
     claimsWindowFilterAndOrderCorrect: boolean;
     studioJobsPriorityOrderingCorrect: boolean;
     studioInstructorVisibilityRealtimeCorrect: boolean;
+    postingVisibilityForUnverifiedCorrect: boolean;
+    readModelProjectionConsistencyCorrect: boolean;
   }> => {
     const expected = process.env.TEST_HARNESS_TOKEN;
     if (!expected || token !== expected) {
@@ -400,6 +435,85 @@ export const runTestSuite = action({
         radiusKm: 5,
       },
     );
+    const unverifiedInstructorId = await ctx.runMutation(
+      internal.testHarness.createTestUser,
+      {
+        role: "instructor",
+        name: "Unverified Instructor",
+        email: "unverified@test.local",
+        categories: ["pilates"],
+        latitude: 32.0867,
+        longitude: 34.7827,
+        radiusKm: 5,
+        isVerified: false,
+      },
+    );
+
+    const visibilityPublicJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Visibility Public Pilates",
+        category: "pilates",
+        latitude: 32.0859,
+        longitude: 34.7821,
+        address: "Tel Aviv",
+        baseRate: 175,
+        startTimeMs: Date.now() + 3 * 60 * 60 * 1000,
+        endTimeMs: Date.now() + 4 * 60 * 60 * 1000,
+        requiresVerification: false,
+      },
+    );
+    const visibilityVerifiedOnlyJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Visibility Verified Pilates",
+        category: "pilates",
+        latitude: 32.086,
+        longitude: 34.7822,
+        address: "Tel Aviv",
+        baseRate: 180,
+        startTimeMs: Date.now() + 5 * 60 * 60 * 1000,
+        endTimeMs: Date.now() + 6 * 60 * 60 * 1000,
+        requiresVerification: true,
+      },
+    );
+
+    const unverifiedNearbyJobs = await ctx.runQuery(
+      api.geo.getNearbyJobsForInstructor,
+      {
+        latitude: "32.0867",
+        longitude: "34.7827",
+        radiusKm: "5",
+        categories: "pilates",
+        isVerified: "false",
+      },
+    );
+    const unverifiedNearbyJobIds = new Set(
+      (unverifiedNearbyJobs as Array<{ _id: Id<"jobs"> }>).map((job) => job._id),
+    );
+    const postingVisibilityForUnverifiedCorrect =
+      unverifiedNearbyJobIds.has(visibilityPublicJobId) &&
+      !unverifiedNearbyJobIds.has(visibilityVerifiedOnlyJobId);
+
+    const publicProjection = await ctx.runQuery(
+      internal.testHarness.getJobProjectionState,
+      {
+        jobId: visibilityPublicJobId,
+      },
+    );
+    const verifiedOnlyProjection = await ctx.runQuery(
+      internal.testHarness.getJobProjectionState,
+      {
+        jobId: visibilityVerifiedOnlyJobId,
+      },
+    );
+    let readModelProjectionConsistencyCorrect =
+      publicProjection.studioProjectionExists &&
+      publicProjection.instructorProjectionExists &&
+      verifiedOnlyProjection.studioProjectionExists &&
+      verifiedOnlyProjection.instructorProjectionExists;
 
     const jobId = await ctx.runMutation(internal.testHarness.createTestJob, {
       studioId,
@@ -409,6 +523,8 @@ export const runTestSuite = action({
       longitude: 34.782,
       address: "Tel Aviv",
       baseRate: 200,
+      startTimeMs: Date.now() - 2 * 60 * 60 * 1000,
+      endTimeMs: Date.now() - 60 * 60 * 1000,
     });
 
     const matches = await ctx.runQuery(
@@ -443,6 +559,13 @@ export const runTestSuite = action({
     });
 
     const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
+    await ctx.runMutation(internal.jobs.completeJobInternalByStudio, {
+      jobId,
+      studioId,
+    });
+    const completedJob = await ctx.runQuery(internal.jobs.getJobInternal, {
+      jobId,
+    });
 
     // Expiry flow test (stale claim)
     const staleJobId = await ctx.runMutation(
@@ -899,6 +1022,10 @@ export const runTestSuite = action({
         claimId?: Id<"claims">;
       }) => listedJob._id === visibilityJobId,
     );
+    const claimedVisibilityProjection = await ctx.runQuery(
+      internal.testHarness.getJobProjectionState,
+      { jobId: visibilityJobId },
+    );
 
     const pendingInstructorClaimsSnapshot = await ctx.runQuery(
       internal.claims.getClaimsForInstructorInternal,
@@ -925,6 +1052,10 @@ export const runTestSuite = action({
         claimId?: Id<"claims">;
       }) => listedJob._id === visibilityJobId,
     );
+    const confirmedVisibilityProjection = await ctx.runQuery(
+      internal.testHarness.getJobProjectionState,
+      { jobId: visibilityJobId },
+    );
 
     const acceptedInstructorClaimsSnapshot = await ctx.runQuery(
       internal.claims.getClaimsForInstructorInternal,
@@ -942,6 +1073,14 @@ export const runTestSuite = action({
       confirmedVisibilityJob?.status === "confirmed" &&
       pendingVisibilityClaim?.status === "pending" &&
       acceptedVisibilityClaim?.status === "accepted";
+    readModelProjectionConsistencyCorrect =
+      readModelProjectionConsistencyCorrect &&
+      claimedVisibilityProjection.studioProjectionExists &&
+      claimedVisibilityProjection.studioClaimId === visibilityClaimId &&
+      !claimedVisibilityProjection.instructorProjectionExists &&
+      confirmedVisibilityProjection.studioProjectionExists &&
+      confirmedVisibilityProjection.studioStatus === "confirmed" &&
+      !confirmedVisibilityProjection.instructorProjectionExists;
 
     const result = {
       studioId,
@@ -952,6 +1091,7 @@ export const runTestSuite = action({
       matchCount: matches.length,
       mismatchCount: mismatched.length,
       jobStatus: job?.status,
+      completedJobStatus: completedJob?.status,
       notificationsSent: job?.notificationsSent,
       staleJobStatus: staleJob?.status,
       backupJobStatus: backupJob?.status,
@@ -972,6 +1112,8 @@ export const runTestSuite = action({
       claimsWindowFilterAndOrderCorrect,
       studioJobsPriorityOrderingCorrect,
       studioInstructorVisibilityRealtimeCorrect,
+      postingVisibilityForUnverifiedCorrect,
+      readModelProjectionConsistencyCorrect,
     };
 
     if (cleanup) {
@@ -999,6 +1141,14 @@ export const runTestSuite = action({
         jobId: visibilityJobId,
         claimIds: [visibilityClaimId],
       });
+      await ctx.runMutation(internal.testHarness.cleanupTestJob, {
+        jobId: visibilityPublicJobId,
+        claimIds: [],
+      });
+      await ctx.runMutation(internal.testHarness.cleanupTestJob, {
+        jobId: visibilityVerifiedOnlyJobId,
+        claimIds: [],
+      });
       for (const fixture of claimsWindowFixtures) {
         await ctx.runMutation(internal.testHarness.cleanupTestJob, {
           jobId: fixture.jobId,
@@ -1019,6 +1169,9 @@ export const runTestSuite = action({
       });
       await ctx.runMutation(internal.testHarness.cleanupTestUser, {
         userId: backupInstructorId,
+      });
+      await ctx.runMutation(internal.testHarness.cleanupTestUser, {
+        userId: unverifiedInstructorId,
       });
     }
 

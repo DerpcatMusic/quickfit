@@ -20,6 +20,7 @@ import {
   syncJobLocation,
   removeJobLocation,
 } from "./geo";
+import { syncJobReadModels } from "./jobReadModels";
 
 // Categories for Israeli market
 export const CATEGORIES = [
@@ -174,7 +175,7 @@ export const getNearbyJobs = query({
     const categories =
       user.categories && user.categories.length > 0
         ? user.categories
-        : ["general"];
+        : [...CATEGORIES];
 
     let jobResults: Array<{
       _id: Id<"jobs">;
@@ -226,6 +227,7 @@ export const getNearbyJobs = query({
       ...match,
       distanceKm: match.distanceMeters / 1000,
       studioAvatarUrl: undefined,
+      _creationTime: match.createdAt,
     }));
   },
 });
@@ -256,7 +258,7 @@ export const getJobsForMap = query({
     const categories =
       user.categories && user.categories.length > 0
         ? user.categories
-        : ["general"];
+        : [...CATEGORIES];
 
     let jobResults: Array<{
       _id: Id<"jobs">;
@@ -319,7 +321,7 @@ export const getZoneJobsForInstructor = query({
         .filter(Boolean) ??
       (user.categories && user.categories.length > 0
         ? user.categories
-        : ["general"]);
+        : [...CATEGORIES]);
 
     let zoneIds: Id<"zones">[] = user.zoneIds ?? [];
     if (args.zoneIds) {
@@ -338,6 +340,147 @@ export const getZoneJobsForInstructor = query({
 });
 
 async function findJobsForInstructorByZones(
+  ctx: { db: any },
+  user: any,
+  zoneIds: Id<"zones">[],
+  categories: string[],
+): Promise<
+  Array<{
+    _id: Id<"jobs">;
+    studioId: Id<"users">;
+    studioName: string;
+    title: string;
+    category: string;
+    startTime: number;
+    endTime: number;
+    baseRate: number;
+    address: string;
+    status: string;
+    latitude: number;
+    longitude: number;
+    sosBoostApplied: boolean;
+    currentRate: number;
+    distanceMeters: number;
+    createdAt: number;
+  }>
+> {
+  const MAX_RESULTS = 200;
+  const jobsMap = new Map<string, any>();
+  const hasUserLocation = !!(user.latitude && user.longitude);
+  const normalizedCategories = Array.from(new Set(categories.filter(Boolean)));
+
+  for (const zoneId of zoneIds) {
+    if (jobsMap.size >= MAX_RESULTS) break;
+
+    if (normalizedCategories.length > 0) {
+      for (const category of normalizedCategories) {
+        const rows = await ctx.db
+          .query("readModel_instructorFeed")
+          .withIndex("by_zone_category_status_createdAt", (q: any) =>
+            q
+              .eq("zoneId", zoneId)
+              .eq("category", category)
+              .eq("status", "open"),
+          )
+          .order("desc")
+          .take(80);
+
+        for (const row of rows) {
+          if (!user.isVerified && row.requiresVerification) continue;
+          if (jobsMap.has(row.jobId)) continue;
+
+          const distanceMeters = hasUserLocation
+            ? Math.round(
+                haversineDistanceMeters(
+                  user.latitude,
+                  user.longitude,
+                  row.latitude,
+                  row.longitude,
+                ),
+              )
+            : 0;
+          jobsMap.set(row.jobId, {
+            _id: row.jobId,
+            studioId: row.studioId,
+            studioName: row.studioName || "Studio",
+            title: row.title,
+            category: row.category,
+            startTime: row.startTime,
+            endTime: row.endTime,
+            baseRate: row.baseRate,
+            address: row.address,
+            status: row.status,
+            latitude: row.latitude,
+            longitude: row.longitude,
+            sosBoostApplied: row.sosBoostApplied,
+            currentRate: row.currentRate,
+            distanceMeters,
+            createdAt: row.createdAt,
+          });
+          if (jobsMap.size >= MAX_RESULTS) break;
+        }
+        if (jobsMap.size >= MAX_RESULTS) break;
+      }
+    } else {
+      const rows = await ctx.db
+        .query("readModel_instructorFeed")
+        .withIndex("by_zone_status_createdAt", (q: any) =>
+          q.eq("zoneId", zoneId).eq("status", "open"),
+        )
+        .order("desc")
+        .take(120);
+      for (const row of rows) {
+        if (!user.isVerified && row.requiresVerification) continue;
+        if (jobsMap.has(row.jobId)) continue;
+
+        const distanceMeters = hasUserLocation
+          ? Math.round(
+              haversineDistanceMeters(
+                user.latitude,
+                user.longitude,
+                row.latitude,
+                row.longitude,
+              ),
+            )
+          : 0;
+        jobsMap.set(row.jobId, {
+          _id: row.jobId,
+          studioId: row.studioId,
+          studioName: row.studioName || "Studio",
+          title: row.title,
+          category: row.category,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          baseRate: row.baseRate,
+          address: row.address,
+          status: row.status,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          sosBoostApplied: row.sosBoostApplied,
+          currentRate: row.currentRate,
+          distanceMeters,
+          createdAt: row.createdAt,
+        });
+        if (jobsMap.size >= MAX_RESULTS) break;
+      }
+    }
+  }
+
+  const projectedResults = Array.from(jobsMap.values());
+  if (projectedResults.length > 0) {
+    if (hasUserLocation) {
+      projectedResults.sort((a, b) => a.distanceMeters - b.distanceMeters);
+    } else {
+      projectedResults.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    }
+    return projectedResults;
+  }
+
+  // Fallback keeps existing jobs visible until projections are fully backfilled.
+  return await findJobsForInstructorByZonesLegacy(ctx, user, zoneIds, categories);
+}
+
+async function findJobsForInstructorByZonesLegacy(
   ctx: { db: any },
   user: any,
   zoneIds: Id<"zones">[],
@@ -568,7 +711,7 @@ function sortStudioJobsByPriority<
   return jobs;
 }
 
-async function getStudioJobsForStudio(
+async function getStudioJobsForStudioLegacy(
   ctx: { db: QueryCtx["db"] },
   studioId: Id<"users">,
 ) {
@@ -665,6 +808,52 @@ async function getStudioJobsForStudio(
   });
 
   return sortStudioJobsByPriority(jobsWithDetails);
+}
+
+async function getStudioJobsForStudio(
+  ctx: { db: QueryCtx["db"] },
+  studioId: Id<"users">,
+) {
+  const projectedRows = await ctx.db
+    .query("readModel_studioJobs")
+    .withIndex("by_studio_updatedAt", (q) => q.eq("studioId", studioId))
+    .order("desc")
+    .take(80);
+
+  if (projectedRows.length > 0) {
+    const projected = projectedRows.map((row) => ({
+      _id: row.jobId,
+      _creationTime: row.createdAt,
+      studioId: row.studioId,
+      title: row.title,
+      description: row.description,
+      category: row.category,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      durationMinutes: row.durationMinutes,
+      baseRate: row.baseRate,
+      currentRate: row.currentRate,
+      sosBoostApplied: row.sosBoostApplied,
+      sosBoostPercentage: row.sosBoostPercentage,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      address: row.address,
+      status: row.status,
+      claimedBy: row.claimedBy,
+      claimedAt: row.claimedAt,
+      confirmedAt: row.confirmedAt,
+      backupClaimedBy: row.backupClaimedBy,
+      backupClaimedAt: row.backupClaimedAt,
+      requiresVerification: row.requiresVerification,
+      claimedInstructor: row.claimedInstructor ?? null,
+      claimId: row.claimId,
+      createdAt: row.createdAt,
+    }));
+    return sortStudioJobsByPriority(projected);
+  }
+
+  // Preserve existing behavior until read models are fully backfilled.
+  return await getStudioJobsForStudioLegacy(ctx, studioId);
 }
 
 export const getStudioJobs = query({
@@ -785,6 +974,7 @@ export const postJob = mutation({
       args.requiresVerification ?? false,
       currentRate,
     );
+    await syncJobReadModels(ctx as any, jobId);
 
     // If SOS, add to priority queue
     if (isSOS) {
@@ -982,6 +1172,7 @@ async function applyClaimJobByInstructor(
     });
 
     await removeJobLocation(ctx as any, args.jobId);
+    await syncJobReadModels(ctx as any, args.jobId);
 
     await ctx.scheduler.runAfter(
       0,
@@ -1035,6 +1226,7 @@ async function applyClaimJobByInstructor(
       backupClaimedAt: now,
       updatedAt: now,
     });
+    await syncJobReadModels(ctx as any, args.jobId);
 
     await ctx.scheduler.runAfter(
       0,
@@ -1425,6 +1617,7 @@ async function applyCompleteJobByStudio(
     status: "completed",
     updatedAt: now,
   });
+  await syncJobReadModels(ctx as any, jobId);
 
   await ctx.runMutation(internal.events.emitDomainEvent, {
     aggregateType: "job",
@@ -1484,6 +1677,7 @@ async function applyCancelJobByStudio(
       respondedAt: now,
     });
   }
+  await syncJobReadModels(ctx as any, jobId);
 
   await removeJobLocation(ctx as any, jobId);
 
@@ -1560,6 +1754,7 @@ async function applyWithdrawClaimByJobAndInstructor(
           job.requiresVerification,
           job.currentRate,
         );
+        await syncJobReadModels(ctx as any, jobId);
 
         await scheduleJobDispatch(ctx, jobId);
         return;
@@ -1579,6 +1774,7 @@ async function applyWithdrawClaimByJobAndInstructor(
         backupAutoPromoted: true,
         updatedAt: now,
       });
+      await syncJobReadModels(ctx as any, jobId);
 
       await ctx.scheduler.runAfter(
         0,
@@ -1612,6 +1808,7 @@ async function applyWithdrawClaimByJobAndInstructor(
       job.requiresVerification,
       job.currentRate,
     );
+    await syncJobReadModels(ctx as any, jobId);
 
     await scheduleJobDispatch(ctx, jobId);
     return;
@@ -1624,6 +1821,7 @@ async function applyWithdrawClaimByJobAndInstructor(
       backupClaimedAt: undefined,
       updatedAt: now,
     });
+    await syncJobReadModels(ctx as any, jobId);
   }
 }
 
@@ -1699,6 +1897,7 @@ async function applyRespondToClaim(
         },
       );
     }
+    await syncJobReadModels(ctx as any, claim.jobId);
 
     await ctx.scheduler.runAfter(
       0,
@@ -1742,6 +1941,7 @@ async function applyRespondToClaim(
         backupAutoPromoted: true,
         updatedAt: now,
       });
+      await syncJobReadModels(ctx as any, claim.jobId);
 
       await ctx.scheduler.runAfter(
         0,
@@ -1771,6 +1971,7 @@ async function applyRespondToClaim(
         job.requiresVerification,
         job.currentRate,
       );
+      await syncJobReadModels(ctx as any, claim.jobId);
 
       await scheduleJobDispatch(ctx, claim.jobId);
     }
@@ -1792,6 +1993,7 @@ async function applyRespondToClaim(
       job.requiresVerification,
       job.currentRate,
     );
+    await syncJobReadModels(ctx as any, claim.jobId);
 
     await scheduleJobDispatch(ctx, claim.jobId);
   } else if (job.backupClaimedBy === claim.instructorId) {
@@ -1802,6 +2004,7 @@ async function applyRespondToClaim(
       backupAutoPromoted: undefined,
       updatedAt: now,
     });
+    await syncJobReadModels(ctx as any, claim.jobId);
   }
 
   await ctx.scheduler.runAfter(0, internal.notifications.notifyClaimRejected, {
@@ -1880,12 +2083,27 @@ export const expireStaleClaims = internalMutation({
             respondedAt: now,
           });
         }
+        await syncJobReadModels(ctx as any, current._id);
 
         expiredCount++;
       }
     }
 
     return { expiredCount };
+  },
+});
+
+export const rebuildJobReadModels = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { limit }) => {
+    const safeLimit = Math.max(1, Math.min(limit ?? 300, 1000));
+    const jobs = await ctx.db.query("jobs").order("desc").take(safeLimit);
+    for (const job of jobs) {
+      await syncJobReadModels(ctx as any, job._id);
+    }
+    return { synced: jobs.length };
   },
 });
 

@@ -86,13 +86,13 @@ Status values:
 ## Phase 2: Read Models and Caching
 
 ### RM-120 Studio and Instructor Read Models
-- Status: `planned`
+- Status: `partial`
 - Owner: Backend + Mobile
 - Goal: remove N+1 list queries and provide predictable low-latency reads.
 - Exit criteria:
-  - `readModel_studioJobs` and `readModel_instructorFeed` in place.
-  - Mobile list screens switched to read models.
-  - Old hot-path query joins removed or demoted.
+  - `readModel_studioJobs` and `readModel_instructorFeed` in place with lifecycle sync hooks. ✅
+  - Mobile list/map feeds switched to projection-backed queries with legacy fallback during backfill. ✅
+  - Old hot-path query joins removed (remaining legacy fallback paths removed after backfill + burn-in).
 
 ### RM-121 Payment and Payout Timeline Projection
 - Status: `planned`

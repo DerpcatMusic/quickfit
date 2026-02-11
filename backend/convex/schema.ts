@@ -319,6 +319,101 @@ export default defineSchema({
   }).index("by_consumer", ["consumer"]),
 
   // ==========================================
+  // READ MODELS - low-latency marketplace projections
+  // ==========================================
+  readModel_studioJobs: defineTable({
+    jobId: v.id("jobs"),
+    studioId: v.id("users"),
+    status: v.union(
+      v.literal("open"),
+      v.literal("claimed"),
+      v.literal("backup_claimed"),
+      v.literal("confirmed"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("expired"),
+    ),
+    title: v.string(),
+    description: v.optional(v.string()),
+    category: v.string(),
+    startTime: v.number(),
+    endTime: v.number(),
+    durationMinutes: v.number(),
+    baseRate: v.float64(),
+    currentRate: v.float64(),
+    sosBoostApplied: v.boolean(),
+    sosBoostPercentage: v.optional(v.float64()),
+    latitude: v.float64(),
+    longitude: v.float64(),
+    address: v.string(),
+    requiresVerification: v.boolean(),
+    claimedBy: v.optional(v.id("users")),
+    claimedAt: v.optional(v.number()),
+    confirmedAt: v.optional(v.number()),
+    backupClaimedBy: v.optional(v.id("users")),
+    backupClaimedAt: v.optional(v.number()),
+    claimId: v.optional(v.id("claims")),
+    claimedInstructor: v.optional(
+      v.object({
+        _id: v.id("users"),
+        name: v.string(),
+        photoUrl: v.optional(v.string()),
+        avatarUrl: v.optional(v.string()),
+        rating: v.optional(v.float64()),
+        isVerified: v.boolean(),
+      }),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_job", ["jobId"])
+    .index("by_studio_updatedAt", ["studioId", "updatedAt"])
+    .index("by_studio_status_updatedAt", ["studioId", "status", "updatedAt"])
+    .index("by_studio_status_createdAt", ["studioId", "status", "createdAt"]),
+
+  readModel_instructorFeed: defineTable({
+    jobId: v.id("jobs"),
+    studioId: v.id("users"),
+    zoneId: v.optional(v.id("zones")),
+    status: v.union(
+      v.literal("open"),
+      v.literal("claimed"),
+      v.literal("backup_claimed"),
+      v.literal("confirmed"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("expired"),
+    ),
+    title: v.string(),
+    category: v.string(),
+    startTime: v.number(),
+    endTime: v.number(),
+    baseRate: v.float64(),
+    currentRate: v.float64(),
+    sosBoostApplied: v.boolean(),
+    sosBoostPercentage: v.optional(v.float64()),
+    address: v.string(),
+    latitude: v.float64(),
+    longitude: v.float64(),
+    requiresVerification: v.boolean(),
+    studioName: v.string(),
+    studioAvatarUrl: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_job", ["jobId"])
+    .index("by_status_createdAt", ["status", "createdAt"])
+    .index("by_category_status_createdAt", ["category", "status", "createdAt"])
+    .index("by_zone_status_createdAt", ["zoneId", "status", "createdAt"])
+    .index("by_zone_category_status_createdAt", [
+      "zoneId",
+      "category",
+      "status",
+      "createdAt",
+    ])
+    .index("by_studio_status_createdAt", ["studioId", "status", "createdAt"]),
+
+  // ==========================================
   // PAYMENTS - checkout, capture, payout ledger
   // ==========================================
   payments: defineTable({

@@ -281,8 +281,24 @@ export async function findJobsForInstructor(
 }>> {
   const effectiveRadiusKm = Math.min(radiusKm, MAX_RADIUS_KM);
   const radiusMeters = effectiveRadiusKm * 1000;
-  const allJobs: Array<{ 
-    _id: Id<"jobs">; 
+  const nearestLimit = Math.min(220, Math.max(80, categories.length * 24));
+  const requestedCategories = new Set(categories.filter(Boolean));
+
+  const nearest = await jobGeo.nearest(ctx, {
+    point: instructorPoint,
+    limit: nearestLimit,
+    maxDistance: radiusMeters,
+    filter: (q) => {
+      let query = q.eq("status", "open");
+      if (!isVerified) {
+        query = query.eq("requiresVerification", false);
+      }
+      return query;
+    },
+  });
+
+  const uniqueJobs = new Map<string, {
+    _id: Id<"jobs">;
     studioId: Id<"users">;
     studioName: string;
     title: string;
@@ -298,64 +314,83 @@ export async function findJobsForInstructor(
     currentRate: number;
     distanceMeters: number;
     createdAt: number;
-  }> = [];
-  
-  for (const category of categories) {
-    const results = await jobGeo.nearest(ctx, {
-      point: instructorPoint,
-      limit: 100,
-      maxDistance: radiusMeters,
-      filter: (q) => {
-        let query = q.eq("category", category).eq("status", "open");
-        if (!isVerified) {
-          query = query.eq("requiresVerification", false);
-        }
-        return query;
-      },
-    });
-    
-    for (const result of results) {
-      const job = await ctx.db.get(result.key);
-      if (!job) continue;
-      const studioDoc = await ctx.db.get(job.studioId);
+  }>();
 
-      const jobCoords = result.coordinates;
-      const distanceMeters = haversineDistanceMeters(
-        instructorPoint.latitude,
-        instructorPoint.longitude,
-        jobCoords.latitude,
-        jobCoords.longitude
-      );
-      
-      allJobs.push({
-        _id: result.key,
-        studioId: job.studioId,
-        studioName: studioDoc?.businessName || studioDoc?.name || "Studio",
-        title: job.title,
-        category: job.category,
-        startTime: job.startTime,
-        endTime: job.endTime,
-        baseRate: job.baseRate,
-        address: job.address,
-        status: job.status,
-        latitude: jobCoords.latitude,
-        longitude: jobCoords.longitude,
-        sosBoostApplied: job.sosBoostApplied,
-        currentRate: job.currentRate,
-        distanceMeters: Math.round(distanceMeters),
-        createdAt: job.createdAt,
-      });
+  for (const result of nearest) {
+    const projection = await ctx.db
+      .query("readModel_instructorFeed")
+      .withIndex("by_job", (q) => q.eq("jobId", result.key))
+      .first();
+
+    if (projection) {
+      if (
+        requestedCategories.size > 0 &&
+        !requestedCategories.has(projection.category)
+      ) {
+        continue;
+      }
+      if (!isVerified && projection.requiresVerification) continue;
+
+      const existing = uniqueJobs.get(result.key);
+      const distanceMeters = Math.round(result.distance);
+      if (!existing || distanceMeters < existing.distanceMeters) {
+        uniqueJobs.set(result.key, {
+          _id: result.key,
+          studioId: projection.studioId,
+          studioName: projection.studioName || "Studio",
+          title: projection.title,
+          category: projection.category,
+          startTime: projection.startTime,
+          endTime: projection.endTime,
+          baseRate: projection.baseRate,
+          address: projection.address,
+          status: projection.status,
+          latitude: result.coordinates.latitude,
+          longitude: result.coordinates.longitude,
+          sosBoostApplied: projection.sosBoostApplied,
+          currentRate: projection.currentRate,
+          distanceMeters,
+          createdAt: projection.createdAt,
+        });
+      }
+      continue;
     }
-  }
-  
-  const uniqueJobs = new Map<string, typeof allJobs[0]>();
-  for (const job of allJobs) {
-    if (!uniqueJobs.has(job._id)) {
-      uniqueJobs.set(job._id, job);
+
+    // Fallback for jobs not backfilled into projections yet.
+    const job = await ctx.db.get(result.key);
+    if (!job || job.status !== "open") continue;
+    if (
+      requestedCategories.size > 0 &&
+      !requestedCategories.has(job.category)
+    ) {
+      continue;
     }
+    if (!isVerified && job.requiresVerification) continue;
+
+    const studioDoc = await ctx.db.get(job.studioId);
+    uniqueJobs.set(result.key, {
+      _id: result.key,
+      studioId: job.studioId,
+      studioName: studioDoc?.businessName || studioDoc?.name || "Studio",
+      title: job.title,
+      category: job.category,
+      startTime: job.startTime,
+      endTime: job.endTime,
+      baseRate: job.baseRate,
+      address: job.address,
+      status: job.status,
+      latitude: result.coordinates.latitude,
+      longitude: result.coordinates.longitude,
+      sosBoostApplied: job.sosBoostApplied,
+      currentRate: job.currentRate,
+      distanceMeters: Math.round(result.distance),
+      createdAt: job.createdAt,
+    });
   }
-  
-  return Array.from(uniqueJobs.values()).sort((a, b) => a.distanceMeters - b.distanceMeters);
+
+  return Array.from(uniqueJobs.values()).sort(
+    (a, b) => a.distanceMeters - b.distanceMeters,
+  );
 }
 
 // ============================================

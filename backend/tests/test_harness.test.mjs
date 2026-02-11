@@ -38,6 +38,7 @@ test("test harness happy path", async () => {
   });
 
   assert.equal(result.jobStatus, "confirmed");
+  assert.equal(result.completedJobStatus, "completed");
   assert.ok(result.matchCount >= 1);
   assert.equal(result.mismatchCount, 0);
   assert.equal(result.notificationsSent, true);
@@ -55,6 +56,8 @@ test("test harness happy path", async () => {
   assert.equal(result.claimsWindowFilterAndOrderCorrect, true);
   assert.equal(result.studioJobsPriorityOrderingCorrect, true);
   assert.equal(result.studioInstructorVisibilityRealtimeCorrect, true);
+  assert.equal(result.postingVisibilityForUnverifiedCorrect, true);
+  assert.equal(result.readModelProjectionConsistencyCorrect, true);
 });
 
 test("test harness rejects invalid token", async () => {

@@ -62,6 +62,7 @@ Legend:
 - Studio-facing auth/error/action copy localization coverage: `partial`
 - Studio post-job sticky bottom submit CTA: `live`
 - Studio jobs list query hot-path optimized to reduce timeout risk: `partial`
+- Projection-backed studio jobs and instructor availability feed (with lifecycle sync + fallback): `partial`
 - Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
 - Instructor map studio markers show studio + posted-time context for open jobs: `live`
 - Studio post-job verification requirement is explicitly configurable (defaults open): `live`
@@ -70,7 +71,7 @@ Legend:
 ## Architecture Modernization
 - Domain event outbox (`domainEvents`): `partial`
 - Event consumer checkpoints: `partial`
-- Studio/instructor projection read models: `planned`
+- Studio/instructor projection read models: `partial`
 - Payment/payout timeline projection: `planned`
 - Legacy per-studio payment integration runtime dependency removal: `partial`
 
