@@ -165,6 +165,26 @@ Status values:
   - Fast list filters/search and robust empty/error states.
   - Payment/invoice transparency embedded into job history UI.
 
+## Phase 6: Modularization and Boundary Hardening
+
+### RM-160 Backend Modular Monolith Decomposition
+- Status: `planned`
+- Owner: Backend
+- Goal: reduce oversized Convex domain files while preserving API contracts.
+- Exit criteria:
+  - `jobs.ts`, `payments.ts`, `payouts.ts`, and `users.ts` delegate to extracted domain modules.
+  - Existing function names remain stable for mobile clients.
+  - Lifecycle and idempotency tests pass unchanged or stronger.
+
+### RM-161 Shared Role-Aware Jobs Read Contract
+- Status: `partial`
+- Owner: Backend + Mobile
+- Goal: one canonical "my jobs" contract for studios and instructors.
+- Exit criteria:
+  - `jobs:getMyJobs` powers both roles in mobile clients (with temporary compatibility fallback removed after burn-in).
+  - Studio and instructor "my jobs" screens use consistent lifecycle semantics.
+  - Studio loading UX has deterministic timeout/error behavior.
+
 ## Active Priority Order
 1. RM-101
 2. RM-102
@@ -172,3 +192,5 @@ Status values:
 4. RM-111
 5. RM-120
 6. RM-140
+7. RM-160
+8. RM-161

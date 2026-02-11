@@ -415,23 +415,44 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     bool requiresVerification = false,
   }) async {
     try {
-      final result = await ConvexClient.instance.mutation(
-        name: 'jobs:postJob',
-        args: {
-          'title': title,
-          'category': category,
-          'startTime': startTime.millisecondsSinceEpoch,
-          'endTime': endTime.millisecondsSinceEpoch,
-          'baseRate': baseRate,
-          'address': address,
-          'latitude': latitude,
-          'longitude': longitude,
-          'requiresVerification': requiresVerification,
-          if (description != null) 'description': description,
-        },
-      );
+      final requestArgs = {
+        'title': title,
+        'category': category,
+        'startTime': startTime.millisecondsSinceEpoch,
+        'endTime': endTime.millisecondsSinceEpoch,
+        'baseRate': baseRate,
+        'address': address,
+        'latitude': latitude,
+        'longitude': longitude,
+        'requiresVerification': requiresVerification,
+        if (description != null) 'description': description,
+      };
+      final rawResult = await ConvexClient.instance
+          .mutation(
+            name: 'jobs:postJob',
+            args: requestArgs,
+          )
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () => throw TimeoutException(
+              'Posting job timed out. Please retry.',
+            ),
+          );
 
-      final jobId = result.toString().replaceAll('"', '').trim();
+      final normalized = rawResult.trim();
+      String jobId = normalized.replaceAll('"', '');
+      if (normalized.startsWith('{') || normalized.startsWith('[')) {
+        try {
+          final decoded = json.decode(normalized);
+          if (decoded is Map) {
+            final mapped = Map<String, dynamic>.from(decoded);
+            final candidate = mapped['_id'] ?? mapped['jobId'] ?? mapped['id'];
+            jobId = candidate?.toString().trim() ?? jobId;
+          }
+        } catch (_) {
+          // Keep raw string parse as fallback.
+        }
+      }
 
       if (jobId.isEmpty) {
         throw StateError('jobs:postJob returned empty job id');
@@ -441,7 +462,9 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
       return jobId;
     } catch (e) {
       log.e('Failed to post job: $e');
-      final message = e.toString().replaceFirst('Exception: ', '');
+      final message = e is TimeoutException
+          ? e.message ?? 'Posting job timed out. Please retry.'
+          : e.toString().replaceFirst('Exception: ', '');
       _setState(_lastState.copyWith(error: message));
       throw Exception(message);
     }
