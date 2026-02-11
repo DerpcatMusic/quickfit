@@ -253,6 +253,79 @@ class ConvexService {
     }
   }
 
+  /// Gets studio pricing defaults and lead-time surge rules.
+  Future<Map<String, dynamic>?> getMyStudioPricingSettings() async {
+    try {
+      final result = await ConvexClient.instance.query(
+        'users:getMyStudioPricingSettings',
+        {},
+      );
+      if (result.isEmpty || result == 'null') return null;
+      return json.decode(result) as Map<String, dynamic>?;
+    } catch (e) {
+      debugPrint('getMyStudioPricingSettings failed: $e');
+      return null;
+    }
+  }
+
+  /// Saves studio pricing defaults and lead-time surge rules.
+  Future<Map<String, dynamic>?> setMyStudioPricingSettings({
+    required double defaultBaseRate,
+    required List<Map<String, dynamic>> leadTimeSurgeRules,
+  }) async {
+    try {
+      final result = await ConvexClient.instance.mutation(
+        name: 'users:setMyStudioPricingSettings',
+        args: {
+          'defaultBaseRate': defaultBaseRate,
+          'leadTimeSurgeRules': leadTimeSurgeRules,
+        },
+      );
+      if (result.isEmpty || result == 'null') return null;
+      return json.decode(result) as Map<String, dynamic>?;
+    } catch (e) {
+      debugPrint('setMyStudioPricingSettings failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Marks a confirmed job as completed.
+  Future<void> completeJob(String jobId) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'jobs:completeJob',
+        args: {'jobId': jobId},
+      );
+    } catch (e) {
+      debugPrint('completeJob failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Submits a post-job rating for studio/instructor counterpart.
+  Future<void> submitRating({
+    required String jobId,
+    required String toUserId,
+    required double rating,
+    String? comment,
+  }) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'jobs:submitRating',
+        args: {
+          'jobId': jobId,
+          'toUserId': toUserId,
+          'rating': rating,
+          if (comment != null && comment.trim().isNotEmpty)
+            'comment': comment.trim(),
+        },
+      );
+    } catch (e) {
+      debugPrint('submitRating failed: $e');
+      rethrow;
+    }
+  }
+
   /// Generic mutation call for offline queue.
   Future<dynamic> mutate(String mutationName, Map<String, dynamic> args) async {
     try {
@@ -367,93 +440,6 @@ class ConvexService {
     }
   }
 
-  /// Returns current studio payment integrations (sensitive secrets are masked).
-  Future<List<Map<String, dynamic>>> getMyPaymentIntegrations() async {
-    try {
-      final result = await ConvexClient.instance.query(
-        'billing:listMyPaymentIntegrations',
-        {},
-      );
-      if (result.isEmpty || result == 'null') return <Map<String, dynamic>>[];
-      final decoded = json.decode(result);
-      if (decoded is! List) return <Map<String, dynamic>>[];
-      return decoded
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList(growable: false);
-    } catch (e) {
-      debugPrint('getMyPaymentIntegrations failed: $e');
-      return <Map<String, dynamic>>[];
-    }
-  }
-
-  /// Creates or updates a studio payment integration.
-  Future<void> upsertMyPaymentIntegration({
-    required String provider, // rapyd | bitpay
-    bool isActive = true,
-    String mode = 'sandbox', // sandbox | production
-    String? displayName,
-    String? apiToken,
-    String? apiKey,
-    String? webhookSecret,
-    String? accountId,
-    String? merchantId,
-  }) async {
-    try {
-      await ConvexClient.instance.mutation(
-        name: 'billing:upsertMyPaymentIntegration',
-        args: {
-          'provider': provider,
-          'isActive': isActive,
-          'mode': mode,
-          if (displayName != null) 'displayName': displayName,
-          if (apiToken != null) 'apiToken': apiToken,
-          if (apiKey != null) 'apiKey': apiKey,
-          if (webhookSecret != null) 'webhookSecret': webhookSecret,
-          if (accountId != null) 'accountId': accountId,
-          if (merchantId != null) 'merchantId': merchantId,
-        },
-      );
-    } catch (e) {
-      debugPrint('upsertMyPaymentIntegration failed: $e');
-      rethrow;
-    }
-  }
-
-  /// Activates/deactivates one payment provider integration.
-  Future<void> setMyPaymentIntegrationActive({
-    required String provider, // rapyd | bitpay
-    required bool isActive,
-  }) async {
-    try {
-      await ConvexClient.instance.mutation(
-        name: 'billing:setMyPaymentIntegrationActive',
-        args: {
-          'provider': provider,
-          'isActive': isActive,
-        },
-      );
-    } catch (e) {
-      debugPrint('setMyPaymentIntegrationActive failed: $e');
-      rethrow;
-    }
-  }
-
-  /// Deletes one payment provider integration.
-  Future<void> removeMyPaymentIntegration({
-    required String provider, // rapyd | bitpay
-  }) async {
-    try {
-      await ConvexClient.instance.mutation(
-        name: 'billing:removeMyPaymentIntegration',
-        args: {'provider': provider},
-      );
-    } catch (e) {
-      debugPrint('removeMyPaymentIntegration failed: $e');
-      rethrow;
-    }
-  }
-
   Future<List<Map<String, dynamic>>> listMyPayments({int limit = 50}) async {
     try {
       final result = await _tryQueryByNames(
@@ -507,6 +493,24 @@ class ConvexService {
       return Map<String, dynamic>.from(decoded);
     } catch (e) {
       debugPrint('getMyPaymentForJob failed: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getStudioPublicProfile(String studioId) async {
+    try {
+      final result = await _tryQueryByNames(
+        const ['users:getStudioPublicProfile'],
+        {'studioId': studioId},
+      );
+      if (result == null || result.toString().isEmpty || result == 'null') {
+        return null;
+      }
+      final decoded = json.decode(result.toString());
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (e) {
+      debugPrint('getStudioPublicProfile failed: $e');
       return null;
     }
   }

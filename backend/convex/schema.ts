@@ -65,6 +65,19 @@ export default defineSchema({
 
     // STUDIO-SPECIFIC: Business details
     businessName: v.optional(v.string()),
+    studioPricing: v.optional(
+      v.object({
+        defaultBaseRate: v.float64(),
+        leadTimeSurgeRules: v.optional(
+          v.array(
+            v.object({
+              maxHoursBeforeStart: v.float64(),
+              boostPercent: v.float64(),
+            }),
+          ),
+        ),
+      }),
+    ),
 
     // FCM token for push notifications
     fcmToken: v.optional(v.string()),
@@ -274,6 +287,37 @@ export default defineSchema({
     .index("by_job", ["jobId"]),
 
   // ==========================================
+  // DOMAIN EVENTS - Event-driven backbone
+  // ==========================================
+  domainEvents: defineTable({
+    aggregateType: v.string(), // job | claim | payment | payout | invoice
+    aggregateId: v.string(),
+    eventType: v.string(),
+    source: v.string(), // mutation | webhook | scheduler | action
+    idempotencyKey: v.optional(v.string()),
+    actorUserId: v.optional(v.id("users")),
+    payload: v.any(),
+    occurredAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_createdAt", ["createdAt"])
+    .index("by_aggregate_createdAt", ["aggregateType", "aggregateId", "createdAt"])
+    .index("by_eventType_createdAt", ["eventType", "createdAt"])
+    .index("by_idempotency", ["aggregateType", "aggregateId", "idempotencyKey"]),
+
+  // ==========================================
+  // EVENT CONSUMERS - Projection checkpoints
+  // ==========================================
+  eventConsumers: defineTable({
+    consumer: v.string(),
+    lastEventId: v.optional(v.id("domainEvents")),
+    lastSeenCreatedAt: v.number(),
+    leaseOwner: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_consumer", ["consumer"]),
+
+  // ==========================================
   // PAYMENTS - checkout, capture, payout ledger
   // ==========================================
   payments: defineTable({
@@ -349,7 +393,12 @@ export default defineSchema({
       "processed",
       "createdAt",
     ])
-    .index("by_provider_payloadHash", ["provider", "payloadHash"]),
+    .index("by_provider_payloadHash", ["provider", "payloadHash"])
+    .index("by_provider_payloadHash_signatureValid", [
+      "provider",
+      "payloadHash",
+      "signatureValid",
+    ]),
 
   // ==========================================
   // PAYOUTS - provider payout orchestration state
