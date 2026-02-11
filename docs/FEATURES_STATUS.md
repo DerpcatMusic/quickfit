@@ -60,6 +60,7 @@ Legend:
 - Studio radius controls hidden outside instructor role: `live`
 - Studio-facing auth/error/action copy localization coverage: `partial`
 - Studio post-job sticky bottom submit CTA: `live`
+- Studio jobs list query hot-path optimized to reduce timeout risk: `partial`
 
 ## Architecture Modernization
 - Domain event outbox (`domainEvents`): `partial`

@@ -24,10 +24,15 @@ import {
 export const CATEGORIES = [
   "yoga",
   "pilates",
+  "reformer_pilates",
+  "mat_pilates",
   "functional",
   "spinning",
   "hiit",
   "dance",
+  "strength",
+  "mobility",
+  "barre",
   "personal_training",
 ] as const;
 
@@ -349,6 +354,8 @@ async function findJobsForInstructorByZones(
     _id: Id<"jobs">;
     title: string;
     category: string;
+    studioId: Id<"users">;
+    studioName: string;
     latitude: number;
     longitude: number;
     sosBoostApplied: boolean;
@@ -378,6 +385,7 @@ async function findJobsForInstructorByZones(
         for (const job of jobs) {
           if (!user.isVerified && job.requiresVerification) continue;
           if (!jobsMap.has(job._id)) {
+            const studioDoc = await ctx.db.get(job.studioId);
             const distanceMeters = hasUserLocation
               ? Math.round(
                   haversineDistanceMeters(
@@ -392,6 +400,9 @@ async function findJobsForInstructorByZones(
               _id: job._id,
               title: job.title,
               category: job.category,
+              studioId: job.studioId,
+              studioName:
+                studioDoc?.businessName || studioDoc?.name || "Studio",
               latitude: job.latitude,
               longitude: job.longitude,
               sosBoostApplied: job.sosBoostApplied,
@@ -415,6 +426,7 @@ async function findJobsForInstructorByZones(
       for (const job of jobs) {
         if (!user.isVerified && job.requiresVerification) continue;
         if (!jobsMap.has(job._id)) {
+          const studioDoc = await ctx.db.get(job.studioId);
           const distanceMeters = hasUserLocation
             ? Math.round(
                 haversineDistanceMeters(
@@ -429,6 +441,9 @@ async function findJobsForInstructorByZones(
             _id: job._id,
             title: job.title,
             category: job.category,
+            studioId: job.studioId,
+            studioName:
+              studioDoc?.businessName || studioDoc?.name || "Studio",
             latitude: job.latitude,
             longitude: job.longitude,
             sosBoostApplied: job.sosBoostApplied,
@@ -552,54 +567,46 @@ async function getStudioJobsForStudio(
     .query("jobs")
     .withIndex("by_studio", (q) => q.eq("studioId", studioId))
     .order("desc")
-    .take(100);
+    .take(60);
 
-  // Add claimed instructor info
-  const jobsWithDetails = await Promise.all(
-    jobs.map(async (job) => {
-      let claimedInstructor = null;
-      const activeInstructorId = job.claimedBy ?? job.backupClaimedBy;
-      if (activeInstructorId) {
-        const instructor = await ctx.db.get(activeInstructorId);
-        if (instructor) {
-          claimedInstructor = {
-            _id: instructor._id,
-            name: instructor.name,
-            photoUrl: instructor.avatarUrl,
-            avatarUrl: instructor.avatarUrl,
-            rating: instructor.rating,
-            isVerified: instructor.isVerified,
-          };
-        }
-      }
-
-      let activeClaim = null;
-      if (job.claimedBy) {
-        activeClaim = await ctx.db
-          .query("claims")
-          .withIndex("by_job_status_instructor", (q) =>
-            q
-              .eq("jobId", job._id)
-              .eq("status", "pending")
-              .eq("instructorId", job.claimedBy!),
-          )
-          .first();
-      }
-      if (!activeClaim && job.backupClaimedBy) {
-        activeClaim = await ctx.db
-          .query("claims")
-          .withIndex("by_job_status_instructor", (q) =>
-            q
-              .eq("jobId", job._id)
-              .eq("status", "pending")
-              .eq("instructorId", job.backupClaimedBy!),
-          )
-          .first();
-      }
-
-      return { ...job, claimedInstructor, claimId: activeClaim?._id };
-    }),
+  // Hydrate claimed/backup instructor data in one pass per unique instructor id.
+  const instructorIds = Array.from(
+    new Set(
+      jobs
+        .map((job) => job.claimedBy ?? job.backupClaimedBy)
+        .filter((id): id is Id<"users"> => id !== undefined),
+    ),
   );
+  const instructors = await Promise.all(instructorIds.map((id) => ctx.db.get(id)));
+  const instructorById = new Map(
+    instructors
+      .filter((instructor): instructor is NonNullable<typeof instructor> =>
+        Boolean(instructor),
+      )
+      .map((instructor) => [instructor._id, instructor]),
+  );
+
+  // Hot-path performance: avoid per-job claim lookups.
+  // Claim accept/reject is still available from job detail screens.
+  const jobsWithDetails = jobs.map((job) => {
+    let claimedInstructor = null;
+    const activeInstructorId = job.claimedBy ?? job.backupClaimedBy;
+    if (activeInstructorId) {
+      const instructor = instructorById.get(activeInstructorId);
+      if (instructor) {
+        claimedInstructor = {
+          _id: instructor._id,
+          name: instructor.name,
+          photoUrl: instructor.avatarUrl,
+          avatarUrl: instructor.avatarUrl,
+          rating: instructor.rating,
+          isVerified: instructor.isVerified,
+        };
+      }
+    }
+
+    return { ...job, claimedInstructor, claimId: undefined };
+  });
 
   return sortStudioJobsByPriority(jobsWithDetails);
 }
@@ -608,14 +615,14 @@ export const getStudioJobs = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
+    if (!identity) throw new Error("AUTH_REQUIRED");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
       .first();
 
-    if (!user || user.role !== "studio") return [];
+    if (!user || user.role !== "studio") throw new Error("STUDIO_ONLY");
 
     return await getStudioJobsForStudio(ctx, user._id);
   },
@@ -728,6 +735,23 @@ export const postJob = mutation({
     // Schedule notification dispatch with version guard
     await scheduleJobDispatch(ctx, jobId);
 
+    await ctx.runMutation(internal.events.emitDomainEvent, {
+      aggregateType: "job",
+      aggregateId: jobId,
+      eventType: "job.posted",
+      source: "mutation",
+      actorUserId: user._id,
+      payload: {
+        studioId: user._id,
+        category: args.category,
+        startTime: args.startTime,
+        endTime: args.endTime,
+        currentRate,
+        isSOS,
+      },
+      occurredAt: now,
+    });
+
     return jobId;
   },
 });
@@ -735,7 +759,7 @@ export const postJob = mutation({
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const MVP_SKIP_CERTIFICATION = true; // Set to true to allow non-verified instructors for MVP
+const MVP_SKIP_CERTIFICATION = process.env.MVP_SKIP_CERTIFICATION === "true";
 const MAX_RADIUS_KM = 15;
 const CLAIM_RESPONSE_TIMEOUT_MS = 2 * 60 * 1000;
 const DISPATCH_MAX_RETRIES = 4;
@@ -1174,6 +1198,122 @@ export const cancelJob = mutation({
   },
 });
 
+export const completeJob = mutation({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!user) throw new Error("User not found");
+
+    await applyCompleteJobByStudio(ctx, jobId, user._id);
+    return { success: true };
+  },
+});
+
+export const completeJobInternalByStudio = internalMutation({
+  args: {
+    jobId: v.id("jobs"),
+    studioId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    await applyCompleteJobByStudio(ctx, args.jobId, args.studioId);
+    return { success: true };
+  },
+});
+
+export const submitRating = mutation({
+  args: {
+    jobId: v.id("jobs"),
+    toUserId: v.id("users"),
+    rating: v.float64(),
+    comment: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    if (!Number.isFinite(args.rating) || args.rating < 1 || args.rating > 5) {
+      throw new Error("rating must be between 1 and 5");
+    }
+
+    const fromUser = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!fromUser) throw new Error("User not found");
+
+    const job = await ctx.db.get(args.jobId);
+    if (!job) throw new Error("Job not found");
+    if (job.status !== "completed") {
+      throw new Error("Can only rate completed jobs");
+    }
+
+    const isStudioRater = fromUser._id === job.studioId;
+    const isInstructorRater = fromUser._id === job.claimedBy;
+    if (!isStudioRater && !isInstructorRater) {
+      throw new Error("Only the studio or confirmed instructor can rate this job");
+    }
+
+    const expectedToUserId = isStudioRater ? job.claimedBy : job.studioId;
+    if (!expectedToUserId || expectedToUserId !== args.toUserId) {
+      throw new Error("Invalid rating target for this job");
+    }
+
+    const existingForJob = await ctx.db
+      .query("ratings")
+      .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+      .collect();
+    const duplicate = existingForJob.find(
+      (row) => row.fromUserId === fromUser._id && row.toUserId === args.toUserId,
+    );
+    if (duplicate) {
+      throw new Error("Rating already submitted for this job");
+    }
+
+    const now = Date.now();
+    const ratingId = await ctx.db.insert("ratings", {
+      jobId: args.jobId,
+      fromUserId: fromUser._id,
+      toUserId: args.toUserId,
+      rating: args.rating,
+      comment: args.comment?.trim() ? args.comment.trim() : undefined,
+      createdAt: now,
+    });
+
+    const targetUser = await ctx.db.get(args.toUserId);
+    if (targetUser) {
+      const prevCount = targetUser.ratingCount ?? 0;
+      const prevAvg = targetUser.rating ?? 0;
+      const nextCount = prevCount + 1;
+      const nextAvg = (prevAvg * prevCount + args.rating) / nextCount;
+      await ctx.db.patch(targetUser._id, {
+        rating: Number(nextAvg.toFixed(2)),
+        ratingCount: nextCount,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.runMutation(internal.events.emitDomainEvent, {
+      aggregateType: "job",
+      aggregateId: args.jobId,
+      eventType: "job.rating_submitted",
+      source: "mutation",
+      actorUserId: fromUser._id,
+      payload: {
+        toUserId: args.toUserId,
+        rating: args.rating,
+      },
+      occurredAt: now,
+    });
+
+    return { ratingId };
+  },
+});
+
 export const cancelJobInternalByStudio = internalMutation({
   args: {
     jobId: v.id("jobs"),
@@ -1183,6 +1323,57 @@ export const cancelJobInternalByStudio = internalMutation({
     await applyCancelJobByStudio(ctx, args.jobId, args.studioId);
   },
 });
+
+async function applyCompleteJobByStudio(
+  ctx: { db: any; runMutation: any },
+  jobId: Id<"jobs">,
+  studioId: Id<"users">,
+) {
+  const job = await ctx.db.get(jobId);
+  if (!job) throw new Error("Job not found");
+  if (job.studioId !== studioId) {
+    throw new Error("Only the studio owner can complete jobs");
+  }
+  if (job.status !== "confirmed") {
+    throw new Error("Only confirmed jobs can be completed");
+  }
+  if (!job.claimedBy) {
+    throw new Error("Cannot complete job without a confirmed instructor");
+  }
+  if (job.endTime > Date.now()) {
+    throw new Error("Cannot complete job before end time");
+  }
+
+  const acceptedClaim = await ctx.db
+    .query("claims")
+    .withIndex("by_job_status_instructor", (q: any) =>
+      q.eq("jobId", jobId).eq("status", "accepted").eq("instructorId", job.claimedBy),
+    )
+    .first();
+  if (!acceptedClaim) {
+    throw new Error("Cannot complete job without accepted claim");
+  }
+
+  const now = Date.now();
+  await ctx.db.patch(jobId, {
+    status: "completed",
+    updatedAt: now,
+  });
+
+  await ctx.runMutation(internal.events.emitDomainEvent, {
+    aggregateType: "job",
+    aggregateId: jobId,
+    eventType: "job.completed",
+    source: "mutation",
+    actorUserId: studioId,
+    payload: {
+      instructorId: job.claimedBy,
+      confirmedAt: job.confirmedAt,
+      endTime: job.endTime,
+    },
+    occurredAt: now,
+  });
+}
 
 async function applyCancelJobByStudio(
   ctx: { db: any; scheduler: any },

@@ -27,6 +27,7 @@ Status values:
   - Studio job/post screens fail fast with explicit auth-required state.
   - Studio-only radius controls are not exposed in studio profile flows.
   - Studio auth-required surfaces are localized (no hardcoded fallback strings).
+  - Studio jobs list query avoids timeout-prone N+1 claim lookups on hot path.
   - Foreground offline sync binds Convex auth before replay.
   - Sign-out clears/quarantines pending mutations by user scope.
 
