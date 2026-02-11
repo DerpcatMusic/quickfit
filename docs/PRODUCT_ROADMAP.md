@@ -54,6 +54,7 @@ Status values:
   - Studio can mark confirmed jobs as completed from app surfaces.
   - Studio can control verified-only vs open-instructor eligibility when posting jobs.
   - Studio can configure default base rate and lead-time surge rules for new jobs.
+  - Post-job rate field initializes from studio defaults unless manually overridden.
   - Ratings can be submitted exactly once per side per completed job.
   - Rating UX is localized and available to both studio and instructor.
 

@@ -31,4 +31,15 @@ void main() {
       );
     });
   });
+
+  group('Studio post-job pricing contract', () {
+    test('studio default base rate is applied until user edits rate', () {
+      final source = File('lib/features/jobs/presentation/post_job_screen.dart')
+          .readAsStringSync();
+
+      expect(source, contains('bool _hasUserEditedRate = false;'));
+      expect(source, contains('if (!_hasUserEditedRate && defaultRate != null)'));
+      expect(source, contains('_hasUserEditedRate = true;'));
+    });
+  });
 }

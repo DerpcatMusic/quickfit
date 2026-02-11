@@ -35,6 +35,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final _lessonTypeController = TextEditingController();
   final _rateController = TextEditingController();
   final _notesController = TextEditingController();
+  bool _hasUserEditedRate = false;
   bool _requiresVerification = false;
   bool _isSubmitting = false;
   bool _studioPricingLoaded = false;
@@ -122,8 +123,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           .toList(growable: false);
 
       setState(() {
-        if (defaultRate != null &&
-            (double.tryParse(_rateController.text) ?? 0) <= 0) {
+        if (!_hasUserEditedRate && defaultRate != null) {
           _rateController.text = defaultRate.toStringAsFixed(0);
         }
         if (rules.isNotEmpty) _leadTimeSurgeRules = rules;
@@ -157,7 +157,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     );
     if (_selectedCategory == null && inferredCategory != null) {
       _selectedCategory = inferredCategory;
-      _rateController.text = '${defaultRates[inferredCategory.id] ?? 120}';
+      if (!_hasUserEditedRate) {
+        _rateController.text = '${defaultRates[inferredCategory.id] ?? 120}';
+      }
     }
 
     if (_selectedCategory == null) {
@@ -425,7 +427,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             onTap: () {
               setState(() {
                 _selectedCategory = category;
-                _rateController.text = '${defaultRates[category.id] ?? 120}';
+                if (!_hasUserEditedRate) {
+                  _rateController.text = '${defaultRates[category.id] ?? 120}';
+                }
               });
             },
             child: AnimatedContainer(
@@ -508,7 +512,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           if (inferred == null) return;
           setState(() {
             _selectedCategory = inferred;
-            _rateController.text = '${defaultRates[inferred.id] ?? 120}';
+            if (!_hasUserEditedRate) {
+              _rateController.text = '${defaultRates[inferred.id] ?? 120}';
+            }
           });
         },
       ),
@@ -652,7 +658,10 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 hintText: AppLocalizations.of(context)!.postJobRateHint,
                 isCollapsed: true,
               ),
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) {
+                _hasUserEditedRate = true;
+                setState(() {});
+              },
             ),
           ),
           if (_leadTimeBoostPercent() > 0)
