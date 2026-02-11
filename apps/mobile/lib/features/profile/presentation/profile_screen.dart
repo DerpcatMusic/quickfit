@@ -22,7 +22,6 @@ import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:quickfit/features/profile/presentation/models/profile_settings_draft.dart';
 import 'package:quickfit/features/profile/presentation/widgets/profile_primitives.dart';
 import 'package:quickfit/l10n/app_localizations.dart';
-import 'package:quickfit/shared/widgets/adaptive_dialog.dart' as qf_dialog;
 import 'package:quickfit/shared/widgets/studio_billing_sheet.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -1946,36 +1945,56 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _confirmRedoOnboarding() async {
     final isCupertino = isCupertinoPlatform(context);
-    final confirmed = await qf_dialog.showAdaptiveDialog<bool>(
-      context,
-      title: Text('${_l10n.redoOnboarding}?'),
-      content: Text(_l10n.redoOnboardingPrompt),
-      actions: isCupertino
-          ? [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(_l10n.cancel),
-              ),
-              CupertinoDialogAction(
-                onPressed: () => Navigator.pop(context, true),
-                isDestructiveAction: true,
-                child: Text(_l10n.redo),
-              ),
-            ]
-          : [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(_l10n.cancel),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(_l10n.redo),
-              ),
-            ],
-    );
+    bool? confirmed;
+    if (isCupertino) {
+      confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (dialogContext) => CupertinoAlertDialog(
+          title: Text('${_l10n.redoOnboarding}?'),
+          content: Text(_l10n.redoOnboardingPrompt),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_l10n.cancel),
+            ),
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              isDestructiveAction: true,
+              child: Text(_l10n.redo),
+            ),
+          ],
+        ),
+      );
+    } else {
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('${_l10n.redoOnboarding}?'),
+          content: Text(_l10n.redoOnboardingPrompt),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_l10n.redo),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (confirmed == true) {
-      await ref.read(authProvider.notifier).resetOnboarding();
+      final success = await ref.read(authProvider.notifier).resetOnboarding();
+      if (!mounted) return;
+      if (success) {
+        context.go(AppRoutes.onboarding);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_l10n.somethingWentWrong)),
+        );
+      }
     }
   }
 

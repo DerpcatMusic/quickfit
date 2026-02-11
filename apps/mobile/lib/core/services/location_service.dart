@@ -2,6 +2,7 @@
 // lib/core/services/location_service.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,6 +42,10 @@ class LocationService {
   }
 
   Future<bool> _checkAndRequestPermission() async {
+    // Web geolocation can fail with JS interop type issues on some runtimes.
+    // Keep onboarding functional by allowing manual address flow on web.
+    if (kIsWeb) return true;
+
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return false;
 
@@ -104,6 +109,10 @@ class LocationService {
   }
 
   Future<Position?> updateLocation() async {
+    if (kIsWeb) {
+      return _currentPosition;
+    }
+
     try {
       _currentPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -139,6 +148,10 @@ class LocationService {
 
   // Stream location updates
   Stream<Position> watchLocation() {
+    if (kIsWeb) {
+      return const Stream<Position>.empty();
+    }
+
     return Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.medium,

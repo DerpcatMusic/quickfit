@@ -362,16 +362,19 @@ class AuthNotifier extends _$AuthNotifier {
     return state.user?.providerData.map((p) => p.providerId).toList() ?? [];
   }
 
-  Future<void> resetOnboarding() async {
+  Future<bool> resetOnboarding() async {
     state = state.copyWith(isLoading: true);
     try {
       await _userService.resetOnboarding();
       state = state.copyWith(
         hasCompletedOnboarding: false,
         isLoading: false,
+        error: null,
       );
+      return true;
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
+      return false;
     }
   }
 
