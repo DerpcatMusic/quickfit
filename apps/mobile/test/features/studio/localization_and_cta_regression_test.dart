@@ -76,5 +76,26 @@ void main() {
             reason: 'Found hardcoded: $value');
       }
     });
+
+    test('job detail rating and completion UX use l10n keys', () {
+      final source =
+          File('lib/features/jobs/presentation/job_detail_screen.dart')
+              .readAsStringSync();
+
+      const forbidden = <String>[
+        'Job marked as completed.',
+        'Failed to complete job:',
+        'How was your experience?',
+        'Optional comment',
+        'Rating submitted.',
+        'Failed to submit rating:',
+        'Rate counterpart',
+      ];
+
+      for (final value in forbidden) {
+        expect(source.contains(value), isFalse,
+            reason: 'Found hardcoded: $value');
+      }
+    });
   });
 }

@@ -63,6 +63,7 @@
   "redoOnboardingPrompt": "זה יאפשר לבחור תפקיד ופרטי פרופיל מחדש.",
   "redo": "בצע מחדש",
   "cancel": "ביטול",
+  "submit": "Submit",
   "language": "שפה",
   "helpSupport": "עזרה ותמיכה",
   "signOut": "התנתקות",
@@ -305,6 +306,12 @@
   "postJobCategoryDance": "ריקוד",
   "postJobCategoryPersonalTraining": "אימון אישי",
   "postJobRateCurrency": "ILS",
+  "postJobRateBoostPill": "+{boostPercent}%",
+  "@postJobRateBoostPill": {
+    "placeholders": {
+      "boostPercent": {}
+    }
+  },
   "postJobSosRateBonusLabel": "+15%",
   "postJobStudioLocationFallback": "Studio Location",
   "postJobStudioAddressNotSet": "Studio address not set. Please complete onboarding first.",
@@ -562,6 +569,31 @@
   "jobDetailCancelBody": "Are you sure you want to cancel this job? This cannot be undone.",
   "jobDetailKeepIt": "Keep It",
   "jobDetailCancelCta": "Cancel Job",
+  "jobDetailCompleteSuccessSnack": "Job marked as completed.",
+  "jobDetailCompleteFailureSnack": "Failed to complete job: {error}",
+  "@jobDetailCompleteFailureSnack": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "jobDetailRateDialogTitle": "Rate {targetLabel}",
+  "@jobDetailRateDialogTitle": {
+    "placeholders": {
+      "targetLabel": {}
+    }
+  },
+  "jobDetailRatePrompt": "How was your experience?",
+  "jobDetailRateCommentHint": "Optional comment",
+  "jobDetailRatingSubmittedSnack": "Rating submitted.",
+  "jobDetailRatingFailedSnack": "Failed to submit rating: {error}",
+  "@jobDetailRatingFailedSnack": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "jobDetailRateTargetInstructor": "instructor",
+  "jobDetailRateTargetStudio": "studio",
+  "jobDetailRateCounterpartCta": "Rate counterpart",
   "onboardingLocationUnavailable": "Could not get your location. Try entering your address.",
   "onboardingLocationNotFound": "Could not find location. Please select from the list or use GPS.",
   "onboardingStudioLocationRequired": "Studio location required. Please enter a valid address.",

@@ -202,6 +202,7 @@ Status values:
   - Studio billing sheet lives under feature-owned module (`features/studio/billing/**`) with shared adapter only.
   - Hardcoded billing/payment copy removed from studio-facing widgets and covered by l10n regression tests.
   - Post-job category labels are sourced from l10n keys (no hardcoded category chip labels).
+  - Job detail completion/rating dialogs use l10n keys (no hardcoded action/status strings).
   - Top hotspot screens (`profile`, `onboarding`, `post_job`) begin section/widget extraction with clear ownership boundaries.
 
 ## Active Priority Order

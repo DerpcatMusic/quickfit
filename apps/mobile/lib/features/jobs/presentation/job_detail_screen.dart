@@ -101,17 +101,18 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   }
 
   Future<void> _handleCompleteJob() async {
+    final l10n = AppLocalizations.of(context)!;
     try {
       await ConvexService.instance.completeJob(widget.jobId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job marked as completed.')),
+          SnackBar(content: Text(l10n.jobDetailCompleteSuccessSnack)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to complete job: $e')),
+          SnackBar(content: Text(l10n.jobDetailCompleteFailureSnack(e.toString()))),
         );
       }
     }
@@ -121,6 +122,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     required String toUserId,
     required String targetLabel,
   }) async {
+    final l10n = AppLocalizations.of(context)!;
     final commentController = TextEditingController();
     double selectedRating = 5;
 
@@ -130,12 +132,12 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
             return AlertDialog(
-              title: Text('Rate $targetLabel'),
+              title: Text(l10n.jobDetailRateDialogTitle(targetLabel)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'How was your experience?',
+                    l10n.jobDetailRatePrompt,
                     style: Theme.of(dialogContext).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: 12),
@@ -155,9 +157,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   TextField(
                     controller: commentController,
                     maxLines: 3,
-                    decoration: const InputDecoration(
-                      hintText: 'Optional comment',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      hintText: l10n.jobDetailRateCommentHint,
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ],
@@ -165,11 +167,11 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.cancel),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('Submit'),
+                  child: Text(l10n.submit),
                 ),
               ],
             );
@@ -192,13 +194,13 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rating submitted.')),
+          SnackBar(content: Text(l10n.jobDetailRatingSubmittedSnack)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to submit rating: $e')),
+          SnackBar(content: Text(l10n.jobDetailRatingFailedSnack(e.toString()))),
         );
       }
     } finally {
@@ -478,10 +480,12 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                               if (toUserId == null) return;
                               _handleSubmitRating(
                                 toUserId: toUserId,
-                                targetLabel: isStudio ? 'instructor' : 'studio',
+                                targetLabel: isStudio
+                                    ? l10n.jobDetailRateTargetInstructor
+                                    : l10n.jobDetailRateTargetStudio,
                               );
                             },
-                            child: const Text('Rate counterpart'),
+                            child: Text(l10n.jobDetailRateCounterpartCta),
                           )
                         : FilledButton.icon(
                             onPressed: () {
@@ -491,11 +495,13 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                               if (toUserId == null) return;
                               _handleSubmitRating(
                                 toUserId: toUserId,
-                                targetLabel: isStudio ? 'instructor' : 'studio',
+                                targetLabel: isStudio
+                                    ? l10n.jobDetailRateTargetInstructor
+                                    : l10n.jobDetailRateTargetStudio,
                               );
                             },
                             icon: const Icon(LucideIcons.star),
-                            label: const Text('Rate counterpart'),
+                            label: Text(l10n.jobDetailRateCounterpartCta),
                           ),
                   ),
                 ],

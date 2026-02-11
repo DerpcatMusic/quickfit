@@ -673,7 +673,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 border: Border.all(color: colors.successBorder),
               ),
               child: Text(
-                '+${_leadTimeBoostPercent().toStringAsFixed(0)}%',
+                l10n.postJobRateBoostPill(
+                  _leadTimeBoostPercent().toStringAsFixed(0),
+                ),
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: colors.successText,
                   fontWeight: FontWeight.w700,

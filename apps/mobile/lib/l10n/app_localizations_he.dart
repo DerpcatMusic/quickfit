@@ -199,6 +199,9 @@ class AppLocalizationsHe extends AppLocalizations {
   String get cancel => 'ביטול';
 
   @override
+  String get submit => 'Submit';
+
+  @override
   String get language => 'שפה';
 
   @override
@@ -675,6 +678,11 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get postJobRateCurrency => 'ILS';
+
+  @override
+  String postJobRateBoostPill(Object boostPercent) {
+    return '+$boostPercent%';
+  }
 
   @override
   String get postJobSosRateBonusLabel => '+15%';
@@ -1262,6 +1270,42 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get jobDetailCancelCta => 'Cancel Job';
+
+  @override
+  String get jobDetailCompleteSuccessSnack => 'Job marked as completed.';
+
+  @override
+  String jobDetailCompleteFailureSnack(Object error) {
+    return 'Failed to complete job: $error';
+  }
+
+  @override
+  String jobDetailRateDialogTitle(Object targetLabel) {
+    return 'Rate $targetLabel';
+  }
+
+  @override
+  String get jobDetailRatePrompt => 'How was your experience?';
+
+  @override
+  String get jobDetailRateCommentHint => 'Optional comment';
+
+  @override
+  String get jobDetailRatingSubmittedSnack => 'Rating submitted.';
+
+  @override
+  String jobDetailRatingFailedSnack(Object error) {
+    return 'Failed to submit rating: $error';
+  }
+
+  @override
+  String get jobDetailRateTargetInstructor => 'instructor';
+
+  @override
+  String get jobDetailRateTargetStudio => 'studio';
+
+  @override
+  String get jobDetailRateCounterpartCta => 'Rate counterpart';
 
   @override
   String get onboardingLocationUnavailable =>

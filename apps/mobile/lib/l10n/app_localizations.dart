@@ -476,6 +476,12 @@ abstract class AppLocalizations {
   /// **'Cancel'**
   String get cancel;
 
+  /// No description provided for @submit.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit'**
+  String get submit;
+
   /// No description provided for @language.
   ///
   /// In en, this message translates to:
@@ -1315,6 +1321,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'ILS'**
   String get postJobRateCurrency;
+
+  /// No description provided for @postJobRateBoostPill.
+  ///
+  /// In en, this message translates to:
+  /// **'+{boostPercent}%'**
+  String postJobRateBoostPill(Object boostPercent);
 
   /// No description provided for @postJobSosRateBonusLabel.
   ///
@@ -2365,6 +2377,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cancel Job'**
   String get jobDetailCancelCta;
+
+  /// No description provided for @jobDetailCompleteSuccessSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Job marked as completed.'**
+  String get jobDetailCompleteSuccessSnack;
+
+  /// No description provided for @jobDetailCompleteFailureSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to complete job: {error}'**
+  String jobDetailCompleteFailureSnack(Object error);
+
+  /// No description provided for @jobDetailRateDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate {targetLabel}'**
+  String jobDetailRateDialogTitle(Object targetLabel);
+
+  /// No description provided for @jobDetailRatePrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'How was your experience?'**
+  String get jobDetailRatePrompt;
+
+  /// No description provided for @jobDetailRateCommentHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional comment'**
+  String get jobDetailRateCommentHint;
+
+  /// No description provided for @jobDetailRatingSubmittedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Rating submitted.'**
+  String get jobDetailRatingSubmittedSnack;
+
+  /// No description provided for @jobDetailRatingFailedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to submit rating: {error}'**
+  String jobDetailRatingFailedSnack(Object error);
+
+  /// No description provided for @jobDetailRateTargetInstructor.
+  ///
+  /// In en, this message translates to:
+  /// **'instructor'**
+  String get jobDetailRateTargetInstructor;
+
+  /// No description provided for @jobDetailRateTargetStudio.
+  ///
+  /// In en, this message translates to:
+  /// **'studio'**
+  String get jobDetailRateTargetStudio;
+
+  /// No description provided for @jobDetailRateCounterpartCta.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate counterpart'**
+  String get jobDetailRateCounterpartCta;
 
   /// No description provided for @onboardingLocationUnavailable.
   ///

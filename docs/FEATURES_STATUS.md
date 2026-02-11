@@ -65,6 +65,7 @@ Legend:
 - Studio-facing auth/error/action copy localization coverage: `partial`
 - Studio billing/invoicing sheet extracted to feature module and localized (no hardcoded UI copy): `live`
 - Studio post-job sticky bottom submit CTA: `live`
+- Job detail completion and rating dialog flows are localized (no hardcoded action copy): `live`
 - Studio jobs list query hot-path optimized to reduce timeout risk: `partial`
 - Studio jobs list read now uses canonical `jobs` index fallback even when projections are missing: `live`
 - Projection-backed studio jobs and instructor availability feed (with lifecycle sync + fallback): `partial`
