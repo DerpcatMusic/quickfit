@@ -48,7 +48,7 @@
   - strict timestamp skew window,
   - reject events without provider event id.
 - Secrets:
-  - prefer sealed secrets in `studioPaymentIntegrations`.
+  - payment rails are platform-managed via deployment env/sealed platform secrets.
 
 ## 7) Scalability and cost model
 - Hot paths use indexes:
@@ -68,6 +68,7 @@
 - Implement payout orchestration action and `payouts` ledger table.
 - Add payout webhook/event ingestion.
 - Add retry/backoff policies and dead-letter tracking.
+ - Remove runtime dependency on per-studio payment provider configuration.
 
 3. Phase C
 - Add reconciliation job (provider balance vs local ledger).

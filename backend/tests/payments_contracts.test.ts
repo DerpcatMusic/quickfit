@@ -42,6 +42,18 @@ describe("payments payout pipeline semantics", () => {
     expect(computeNextWebhookPaymentStatus("pending", "captured")).toBe(
       "captured",
     );
+    expect(computeNextWebhookPaymentStatus("authorized", "pending")).toBe(
+      "authorized",
+    );
+    expect(computeNextWebhookPaymentStatus("failed", "pending")).toBe(
+      "failed",
+    );
+    expect(computeNextWebhookPaymentStatus("cancelled", "authorized")).toBe(
+      "cancelled",
+    );
+    expect(computeNextWebhookPaymentStatus("refunded", "pending")).toBe(
+      "refunded",
+    );
 
     expect(shouldScheduleInvoiceForTransition("pending", "captured")).toBe(
       true,

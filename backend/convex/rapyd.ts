@@ -5,7 +5,6 @@ import { v } from "convex/values";
 import { createHmac, randomUUID } from "node:crypto";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { openSealedSecret } from "./lib/secrets";
 
 const RAPYD_PROVIDER = "rapyd" as const;
 
@@ -36,8 +35,8 @@ const buildRapydSignature = ({
   body: string;
 }): string => {
   const toSign = `${method.toLowerCase()}${path}${salt}${timestamp}${accessKey}${secretKey}${body}`;
-  const hmacHex = createHmac("sha256", secretKey).update(toSign).digest("hex");
-  return Buffer.from(hmacHex, "hex").toString("base64");
+  const hmac = createHmac("sha256", secretKey).update(toSign).digest();
+  return hmac.toString("base64");
 };
 
 type CheckoutContext = {
@@ -64,15 +63,6 @@ type CheckoutContext = {
     startTime: number;
     currentRate: number;
   };
-};
-
-type StudioPaymentIntegration = {
-  provider: "rapyd" | "bitpay";
-  mode: "sandbox" | "production";
-  apiToken?: string;
-  apiKey?: string;
-  sealedApiToken?: string;
-  sealedApiKey?: string;
 };
 
 type CreateCheckoutResult = {
@@ -135,16 +125,6 @@ export const createCheckoutForJob = action({
     const effectiveIdempotencyKey =
       idempotencyKey?.trim() || `${RAPYD_PROVIDER}:${user._id}:${job._id}`;
 
-    const paymentIntegration = (await ctx.runQuery(
-      internal.billing.getActiveStudioPaymentIntegration,
-      { studioId: user._id },
-    )) as StudioPaymentIntegration | null;
-    if (paymentIntegration && paymentIntegration.provider !== RAPYD_PROVIDER) {
-      throw new Error(
-        `Active payment provider is ${paymentIntegration.provider}. Use matching checkout action.`,
-      );
-    }
-
     const pendingPayment: { _id: Id<"payments"> } | null =
       (await ctx.runMutation(internal.payments.createPendingPayment, {
         jobId: job._id,
@@ -164,16 +144,12 @@ export const createCheckoutForJob = action({
       })) as { _id: Id<"payments"> } | null;
     if (!pendingPayment) throw new Error("Failed to create pending payment");
 
-    const accessKey =
-      paymentIntegration?.sealedApiToken != null
-        ? await openSealedSecret(paymentIntegration.sealedApiToken)
-        : paymentIntegration?.apiToken?.trim() || getEnv("RAPYD_ACCESS_KEY");
-    const secretKey =
-      paymentIntegration?.sealedApiKey != null
-        ? await openSealedSecret(paymentIntegration.sealedApiKey)
-        : paymentIntegration?.apiKey?.trim() || getEnv("RAPYD_SECRET_KEY");
+    const accessKey = getEnv("RAPYD_ACCESS_KEY");
+    const secretKey = getEnv("RAPYD_SECRET_KEY");
+    const rapydMode = (process.env.RAPYD_MODE ?? "sandbox").trim().toLowerCase();
+    const isProduction = rapydMode === "production";
     const rapydBaseUrl = (
-      paymentIntegration?.mode === "production"
+      isProduction
         ? (process.env.RAPYD_PROD_BASE_URL ??
           process.env.RAPYD_BASE_URL ??
           "https://api.rapyd.net")

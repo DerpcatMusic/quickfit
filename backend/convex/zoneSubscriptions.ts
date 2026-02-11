@@ -6,6 +6,8 @@ import { query, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 
+const MVP_SKIP_CERTIFICATION = process.env.MVP_SKIP_CERTIFICATION === "true";
+
 // ==========================================
 // QUERIES
 // ==========================================
@@ -19,6 +21,7 @@ export const findZoneInstructors = internalQuery({
     zoneId: v.id("zones"),
     category: v.string(),
     requiresVerification: v.optional(v.boolean()),
+    isSos: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const subs = await ctx.db
@@ -37,12 +40,12 @@ export const findZoneInstructors = internalQuery({
     );
 
     // Filter by verification if required and notifications enabled
-    const MVP_SKIP_CERTIFICATION = true;
-    
     return instructors
       .filter((i): i is Doc<"users"> => {
         if (!i) return false;
         if (i.notificationsEnabled === false) return false;
+        if (args.isSos && i.sosJobAlerts === false) return false;
+        if (!args.isSos && i.regularJobAlerts === false) return false;
         if (!MVP_SKIP_CERTIFICATION && args.requiresVerification && !i.isVerified) return false;
         return true;
       })

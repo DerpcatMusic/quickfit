@@ -40,8 +40,6 @@ type InvoicingContext = {
 type StudioIntegration = {
   provider: InvoiceProvider;
   baseUrl: string;
-  apiToken?: string;
-  apiKey?: string;
   sealedApiToken?: string;
   sealedApiKey?: string;
   accountId?: string;
@@ -174,7 +172,7 @@ const issueMorningInvoice = async ({
     integration?.provider === "morning"
       ? integration.sealedApiToken
         ? await openSealedSecret(integration.sealedApiToken)
-        : integration.apiToken?.trim()
+        : undefined
       : undefined;
   const apiBase =
     integration?.provider === "morning"
@@ -252,7 +250,7 @@ const issueIcountInvoice = async ({
     integration?.provider === "icount"
       ? integration.sealedApiKey
         ? await openSealedSecret(integration.sealedApiKey)
-        : integration.apiKey?.trim()
+        : undefined
       : undefined;
   const apiBase =
     integration?.provider === "icount"

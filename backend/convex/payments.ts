@@ -46,9 +46,27 @@ export const computeNextWebhookPaymentStatus = (
   currentStatus: PaymentStatus,
   mappedStatus: MappedPaymentStatus,
 ): MappedPaymentStatus => {
+  // Terminal states should never be reopened by out-of-order webhooks.
+  if (currentStatus === "refunded") {
+    return "refunded";
+  }
+  if (currentStatus === "failed") {
+    return "failed";
+  }
+  if (currentStatus === "cancelled") {
+    return "cancelled";
+  }
+
+  // Captured is sticky unless we receive an explicit refund signal.
   if (currentStatus === "captured" && mappedStatus !== "refunded") {
     return "captured";
   }
+
+  // Prevent regressions on the non-terminal progression path.
+  if (currentStatus === "authorized" && mappedStatus === "pending") {
+    return "authorized";
+  }
+
   return mappedStatus;
 };
 
@@ -247,6 +265,27 @@ export const createPendingPayment = internalMutation({
       updatedAt: now,
     });
 
+    await ctx.runMutation(internal.events.emitDomainEvent, {
+      aggregateType: "payment",
+      aggregateId: paymentId,
+      eventType: "payment.created",
+      source: "mutation",
+      actorUserId: args.studioId,
+      idempotencyKey: args.idempotencyKey,
+      payload: {
+        jobId: args.jobId,
+        studioId: args.studioId,
+        instructorId: args.instructorId,
+        provider: args.provider,
+        currency: args.currency,
+        grossAmountAgorot: args.grossAmountAgorot,
+        feeAmountAgorot: args.feeAmountAgorot,
+        netAmountAgorot: args.netAmountAgorot,
+        feeBps: args.feeBps,
+      },
+      occurredAt: now,
+    });
+
     return await ctx.db.get(paymentId);
   },
 });
@@ -274,6 +313,20 @@ export const markCheckoutCreated = internalMutation({
       updatedAt: now,
     });
 
+    await ctx.runMutation(internal.events.emitDomainEvent, {
+      aggregateType: "payment",
+      aggregateId: args.paymentId,
+      eventType: "payment.checkout_created",
+      source: "mutation",
+      payload: {
+        provider: payment.provider,
+        providerCheckoutId: args.providerCheckoutId ?? payment.providerCheckoutId,
+        providerPaymentId: args.providerPaymentId ?? payment.providerPaymentId,
+        status: payment.status === "created" ? "pending" : payment.status,
+      },
+      occurredAt: now,
+    });
+
     await ctx.runMutation(internal.payments.reprocessUnmatchedEventsForPayment, {
       paymentId: args.paymentId,
       provider: payment.provider,
@@ -297,32 +350,46 @@ export const reprocessUnmatchedEventsForPayment = internalMutation({
     const toProcess = new Map<string, any>();
 
     if (args.providerPaymentId) {
-      const byPaymentId = await ctx.db
-        .query("paymentEvents")
-        .withIndex("by_provider_payment_processed", (q) =>
-          q
-            .eq("provider", args.provider)
-            .eq("providerPaymentId", args.providerPaymentId)
-            .eq("processed", false),
-        )
-        .take(20);
-      for (const row of byPaymentId) {
-        toProcess.set(row._id, row);
+      let cursor: string | null = null;
+      let isDone = false;
+      while (!isDone) {
+        const byPaymentId = await ctx.db
+          .query("paymentEvents")
+          .withIndex("by_provider_payment_processed", (q) =>
+            q
+              .eq("provider", args.provider)
+              .eq("providerPaymentId", args.providerPaymentId)
+              .eq("processed", false),
+          )
+          .order("asc")
+          .paginate({ numItems: 64, cursor });
+        for (const row of byPaymentId.page) {
+          toProcess.set(row._id, row);
+        }
+        cursor = byPaymentId.continueCursor;
+        isDone = byPaymentId.isDone;
       }
     }
 
     if (args.providerCheckoutId) {
-      const byCheckoutId = await ctx.db
-        .query("paymentEvents")
-        .withIndex("by_provider_checkout_processed", (q) =>
-          q
-            .eq("provider", args.provider)
-            .eq("providerCheckoutId", args.providerCheckoutId)
-            .eq("processed", false),
-        )
-        .take(20);
-      for (const row of byCheckoutId) {
-        toProcess.set(row._id, row);
+      let cursor: string | null = null;
+      let isDone = false;
+      while (!isDone) {
+        const byCheckoutId = await ctx.db
+          .query("paymentEvents")
+          .withIndex("by_provider_checkout_processed", (q) =>
+            q
+              .eq("provider", args.provider)
+              .eq("providerCheckoutId", args.providerCheckoutId)
+              .eq("processed", false),
+          )
+          .order("asc")
+          .paginate({ numItems: 64, cursor });
+        for (const row of byCheckoutId.page) {
+          toProcess.set(row._id, row);
+        }
+        cursor = byCheckoutId.continueCursor;
+        isDone = byCheckoutId.isDone;
       }
     }
 
@@ -352,6 +419,27 @@ export const reprocessUnmatchedEventsForPayment = internalMutation({
           nextStatus === "captured" ? (current.capturedAt ?? now) : current.capturedAt,
         updatedAt: now,
       });
+      if (current.status !== nextStatus) {
+        await ctx.runMutation(internal.events.emitDomainEvent, {
+          aggregateType: "payment",
+          aggregateId: args.paymentId,
+          eventType: "payment.status_changed",
+          source: "webhook_reprocess",
+          idempotencyKey: `payment-event:${event._id}`,
+          payload: {
+            fromStatus: current.status,
+            toStatus: nextStatus,
+            provider: args.provider,
+            providerEventId: event.providerEventId,
+            providerPaymentId:
+              event.providerPaymentId ?? current.providerPaymentId,
+            providerCheckoutId:
+              event.providerCheckoutId ?? current.providerCheckoutId,
+            statusRaw: event.statusRaw,
+          },
+          occurredAt: now,
+        });
+      }
       await ctx.db.patch(event._id, {
         paymentId: args.paymentId,
         processed: true,
@@ -423,15 +511,6 @@ export const processRapydWebhookEvent = internalMutation({
     if (existingEvent) {
       return { ignored: true, reason: "duplicate_event" as const };
     }
-    const existingPayload = await ctx.db
-      .query("paymentEvents")
-      .withIndex("by_provider_payloadHash", (q) =>
-        q.eq("provider", RAPYD_PROVIDER).eq("payloadHash", args.payloadHash),
-      )
-      .first();
-    if (existingPayload) {
-      return { ignored: true, reason: "duplicate_payload" as const };
-    }
 
     if (!args.signatureValid) {
       const eventId = await ctx.db.insert("paymentEvents", {
@@ -451,6 +530,18 @@ export const processRapydWebhookEvent = internalMutation({
         updatedAt: now,
       });
       return { ignored: true, reason: "invalid_signature" as const, eventId };
+    }
+    const existingPayload = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_provider_payloadHash_signatureValid", (q) =>
+        q
+          .eq("provider", RAPYD_PROVIDER)
+          .eq("payloadHash", args.payloadHash)
+          .eq("signatureValid", true),
+      )
+      .first();
+    if (existingPayload) {
+      return { ignored: true, reason: "duplicate_payload" as const };
     }
 
     let payment: {
@@ -610,15 +701,6 @@ export const processBitpayWebhookEvent = internalMutation({
     if (existingEvent) {
       return { ignored: true, reason: "duplicate_event" as const };
     }
-    const existingPayload = await ctx.db
-      .query("paymentEvents")
-      .withIndex("by_provider_payloadHash", (q) =>
-        q.eq("provider", "bitpay").eq("payloadHash", args.payloadHash),
-      )
-      .first();
-    if (existingPayload) {
-      return { ignored: true, reason: "duplicate_payload" as const };
-    }
 
     if (!args.signatureValid) {
       const eventId = await ctx.db.insert("paymentEvents", {
@@ -638,6 +720,18 @@ export const processBitpayWebhookEvent = internalMutation({
         updatedAt: now,
       });
       return { ignored: true, reason: "invalid_signature" as const, eventId };
+    }
+    const existingPayload = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_provider_payloadHash_signatureValid", (q) =>
+        q
+          .eq("provider", "bitpay")
+          .eq("payloadHash", args.payloadHash)
+          .eq("signatureValid", true),
+      )
+      .first();
+    if (existingPayload) {
+      return { ignored: true, reason: "duplicate_payload" as const };
     }
 
     let payment: {

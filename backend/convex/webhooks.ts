@@ -1,6 +1,5 @@
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { openSealedSecret } from "./lib/secrets";
 import type { Id } from "./_generated/dataModel";
 
 const getHeader = (req: Request, key: string): string | null =>
@@ -38,11 +37,11 @@ const buildRapydSignature = async ({
     encoder.encode(toSign),
   );
   const bytes = new Uint8Array(signature);
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  // Rapyd signature convention: base64 of SHA256 hex string bytes.
-  return btoa(hex);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 };
 
 const safeEqual = (a: string, b: string): boolean => {
@@ -84,26 +83,6 @@ const hmacSha256Hex = async (
   return Array.from(new Uint8Array(signature))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-};
-
-type PaymentForLookup = {
-  _id: Id<"payments">;
-  studioId: Id<"users">;
-};
-
-type PayoutForLookup = {
-  _id: Id<"payouts">;
-  studioId: Id<"users">;
-};
-
-type StudioPaymentIntegration = {
-  provider: "rapyd" | "bitpay";
-  apiToken?: string;
-  apiKey?: string;
-  webhookSecret?: string;
-  sealedApiToken?: string;
-  sealedApiKey?: string;
-  sealedWebhookSecret?: string;
 };
 
 export const rapydWebhook = httpAction(async (ctx, req) => {
@@ -165,59 +144,25 @@ export const rapydWebhook = httpAction(async (ctx, req) => {
     undefined;
   const providerCheckoutId =
     payload.data?.checkout?.id?.toString().trim() || undefined;
-  const payoutRefFromPayload =
-    payload.data?.merchant_reference_id?.toString().trim() ||
-    payload.data?.metadata?.payoutId?.toString().trim() ||
-    undefined;
+  const payoutRefFromPayload = isPayoutEvent
+    ? payload.data?.merchant_reference_id?.toString().trim() ||
+      payload.data?.metadata?.payoutId?.toString().trim() ||
+      undefined
+    : undefined;
   const statusRaw =
     payload.data?.payout?.status?.toString().trim() ||
     payload.data?.payment?.status?.toString().trim() ||
     payload.data?.status?.toString().trim() ||
     undefined;
 
-  const payment = (await ctx.runQuery(
-    internal.payments.getPaymentByProviderRefs,
-    {
-      provider: "rapyd",
-      providerPaymentId,
-      providerCheckoutId,
-    },
-  )) as PaymentForLookup | null;
-  const payout = (await ctx.runQuery(
-    internal.payouts.getPayoutByProviderRefs,
-    {
-      provider: "rapyd",
-      providerPayoutId,
-    },
-  )) as PayoutForLookup | null;
-
-  const studioIntegration = payment || payout
-    ? ((await ctx.runQuery(
-        internal.billing.getStudioPaymentIntegrationByProvider,
-        {
-          studioId: payment?.studioId ?? payout!.studioId,
-          provider: "rapyd",
-        },
-      )) as StudioPaymentIntegration | null)
-    : null;
-
   const expectedAccessKey =
-    studioIntegration?.sealedApiToken != null
-      ? await openSealedSecret(studioIntegration.sealedApiToken)
-      : studioIntegration?.apiToken?.trim() ||
-        (process.env.RAPYD_ACCESS_KEY ?? "").trim();
+    (process.env.RAPYD_ACCESS_KEY ?? "").trim();
   const webhookSecret =
-    studioIntegration?.sealedWebhookSecret != null
-      ? await openSealedSecret(studioIntegration.sealedWebhookSecret)
-      : studioIntegration?.webhookSecret?.trim() ||
-        (studioIntegration?.sealedApiKey != null
-          ? await openSealedSecret(studioIntegration.sealedApiKey)
-          : studioIntegration?.apiKey?.trim()) ||
-        (
-          process.env.RAPYD_WEBHOOK_SECRET ??
-          process.env.RAPYD_SECRET_KEY ??
-          ""
-        ).trim();
+    (
+      process.env.RAPYD_WEBHOOK_SECRET ??
+      process.env.RAPYD_SECRET_KEY ??
+      ""
+    ).trim();
 
   let signatureValid = false;
   if (
@@ -242,11 +187,12 @@ export const rapydWebhook = httpAction(async (ctx, req) => {
       accessKeyHeader === expectedAccessKey && safeEqual(expected, signature);
   }
 
-  if (isPayoutEvent || providerPayoutId || payoutRefFromPayload) {
+  if (isPayoutEvent || providerPayoutId) {
     await ctx.runMutation(internal.payouts.processRapydPayoutWebhookEvent, {
       providerEventId,
       eventType,
       providerPayoutId,
+      payoutId: payoutRefFromPayload as Id<"payouts"> | undefined,
       statusRaw,
       signatureValid,
       payloadHash,
@@ -304,46 +250,21 @@ export const bitpayWebhook = httpAction(async (ctx, req) => {
     };
   };
 
-  let paymentId: Id<"payments"> | undefined;
   let providerCheckoutId = payload.data?.id?.toString().trim() || undefined;
   let providerPaymentId = payload.data?.id?.toString().trim() || undefined;
   if (payload.data?.posData) {
     try {
       const parsedPosData = JSON.parse(payload.data.posData) as {
-        paymentId?: string;
         checkoutId?: string;
       };
-      if (parsedPosData.paymentId) {
-        paymentId = parsedPosData.paymentId as Id<"payments">;
-      }
       providerCheckoutId = parsedPosData.checkoutId || providerCheckoutId;
     } catch {
       // keep graceful fallback
     }
   }
 
-  const payment = (await ctx.runQuery(
-    internal.payments.getPaymentByProviderRefs,
-    {
-      provider: "bitpay",
-      paymentId,
-      providerPaymentId,
-      providerCheckoutId,
-    },
-  )) as PaymentForLookup | null;
-
-  const studioIntegration = payment
-    ? ((await ctx.runQuery(
-        internal.billing.getStudioPaymentIntegrationByProvider,
-        { studioId: payment.studioId, provider: "bitpay" },
-      )) as StudioPaymentIntegration | null)
-    : null;
-
   const webhookSecret =
-    studioIntegration?.sealedWebhookSecret != null
-      ? await openSealedSecret(studioIntegration.sealedWebhookSecret)
-      : studioIntegration?.webhookSecret?.trim() ||
-        (process.env.BITPAY_WEBHOOK_SECRET ?? "").trim();
+    (process.env.BITPAY_WEBHOOK_SECRET ?? "").trim();
 
   let signatureValid = false;
   if (webhookSecret && signatureHeader) {

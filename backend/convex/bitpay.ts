@@ -3,11 +3,10 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { randomUUID } from "node:crypto";
 import type { Id } from "./_generated/dataModel";
-import { openSealedSecret } from "./lib/secrets";
 
 const BITPAY_PROVIDER = "bitpay" as const;
+const ENABLE_BITPAY_CHECKOUT = process.env.ENABLE_BITPAY_CHECKOUT === "true";
 
 const toAgorot = (nisAmount: number): number =>
   Math.max(0, Math.round(nisAmount * 100));
@@ -35,13 +34,6 @@ type CheckoutContext = {
   };
 };
 
-type StudioPaymentIntegration = {
-  provider: "rapyd" | "bitpay";
-  mode: "sandbox" | "production";
-  apiToken?: string;
-  sealedApiToken?: string;
-};
-
 type CreateCheckoutResult = {
   paymentId: Id<"payments">;
   provider: "bitpay";
@@ -64,6 +56,12 @@ export const createCheckoutForJob = action({
     ctx,
     { jobId, returnUrl, idempotencyKey },
   ): Promise<CreateCheckoutResult> => {
+    if (!ENABLE_BITPAY_CHECKOUT) {
+      throw new Error(
+        "BitPay checkout is disabled. Use Rapyd checkout for platform-managed payments.",
+      );
+    }
+
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
@@ -84,18 +82,15 @@ export const createCheckoutForJob = action({
       throw new Error("Job is not payable yet");
     }
 
-    const paymentIntegration = (await ctx.runQuery(
-      internal.billing.getActiveStudioPaymentIntegration,
-      { studioId: user._id },
-    )) as StudioPaymentIntegration | null;
-    if (!paymentIntegration || paymentIntegration.provider !== BITPAY_PROVIDER) {
-      throw new Error("Active BitPay integration is required");
-    }
-
-    const token =
-      paymentIntegration.sealedApiToken != null
-        ? await openSealedSecret(paymentIntegration.sealedApiToken)
-        : paymentIntegration.apiToken?.trim() ?? "";
+    const bitpayMode = (process.env.BITPAY_MODE ?? "sandbox")
+      .trim()
+      .toLowerCase();
+    const isProduction = bitpayMode === "production";
+    const token = (
+      isProduction
+        ? (process.env.BITPAY_PROD_API_TOKEN ?? process.env.BITPAY_API_TOKEN)
+        : (process.env.BITPAY_SANDBOX_API_TOKEN ?? process.env.BITPAY_API_TOKEN)
+    )?.trim() ?? "";
     if (!token) throw new Error("BitPay API token is missing");
 
     const currency = (process.env.PAYMENTS_CURRENCY ?? "ILS")
@@ -111,7 +106,8 @@ export const createCheckoutForJob = action({
     const grossAmountAgorot = toAgorot(job.currentRate);
     const feeAmountAgorot = Math.floor((grossAmountAgorot * feeBps) / 10000);
     const netAmountAgorot = Math.max(0, grossAmountAgorot - feeAmountAgorot);
-    const effectiveIdempotencyKey = idempotencyKey?.trim() || randomUUID();
+    const effectiveIdempotencyKey =
+      idempotencyKey?.trim() || `${BITPAY_PROVIDER}:${user._id}:${job._id}`;
 
     const pendingPayment = (await ctx.runMutation(
       internal.payments.createPendingPayment,
@@ -135,11 +131,14 @@ export const createCheckoutForJob = action({
     if (!pendingPayment) throw new Error("Failed to create pending payment");
 
     const bitpayBaseUrl = (
-      paymentIntegration.mode === "production"
-        ? process.env.BITPAY_PROD_BASE_URL
-        : process.env.BITPAY_SANDBOX_BASE_URL ??
-          "https://test.bitpay.com/api"
-    )?.trim();
+      isProduction
+        ? (process.env.BITPAY_PROD_BASE_URL ??
+          process.env.BITPAY_BASE_URL ??
+          "https://bitpay.com/api")
+        : (process.env.BITPAY_SANDBOX_BASE_URL ??
+          process.env.BITPAY_BASE_URL ??
+          "https://test.bitpay.com/api")
+    ).trim();
     if (!bitpayBaseUrl) throw new Error("BitPay base URL is not configured");
 
     const body = {

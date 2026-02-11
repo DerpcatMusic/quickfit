@@ -2,7 +2,6 @@ import { internalAction, internalMutation, internalQuery } from "./_generated/se
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { openSealedSecret } from "./lib/secrets";
 
 const RAPYD_PROVIDER = "rapyd" as const;
 const TERMINAL_PAYOUT_STATUSES = new Set([
@@ -60,10 +59,11 @@ const buildRapydSignature = async ({
   );
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(toSign));
   const bytes = new Uint8Array(signature);
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return btoa(hex);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 };
 
 export const normalizeRapydPayoutStatus = (
@@ -293,15 +293,7 @@ export const getPayoutExecutionContext = internalQuery({
     const payout = await ctx.db.get(payoutId);
     if (!payout) return null;
 
-    const [payment, integration] = await Promise.all([
-      ctx.db.get(payout.paymentId),
-      ctx.db
-        .query("studioPaymentIntegrations")
-        .withIndex("by_studio_provider", (q) =>
-          q.eq("studioId", payout.studioId).eq("provider", payout.provider),
-        )
-        .unique(),
-    ]);
+    const payment = await ctx.db.get(payout.paymentId);
     if (!payment) return null;
 
     const defaultDestinations = await ctx.db
@@ -323,7 +315,6 @@ export const getPayoutExecutionContext = internalQuery({
       payout,
       payment,
       destination: destination ?? null,
-      integration: integration ?? null,
     };
   },
 });
@@ -357,7 +348,7 @@ export const executePayoutAttemptAction = internalAction({
     });
     if (!context) return;
 
-    const { payout, payment, destination, integration } = context;
+    const { payout, payment, destination } = context;
     if (payout.status !== "processing" || payout.attemptCount !== attempt) return;
 
     if (payment.status !== "captured") {
@@ -406,28 +397,9 @@ export const executePayoutAttemptAction = internalAction({
       return;
     }
 
-    if (!integration?.isActive) {
-      await ctx.runMutation(internal.payouts.recordPayoutAttemptResult, {
-        payoutId,
-        attempt,
-        mappedStatus: "queued",
-        retryable: true,
-        errorCode: "integration_inactive",
-        message: "Active studio payment integration is required for payouts",
-      });
-      return;
-    }
-
-    const accessKey =
-      integration.sealedApiToken != null
-        ? await openSealedSecret(integration.sealedApiToken)
-        : (integration.apiToken?.trim() ?? getOptionalEnv("RAPYD_ACCESS_KEY") ?? "");
-    const secretKey =
-      integration.sealedApiKey != null
-        ? await openSealedSecret(integration.sealedApiKey)
-        : (integration.apiKey?.trim() ?? getOptionalEnv("RAPYD_SECRET_KEY") ?? "");
-    const ewalletId =
-      integration.accountId?.trim() ?? getOptionalEnv("RAPYD_EWALLET") ?? "";
+    const accessKey = getOptionalEnv("RAPYD_ACCESS_KEY") ?? "";
+    const secretKey = getOptionalEnv("RAPYD_SECRET_KEY") ?? "";
+    const ewalletId = getOptionalEnv("RAPYD_EWALLET") ?? "";
     const payoutMethodType = destination.type.trim();
     const beneficiaryId = destination.externalRecipientId.trim();
 
@@ -443,8 +415,10 @@ export const executePayoutAttemptAction = internalAction({
       return;
     }
 
+    const rapydMode = (process.env.RAPYD_MODE ?? "sandbox").trim().toLowerCase();
+    const isProduction = rapydMode === "production";
     const rapydBaseUrl = (
-      integration.mode === "production"
+      isProduction
         ? (process.env.RAPYD_PROD_BASE_URL ??
           process.env.RAPYD_BASE_URL ??
           "https://api.rapyd.net")
@@ -476,7 +450,7 @@ export const executePayoutAttemptAction = internalAction({
         instructorId: payout.instructorId,
       },
     };
-    const senderId = integration.merchantId?.trim();
+    const senderId = getOptionalEnv("RAPYD_MERCHANT_ID");
     if (senderId) {
       bodyPayload.sender = senderId;
     }
@@ -651,6 +625,27 @@ export const recordPayoutAttemptResult = internalMutation({
       updatedAt: now,
     });
 
+    if (payout.status !== nextStatus) {
+      await ctx.runMutation(internal.events.emitDomainEvent, {
+        aggregateType: "payout",
+        aggregateId: args.payoutId,
+        eventType: "payout.status_changed",
+        source: "scheduler",
+        idempotencyKey: `payout-attempt:${args.payoutId}:${args.attempt}`,
+        payload: {
+          fromStatus: payout.status,
+          toStatus: nextStatus,
+          provider: payout.provider,
+          providerPayoutId: args.providerPayoutId ?? payout.providerPayoutId,
+          providerStatusRaw: args.providerStatusRaw,
+          retryable: args.retryable,
+          errorCode: args.errorCode,
+          message: args.message,
+        },
+        occurredAt: now,
+      });
+    }
+
     await ctx.db.insert("payoutEvents", {
       payoutId: args.payoutId,
       paymentId: payout.paymentId,
@@ -760,6 +755,7 @@ export const processRapydPayoutWebhookEvent = internalMutation({
     providerEventId: v.string(),
     eventType: v.optional(v.string()),
     providerPayoutId: v.optional(v.string()),
+    payoutId: v.optional(v.id("payouts")),
     statusRaw: v.optional(v.string()),
     signatureValid: v.boolean(),
     payloadHash: v.string(),
@@ -776,7 +772,7 @@ export const processRapydPayoutWebhookEvent = internalMutation({
       return { ignored: true, reason: "duplicate_event" as const };
     }
 
-    const payout = args.providerPayoutId
+    const payoutByProviderId = args.providerPayoutId
       ? await ctx.db
           .query("payouts")
           .withIndex("by_provider_payoutId", (q) =>
@@ -786,6 +782,9 @@ export const processRapydPayoutWebhookEvent = internalMutation({
           )
           .unique()
       : null;
+    const payout =
+      payoutByProviderId ??
+      (args.payoutId ? await ctx.db.get(args.payoutId) : null);
     if (!payout) {
       return {
         ignored: false,
