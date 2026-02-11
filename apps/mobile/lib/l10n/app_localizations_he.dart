@@ -570,6 +570,9 @@ class AppLocalizationsHe extends AppLocalizations {
   String get postJobNotesOptional => 'Notes (optional)';
 
   @override
+  String get postJobInstructorEligibility => 'Instructor Eligibility';
+
+  @override
   String get postJobTitleHint => 'e.g. Morning Vinyasa Flow';
 
   @override
@@ -605,6 +608,13 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get postJobPleaseEnterValidRate => 'Please enter a valid rate';
+
+  @override
+  String get postJobVerifiedOnlyLabel => 'Verified instructors only';
+
+  @override
+  String get postJobVerifiedOnlyHelp =>
+      'Enable to restrict this job to verified instructors.';
 
   @override
   String get postJobLessonTypeRequired =>

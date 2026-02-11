@@ -768,7 +768,7 @@ export const postJob = mutation({
       address: args.address,
       zoneId: zoneId ?? undefined,
       status: "open",
-      requiresVerification: args.requiresVerification ?? true,
+      requiresVerification: args.requiresVerification ?? false,
       notificationsSent: false,
       createdAt: now,
       updatedAt: now,
@@ -782,7 +782,7 @@ export const postJob = mutation({
       { latitude: args.latitude, longitude: args.longitude },
       args.category,
       "open",
-      args.requiresVerification ?? true,
+      args.requiresVerification ?? false,
       currentRate,
     );
 

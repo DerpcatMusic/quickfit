@@ -47,6 +47,7 @@ Status values:
 - Goal: close the loop from confirmed job to completed job and two-way feedback.
 - Exit criteria:
   - Studio can mark confirmed jobs as completed from app surfaces.
+  - Studio can control verified-only vs open-instructor eligibility when posting jobs.
   - Ratings can be submitted exactly once per side per completed job.
   - Rating UX is localized and available to both studio and instructor.
 

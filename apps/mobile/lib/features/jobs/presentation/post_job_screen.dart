@@ -35,6 +35,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final _lessonTypeController = TextEditingController();
   final _rateController = TextEditingController();
   final _notesController = TextEditingController();
+  bool _requiresVerification = false;
   bool _isSubmitting = false;
   bool _studioPricingLoaded = false;
   List<Map<String, dynamic>> _leadTimeSurgeRules = const [
@@ -216,6 +217,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             description: _notesController.text.trim().isEmpty
                 ? null
                 : _notesController.text.trim(),
+            requiresVerification: _requiresVerification,
           );
 
       // Do not block UX on refresh timeout; posting success is the mutation.
@@ -352,6 +354,10 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                   _FormSectionLabel(title: l10n.postJobNotesOptional),
                   const SizedBox(height: 10),
                   _buildNotesInput(),
+                  const SizedBox(height: 20),
+                  _FormSectionLabel(title: l10n.postJobInstructorEligibility),
+                  const SizedBox(height: 10),
+                  _buildVerificationEligibilityToggle(),
                   if (_isSosJob) ...[
                     const SizedBox(height: 20),
                     _buildSosWarning(),
@@ -640,6 +646,43 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           border: InputBorder.none,
           isCollapsed: true,
         ),
+      ),
+    );
+  }
+
+  Widget _buildVerificationEligibilityToggle() {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final colors = context.colors;
+    return _FieldCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.postJobVerifiedOnlyLabel,
+                  style: theme.textTheme.bodyLarge
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  l10n.postJobVerifiedOnlyHelp,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.mutedText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Switch.adaptive(
+            value: _requiresVerification,
+            onChanged: (value) => setState(() => _requiresVerification = value),
+          ),
+        ],
       ),
     );
   }

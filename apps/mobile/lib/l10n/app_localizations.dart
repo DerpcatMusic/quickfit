@@ -1118,6 +1118,12 @@ abstract class AppLocalizations {
   /// **'Notes (optional)'**
   String get postJobNotesOptional;
 
+  /// No description provided for @postJobInstructorEligibility.
+  ///
+  /// In en, this message translates to:
+  /// **'Instructor Eligibility'**
+  String get postJobInstructorEligibility;
+
   /// No description provided for @postJobTitleHint.
   ///
   /// In en, this message translates to:
@@ -1183,6 +1189,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Please enter a valid rate'**
   String get postJobPleaseEnterValidRate;
+
+  /// No description provided for @postJobVerifiedOnlyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified instructors only'**
+  String get postJobVerifiedOnlyLabel;
+
+  /// No description provided for @postJobVerifiedOnlyHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable to restrict this job to verified instructors.'**
+  String get postJobVerifiedOnlyHelp;
 
   /// No description provided for @postJobLessonTypeRequired.
   ///
