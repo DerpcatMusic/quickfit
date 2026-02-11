@@ -34,6 +34,7 @@ Status values:
   - Studio and instructor "my jobs" clients can consume a role-aware shared query endpoint.
   - Studio jobs bootstrap should not downgrade to legacy query path on transient timeout.
   - Profile billing bootstrap does not retry timeouting queries on every rebuild.
+  - Profile settings can apply provider account photo (Google/Apple) into backend avatar URL.
   - Foreground offline sync binds Convex auth before replay.
   - Sign-out clears/quarantines pending mutations by user scope.
 

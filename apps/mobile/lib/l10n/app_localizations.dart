@@ -626,6 +626,30 @@ abstract class AppLocalizations {
   /// **'Anonymous User'**
   String get profileAnonymousUser;
 
+  /// No description provided for @profileUseAccountPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Use account photo'**
+  String get profileUseAccountPhoto;
+
+  /// No description provided for @profileUseAccountPhotoUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No account photo available to use.'**
+  String get profileUseAccountPhotoUnavailable;
+
+  /// No description provided for @profileUseAccountPhotoApplied.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile photo updated from account.'**
+  String get profileUseAccountPhotoApplied;
+
+  /// No description provided for @profileUseAccountPhotoFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to update profile photo.'**
+  String get profileUseAccountPhotoFailed;
+
   /// No description provided for @profileProviderGoogle.
   ///
   /// In en, this message translates to:

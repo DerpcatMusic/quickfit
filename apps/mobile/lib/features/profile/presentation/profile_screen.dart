@@ -630,6 +630,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         : _l10n.profileRoleInstructor;
     final resolvedName =
         (authState.name ?? authState.user?.displayName ?? '').trim();
+    final providerPhotoUrl = (authState.user?.photoURL ?? '').trim();
+    final avatarUrl = (authState.avatarUrl ?? providerPhotoUrl).trim();
 
     return SafeArea(
       bottom: false,
@@ -682,10 +684,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   CircleAvatar(
                     radius: 38,
                     backgroundColor: theme.colorScheme.primaryContainer,
-                    backgroundImage: authState.user?.photoURL != null
-                        ? NetworkImage(authState.user!.photoURL!)
+                    backgroundImage: avatarUrl.isNotEmpty
+                        ? NetworkImage(avatarUrl)
                         : null,
-                    child: authState.user?.photoURL == null
+                    child: avatarUrl.isEmpty
                         ? Icon(
                             LucideIcons.user,
                             size: 36,
@@ -748,9 +750,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ],
               ),
+              if (providerPhotoUrl.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _applyAccountPhoto(providerPhotoUrl),
+                    icon: const Icon(LucideIcons.imagePlus, size: 16),
+                    label: Text(_l10n.profileUseAccountPhoto),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _applyAccountPhoto(String providerPhotoUrl) async {
+    final photo = providerPhotoUrl.trim();
+    if (photo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_l10n.profileUseAccountPhotoUnavailable)),
+      );
+      return;
+    }
+
+    final success = await ref.read(authProvider.notifier).updateProfile(
+          avatarUrl: photo,
+        );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success
+            ? _l10n.profileUseAccountPhotoApplied
+            : _l10n.profileUseAccountPhotoFailed),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }

@@ -141,6 +141,7 @@ class ConvexService {
   /// Updates user profile.
   Future<void> updateProfile({
     String? name,
+    String? avatarUrl,
     String? phone,
     String? address,
     double? latitude,
@@ -151,6 +152,7 @@ class ConvexService {
     try {
       final args = <String, dynamic>{};
       if (name != null) args['name'] = name;
+      if (avatarUrl != null) args['avatarUrl'] = avatarUrl;
       if (phone != null) args['phone'] = phone;
       if (address != null) args['homeAddress'] = address;
       if (latitude != null) args['latitude'] = latitude;

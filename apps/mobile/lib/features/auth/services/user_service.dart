@@ -94,6 +94,7 @@ class UserService {
   /// Updates the user's profile information.
   Future<void> updateProfile({
     String? name,
+    String? avatarUrl,
     String? phone,
     String? address,
     double? latitude,
@@ -105,6 +106,7 @@ class UserService {
       name: 'users:updateProfile',
       args: {
         if (name != null) 'name': name,
+        if (avatarUrl != null) 'avatarUrl': avatarUrl,
         if (phone != null) 'phone': phone,
         if (address != null) 'homeAddress': address,
         if (latitude != null) 'latitude': latitude,

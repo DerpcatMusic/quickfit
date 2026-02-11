@@ -275,6 +275,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileAnonymousUser => 'Anonymous User';
 
   @override
+  String get profileUseAccountPhoto => 'Use account photo';
+
+  @override
+  String get profileUseAccountPhotoUnavailable =>
+      'No account photo available to use.';
+
+  @override
+  String get profileUseAccountPhotoApplied =>
+      'Profile photo updated from account.';
+
+  @override
+  String get profileUseAccountPhotoFailed => 'Failed to update profile photo.';
+
+  @override
   String get profileProviderGoogle => 'Google';
 
   @override

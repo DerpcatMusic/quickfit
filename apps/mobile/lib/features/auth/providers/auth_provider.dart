@@ -97,6 +97,7 @@ class AuthNotifier extends _$AuthNotifier {
           role: userData['role']?.toString(),
           hasCompletedOnboarding: userData['hasCompletedOnboarding'] ?? false,
           name: userData['name']?.toString(),
+          avatarUrl: userData['avatarUrl']?.toString(),
           phone: userData['phone']?.toString(),
           homeAddress: normalizedAddress,
           latitude: (userData['latitude'] as num?)?.toDouble(),
@@ -264,6 +265,7 @@ class AuthNotifier extends _$AuthNotifier {
 
   Future<bool> updateProfile({
     String? name,
+    String? avatarUrl,
     String? phone,
     String? address,
     double? latitude,
@@ -274,6 +276,7 @@ class AuthNotifier extends _$AuthNotifier {
     try {
       await _userService.updateProfile(
         name: name,
+        avatarUrl: avatarUrl,
         phone: phone,
         address: address,
         latitude: latitude,

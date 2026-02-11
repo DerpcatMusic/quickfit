@@ -275,6 +275,19 @@ class AppLocalizationsHe extends AppLocalizations {
   String get profileAnonymousUser => 'משתמש אנונימי';
 
   @override
+  String get profileUseAccountPhoto => 'השתמש בתמונת החשבון';
+
+  @override
+  String get profileUseAccountPhotoUnavailable =>
+      'אין תמונת חשבון זמינה לשימוש.';
+
+  @override
+  String get profileUseAccountPhotoApplied => 'תמונת הפרופיל עודכנה מהחשבון.';
+
+  @override
+  String get profileUseAccountPhotoFailed => 'עדכון תמונת הפרופיל נכשל.';
+
+  @override
   String get profileProviderGoogle => 'Google';
 
   @override

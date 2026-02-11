@@ -23,6 +23,9 @@ class AuthState {
   /// Backend profile name (source of truth for editable profile name).
   final String? name;
 
+  /// Backend avatar URL (editable profile photo source of truth).
+  final String? avatarUrl;
+
   /// User home address (optional).
   final String? homeAddress;
 
@@ -72,6 +75,7 @@ class AuthState {
     this.hasCompletedOnboarding = false,
     this.phone,
     this.name,
+    this.avatarUrl,
     this.homeAddress,
     this.latitude,
     this.longitude,
@@ -96,6 +100,7 @@ class AuthState {
     bool? hasCompletedOnboarding,
     String? phone,
     String? name,
+    String? avatarUrl,
     String? homeAddress,
     double? latitude,
     double? longitude,
@@ -119,6 +124,7 @@ class AuthState {
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       phone: phone ?? this.phone,
       name: name ?? this.name,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       homeAddress: homeAddress ?? this.homeAddress,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
