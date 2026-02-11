@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../core/constants/categories.dart';
 import '../../../core/router/app_routes.dart';
+import '../../../core/services/convex_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/platform.dart';
 import '../../../l10n/app_localizations.dart';
@@ -33,6 +36,11 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final _rateController = TextEditingController();
   final _notesController = TextEditingController();
   bool _isSubmitting = false;
+  bool _studioPricingLoaded = false;
+  List<Map<String, dynamic>> _leadTimeSurgeRules = const [
+    {'maxHoursBeforeStart': 6.0, 'boostPercent': 10.0},
+    {'maxHoursBeforeStart': 3.0, 'boostPercent': 15.0},
+  ];
 
   static TimeOfDay _defaultEndTime() {
     final now = TimeOfDay.now();
@@ -68,16 +76,60 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   bool get _isSosJob {
     final startDateTime = _combineDateAndTime(_selectedDate, _startTime);
-    final hoursUntilStart = startDateTime.difference(DateTime.now()).inHours;
+    final hoursUntilStart =
+        startDateTime.difference(DateTime.now()).inMinutes / 60.0;
     return hoursUntilStart < 3 && hoursUntilStart >= 0;
   }
 
   int get _displayRate {
     final baseRate = int.tryParse(_rateController.text) ?? 0;
-    if (_isSosJob) {
-      return (baseRate * 1.15).round();
+    if (baseRate <= 0) return 0;
+    final boostPercent = _leadTimeBoostPercent();
+    return (baseRate * (1 + (boostPercent / 100))).round();
+  }
+
+  double _leadTimeBoostPercent() {
+    final startDateTime = _combineDateAndTime(_selectedDate, _startTime);
+    final hoursUntilStart =
+        startDateTime.difference(DateTime.now()).inMinutes / 60.0;
+    if (hoursUntilStart <= 0) return 0;
+    final normalized = [..._leadTimeSurgeRules]
+      ..sort(
+        (a, b) => ((a['maxHoursBeforeStart'] as num?) ?? 0)
+            .compareTo((b['maxHoursBeforeStart'] as num?) ?? 0),
+      );
+    for (final rule in normalized) {
+      final maxHours = ((rule['maxHoursBeforeStart'] as num?) ?? 0).toDouble();
+      final boost = ((rule['boostPercent'] as num?) ?? 0).toDouble();
+      if (hoursUntilStart <= maxHours) return boost;
     }
-    return baseRate;
+    return 0;
+  }
+
+  Future<void> _loadStudioPricingIfNeeded() async {
+    if (_studioPricingLoaded) return;
+    _studioPricingLoaded = true;
+    try {
+      final settings = await ConvexService.instance.getMyStudioPricingSettings();
+      if (!mounted || settings == null) return;
+
+      final defaultRate = (settings['defaultBaseRate'] as num?)?.toDouble();
+      final rulesRaw = settings['leadTimeSurgeRules'] as List?;
+      final rules = (rulesRaw ?? const [])
+          .whereType<Map>()
+          .map((entry) => Map<String, dynamic>.from(entry))
+          .toList(growable: false);
+
+      setState(() {
+        if (defaultRate != null &&
+            (double.tryParse(_rateController.text) ?? 0) <= 0) {
+          _rateController.text = defaultRate.toStringAsFixed(0);
+        }
+        if (rules.isNotEmpty) _leadTimeSurgeRules = rules;
+      });
+    } catch (_) {
+      // Keep post-job UX resilient if pricing settings are unavailable.
+    }
   }
 
   Future<void> _submit() async {
@@ -166,7 +218,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 : _notesController.text.trim(),
           );
 
-      await ref.read(studioJobsProvider.notifier).refresh();
+      // Do not block UX on refresh timeout; posting success is the mutation.
+      unawaited(ref.read(studioJobsProvider.notifier).refresh());
       if (!mounted) return;
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -201,6 +254,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final auth = ref.watch(authProvider);
+    if (auth.isAuthenticated && auth.role == 'studio' && !_studioPricingLoaded) {
+      _loadStudioPricingIfNeeded();
+    }
 
     if (!auth.isAuthenticated || auth.role != 'studio') {
       return Scaffold(
@@ -552,7 +608,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
               onChanged: (_) => setState(() {}),
             ),
           ),
-          if (_isSosJob)
+          if (_leadTimeBoostPercent() > 0)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -561,7 +617,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 border: Border.all(color: colors.successBorder),
               ),
               child: Text(
-                l10n.postJobSosRateBonusLabel,
+                '+${_leadTimeBoostPercent().toStringAsFixed(0)}%',
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: colors.successText,
                   fontWeight: FontWeight.w700,

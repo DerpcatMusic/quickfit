@@ -31,7 +31,7 @@ export const listMyInvoicingIntegrations = query({
       .query("studioBillingIntegrations")
       .withIndex("by_studio", (q) => q.eq("studioId", user._id))
       .order("desc")
-      .collect();
+      .take(10);
 
     return rows.map((row) => ({
       _id: row._id,
@@ -44,8 +44,8 @@ export const listMyInvoicingIntegrations = query({
       defaultVatRate: row.defaultVatRate,
       lastSyncError: row.lastSyncError,
       lastVerifiedAt: row.lastVerifiedAt,
-      hasApiToken: Boolean(row.sealedApiToken ?? row.apiToken),
-      hasApiKey: Boolean(row.sealedApiKey ?? row.apiKey),
+      hasApiToken: Boolean(row.sealedApiToken),
+      hasApiKey: Boolean(row.sealedApiKey),
       maskedApiToken: undefined,
       maskedApiKey: undefined,
       createdAt: row.createdAt,
@@ -84,16 +84,14 @@ export const upsertMyInvoicingIntegration = mutation({
     if (
       args.provider === "morning" &&
       !args.apiToken?.trim() &&
-      !existing?.sealedApiToken &&
-      !existing?.apiToken
+      !existing?.sealedApiToken
     ) {
       throw new Error("Morning integration requires API token");
     }
     if (
       args.provider === "icount" &&
       !args.apiKey?.trim() &&
-      !existing?.sealedApiKey &&
-      !existing?.apiKey
+      !existing?.sealedApiKey
     ) {
       throw new Error("iCount integration requires API key");
     }
@@ -108,8 +106,10 @@ export const upsertMyInvoicingIntegration = mutation({
     if (args.isActive === true) {
       const activeRows = await ctx.db
         .query("studioBillingIntegrations")
-        .withIndex("by_studio", (q) => q.eq("studioId", user._id))
-        .collect();
+        .withIndex("by_studio_active", (q) =>
+          q.eq("studioId", user._id).eq("isActive", true),
+        )
+        .take(10);
       for (const row of activeRows) {
         if (existing && row._id === existing._id) continue;
         if (row.isActive) {
@@ -173,8 +173,10 @@ export const setMyInvoicingIntegrationActive = mutation({
     if (args.isActive) {
       const allRows = await ctx.db
         .query("studioBillingIntegrations")
-        .withIndex("by_studio", (q) => q.eq("studioId", user._id))
-        .collect();
+        .withIndex("by_studio_active", (q) =>
+          q.eq("studioId", user._id).eq("isActive", true),
+        )
+        .take(10);
       for (const integration of allRows) {
         if (integration.isActive && integration._id !== row._id) {
           await ctx.db.patch(integration._id, {
@@ -223,31 +225,8 @@ export const getActiveStudioInvoicingIntegration = internalQuery({
 export const listMyPaymentIntegrations = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireStudioUser(ctx);
-    const rows = await ctx.db
-      .query("studioPaymentIntegrations")
-      .withIndex("by_studio", (q) => q.eq("studioId", user._id))
-      .order("desc")
-      .collect();
-    return rows.map((row) => ({
-      _id: row._id,
-      studioId: row.studioId,
-      provider: row.provider,
-      isActive: row.isActive,
-      displayName: row.displayName,
-      mode: row.mode,
-      accountId: row.accountId,
-      merchantId: row.merchantId,
-      lastSyncError: row.lastSyncError,
-      lastVerifiedAt: row.lastVerifiedAt,
-      hasApiToken: Boolean(row.sealedApiToken ?? row.apiToken),
-      hasApiKey: Boolean(row.sealedApiKey ?? row.apiKey),
-      hasWebhookSecret: Boolean(row.sealedWebhookSecret ?? row.webhookSecret),
-      maskedApiToken: undefined,
-      maskedApiKey: undefined,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }));
+    await requireStudioUser(ctx);
+    return [];
   },
 });
 
@@ -263,93 +242,11 @@ export const upsertMyPaymentIntegration = mutation({
     accountId: v.optional(v.string()),
     merchantId: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    const user = await requireStudioUser(ctx);
-    const now = Date.now();
-
-    const existing = await ctx.db
-      .query("studioPaymentIntegrations")
-      .withIndex("by_studio_provider", (q) =>
-        q.eq("studioId", user._id).eq("provider", args.provider),
-      )
-      .unique();
-
-    if (
-      !args.apiToken?.trim() &&
-      !existing?.sealedApiToken &&
-      !existing?.apiToken
-    ) {
-      throw new Error(`${args.provider} integration requires API token/key`);
-    }
-    if (
-      args.provider === "rapyd" &&
-      !args.apiKey?.trim() &&
-      !existing?.sealedApiKey &&
-      !existing?.apiKey
-    ) {
-      throw new Error("Rapyd integration requires secret key");
-    }
-
-    const sealedApiToken = args.apiToken?.trim()
-      ? await sealSecret(args.apiToken.trim())
-      : undefined;
-    const sealedApiKey = args.apiKey?.trim()
-      ? await sealSecret(args.apiKey.trim())
-      : undefined;
-    const sealedWebhookSecret = args.webhookSecret?.trim()
-      ? await sealSecret(args.webhookSecret.trim())
-      : undefined;
-
-    if (args.isActive === true) {
-      const activeRows = await ctx.db
-        .query("studioPaymentIntegrations")
-        .withIndex("by_studio", (q) => q.eq("studioId", user._id))
-        .collect();
-      for (const row of activeRows) {
-        if (existing && row._id === existing._id) continue;
-        if (row.isActive) {
-          await ctx.db.patch(row._id, { isActive: false, updatedAt: now });
-        }
-      }
-    }
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        isActive: args.isActive ?? existing.isActive,
-        displayName: args.displayName ?? existing.displayName,
-        mode: args.mode ?? existing.mode,
-        apiToken: null,
-        apiKey: null,
-        webhookSecret: null,
-        sealedApiToken: sealedApiToken ?? existing.sealedApiToken,
-        sealedApiKey: sealedApiKey ?? existing.sealedApiKey,
-        sealedWebhookSecret:
-          sealedWebhookSecret ?? existing.sealedWebhookSecret,
-        accountId: args.accountId?.trim() || existing.accountId,
-        merchantId: args.merchantId?.trim() || existing.merchantId,
-        lastSyncError: undefined,
-        updatedAt: now,
-      });
-      return existing._id;
-    }
-
-    return await ctx.db.insert("studioPaymentIntegrations", {
-      studioId: user._id,
-      provider: args.provider,
-      isActive: args.isActive ?? true,
-      displayName: args.displayName?.trim(),
-      mode: args.mode ?? "sandbox",
-      apiToken: null,
-      apiKey: null,
-      webhookSecret: null,
-      sealedApiToken,
-      sealedApiKey,
-      sealedWebhookSecret,
-      accountId: args.accountId?.trim(),
-      merchantId: args.merchantId?.trim(),
-      createdAt: now,
-      updatedAt: now,
-    });
+  handler: async (ctx, _args) => {
+    await requireStudioUser(ctx);
+    throw new Error(
+      "Studio payment integrations are deprecated. Payments are managed by QuickFit platform.",
+    );
   },
 });
 
@@ -358,63 +255,28 @@ export const setMyPaymentIntegrationActive = mutation({
     provider: v.union(v.literal("rapyd"), v.literal("bitpay")),
     isActive: v.boolean(),
   },
-  handler: async (ctx, args) => {
-    const user = await requireStudioUser(ctx);
-    const row = await ctx.db
-      .query("studioPaymentIntegrations")
-      .withIndex("by_studio_provider", (q) =>
-        q.eq("studioId", user._id).eq("provider", args.provider),
-      )
-      .unique();
-    if (!row) throw new Error("Integration not found");
-
-    const now = Date.now();
-    if (args.isActive) {
-      const allRows = await ctx.db
-        .query("studioPaymentIntegrations")
-        .withIndex("by_studio", (q) => q.eq("studioId", user._id))
-        .collect();
-      for (const integration of allRows) {
-        if (integration.isActive && integration._id !== row._id) {
-          await ctx.db.patch(integration._id, {
-            isActive: false,
-            updatedAt: now,
-          });
-        }
-      }
-    }
-    await ctx.db.patch(row._id, { isActive: args.isActive, updatedAt: now });
-    return { success: true };
+  handler: async (ctx, _args) => {
+    await requireStudioUser(ctx);
+    throw new Error(
+      "Studio payment integrations are deprecated. Payments are managed by QuickFit platform.",
+    );
   },
 });
 
 export const removeMyPaymentIntegration = mutation({
   args: { provider: v.union(v.literal("rapyd"), v.literal("bitpay")) },
-  handler: async (ctx, args) => {
-    const user = await requireStudioUser(ctx);
-    const row = await ctx.db
-      .query("studioPaymentIntegrations")
-      .withIndex("by_studio_provider", (q) =>
-        q.eq("studioId", user._id).eq("provider", args.provider),
-      )
-      .unique();
-    if (!row) return { success: true };
-    await ctx.db.delete(row._id);
-    return { success: true };
+  handler: async (ctx, _args) => {
+    await requireStudioUser(ctx);
+    throw new Error(
+      "Studio payment integrations are deprecated. Payments are managed by QuickFit platform.",
+    );
   },
 });
 
 export const getActiveStudioPaymentIntegration = internalQuery({
   args: { studioId: v.id("users") },
-  handler: async (ctx, { studioId }) => {
-    const rows = await ctx.db
-      .query("studioPaymentIntegrations")
-      .withIndex("by_studio_active", (q) =>
-        q.eq("studioId", studioId).eq("isActive", true),
-      )
-      .order("desc")
-      .take(1);
-    return rows[0] ?? null;
+  handler: async (_ctx, _args) => {
+    return null;
   },
 });
 
@@ -423,13 +285,8 @@ export const getStudioPaymentIntegrationByProvider = internalQuery({
     studioId: v.id("users"),
     provider: v.union(v.literal("rapyd"), v.literal("bitpay")),
   },
-  handler: async (ctx, { studioId, provider }) => {
-    return await ctx.db
-      .query("studioPaymentIntegrations")
-      .withIndex("by_studio_provider", (q) =>
-        q.eq("studioId", studioId).eq("provider", provider),
-      )
-      .unique();
+  handler: async (_ctx, _args) => {
+    return null;
   },
 });
 

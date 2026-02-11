@@ -11,6 +11,7 @@ import type { QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { computeLeadTimeBoostPercent } from "./pricing";
 import {
   haversineDistanceMeters,
   haversineDistanceKm,
@@ -586,8 +587,27 @@ async function getStudioJobsForStudio(
       .map((instructor) => [instructor._id, instructor]),
   );
 
-  // Hot-path performance: avoid per-job claim lookups.
-  // Claim accept/reject is still available from job detail screens.
+  // Keep claim actions functional with bounded lookups only for claimable rows.
+  const claimableJobs = jobs.filter(
+    (job) =>
+      (job.status === "claimed" || job.status === "backup_claimed") &&
+      Boolean(job.claimedBy ?? job.backupClaimedBy),
+  );
+  const claimEntries = await Promise.all(
+    claimableJobs.map(async (job) => {
+      const instructorId = job.claimedBy ?? job.backupClaimedBy;
+      if (!instructorId) return [job._id, undefined] as const;
+      const pending = await ctx.db
+        .query("claims")
+        .withIndex("by_job_status_instructor", (q) =>
+          q.eq("jobId", job._id).eq("status", "pending").eq("instructorId", instructorId),
+        )
+        .first();
+      return [job._id, pending?._id] as const;
+    }),
+  );
+  const claimIdByJobId = new Map(claimEntries);
+
   const jobsWithDetails = jobs.map((job) => {
     let claimedInstructor = null;
     const activeInstructorId = job.claimedBy ?? job.backupClaimedBy;
@@ -605,7 +625,7 @@ async function getStudioJobsForStudio(
       }
     }
 
-    return { ...job, claimedInstructor, claimId: undefined };
+    return { ...job, claimedInstructor, claimId: claimIdByJobId.get(job._id) };
   });
 
   return sortStudioJobsByPriority(jobsWithDetails);
@@ -650,7 +670,7 @@ export const postJob = mutation({
     category: v.string(),
     startTime: v.number(),
     endTime: v.number(),
-    baseRate: v.float64(),
+    baseRate: v.optional(v.float64()),
     address: v.string(),
     latitude: v.float64(),
     longitude: v.float64(),
@@ -672,10 +692,20 @@ export const postJob = mutation({
     const now = Date.now();
     const hoursUntilStart = (args.startTime - now) / (1000 * 60 * 60);
 
-    // SOS Detection: < 3 hours = 15% boost
+    const baseRate = args.baseRate ?? user.studioPricing?.defaultBaseRate;
+    if (!baseRate || baseRate <= 0) {
+      throw new Error("BASE_RATE_REQUIRED");
+    }
+
+    // SOS detection drives priority queue; pricing boost can be configured.
     const isSOS = hoursUntilStart < 3 && hoursUntilStart > 0;
-    const sosBoostPercentage = isSOS ? 15 : 0;
-    const currentRate = isSOS ? args.baseRate * 1.15 : args.baseRate;
+    const configuredBoost = computeLeadTimeBoostPercent(
+      hoursUntilStart,
+      user.studioPricing?.leadTimeSurgeRules,
+    );
+    const fallbackSosBoost = isSOS ? 15 : 0;
+    const sosBoostPercentage = configuredBoost || fallbackSosBoost;
+    const currentRate = baseRate * (1 + sosBoostPercentage / 100);
 
     const durationMinutes = Math.round(
       (args.endTime - args.startTime) / (1000 * 60),
@@ -693,10 +723,10 @@ export const postJob = mutation({
       startTime: args.startTime,
       endTime: args.endTime,
       durationMinutes,
-      baseRate: args.baseRate,
+      baseRate,
       currentRate,
-      sosBoostApplied: isSOS,
-      sosBoostPercentage: isSOS ? sosBoostPercentage : undefined,
+      sosBoostApplied: sosBoostPercentage > 0,
+      sosBoostPercentage: sosBoostPercentage > 0 ? sosBoostPercentage : undefined,
       latitude: args.latitude,
       longitude: args.longitude,
       address: args.address,

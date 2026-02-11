@@ -10,6 +10,7 @@ import {
 import { v } from "convex/values";
 import { syncInstructorLocation, removeInstructorLocation } from "./geo";
 import { internal } from "./_generated/api";
+import { normalizeLeadTimeSurgeRules } from "./pricing";
 
 const MIN_RADIUS_KM = 0.1;
 const MAX_RADIUS_KM = 15;
@@ -252,6 +253,77 @@ export const getUserProfile = query({
   },
 });
 
+export const getMyStudioPricingSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("AUTH_REQUIRED");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!user || user.role !== "studio") throw new Error("STUDIO_ONLY");
+
+    const settings = user.studioPricing;
+    return {
+      defaultBaseRate: settings?.defaultBaseRate ?? 120,
+      leadTimeSurgeRules:
+        settings?.leadTimeSurgeRules ?? [
+          { maxHoursBeforeStart: 6, boostPercent: 10 },
+          { maxHoursBeforeStart: 3, boostPercent: 15 },
+        ],
+    };
+  },
+});
+
+export const getStudioPublicProfile = query({
+  args: { studioId: v.id("users") },
+  handler: async (ctx, { studioId }) => {
+    const studio = await ctx.db.get(studioId);
+    if (!studio || studio.role !== "studio") return null;
+
+    const recentJobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_studio", (q) => q.eq("studioId", studioId))
+      .order("desc")
+      .take(40);
+
+    const openJobs = recentJobs.filter((job) => job.status === "open");
+    const activeJobs = recentJobs.filter((job) =>
+      ["open", "claimed", "backup_claimed", "confirmed"].includes(job.status),
+    );
+
+    return {
+      studio: {
+        _id: studio._id,
+        name: studio.businessName ?? studio.name,
+        avatarUrl: studio.avatarUrl,
+        isVerified: studio.isVerified,
+        rating: studio.rating,
+        ratingCount: studio.ratingCount,
+        categories: studio.categories ?? [],
+        address: studio.address ?? studio.homeAddress,
+      },
+      counts: {
+        openJobs: openJobs.length,
+        activeJobs: activeJobs.length,
+      },
+      jobs: openJobs.map((job) => ({
+        _id: job._id,
+        title: job.title,
+        category: job.category,
+        status: job.status,
+        startTime: job.startTime,
+        endTime: job.endTime,
+        currentRate: job.currentRate,
+        address: job.address,
+        sosBoostApplied: job.sosBoostApplied,
+      })),
+    };
+  },
+});
+
 // ==========================================
 // MUTATIONS
 // ==========================================
@@ -466,6 +538,48 @@ export const updateProfile = mutation({
         );
       }
     }
+  },
+});
+
+export const setMyStudioPricingSettings = mutation({
+  args: {
+    defaultBaseRate: v.float64(),
+    leadTimeSurgeRules: v.optional(
+      v.array(
+        v.object({
+          maxHoursBeforeStart: v.float64(),
+          boostPercent: v.float64(),
+        }),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("AUTH_REQUIRED");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!user || user.role !== "studio") throw new Error("STUDIO_ONLY");
+
+    const defaultBaseRate = Math.min(Math.max(args.defaultBaseRate, 1), 10000);
+    const leadTimeSurgeRules = normalizeLeadTimeSurgeRules(
+      args.leadTimeSurgeRules,
+    );
+
+    await ctx.db.patch(user._id, {
+      studioPricing: {
+        defaultBaseRate,
+        leadTimeSurgeRules,
+      },
+      updatedAt: Date.now(),
+    });
+
+    return {
+      defaultBaseRate,
+      leadTimeSurgeRules,
+    };
   },
 });
 

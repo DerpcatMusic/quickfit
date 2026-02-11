@@ -61,6 +61,7 @@ Legend:
 - Studio-facing auth/error/action copy localization coverage: `partial`
 - Studio post-job sticky bottom submit CTA: `live`
 - Studio jobs list query hot-path optimized to reduce timeout risk: `partial`
+- Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
 
 ## Architecture Modernization
 - Domain event outbox (`domainEvents`): `partial`
