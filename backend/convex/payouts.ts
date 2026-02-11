@@ -709,6 +709,52 @@ export const recordPayoutAttemptResult = internalMutation({
   },
 });
 
+export const flagPayoutNeedsAttentionForRefund = internalMutation({
+  args: {
+    paymentId: v.id("payments"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, { paymentId, reason }) => {
+    const payout = await ctx.db
+      .query("payouts")
+      .withIndex("by_payment", (q) => q.eq("paymentId", paymentId))
+      .order("desc")
+      .first();
+    if (!payout) return { updated: false, reason: "payout_not_found" as const };
+
+    const now = Date.now();
+    const terminal = TERMINAL_PAYOUT_STATUSES.has(payout.status);
+    const nextStatus: PayoutStatus =
+      payout.status === "failed" || payout.status === "cancelled"
+        ? payout.status
+        : "needs_attention";
+
+    await ctx.db.patch(payout._id, {
+      status: nextStatus,
+      terminalAt: terminal ? payout.terminalAt : now,
+      lastError:
+        reason ??
+        "Payment moved to refunded; payout requires manual reconciliation",
+      updatedAt: now,
+    });
+
+    await ctx.db.insert("payoutEvents", {
+      payoutId: payout._id,
+      paymentId: payout.paymentId,
+      provider: payout.provider,
+      eventType: "terminal_failure",
+      attempt: payout.attemptCount,
+      mappedStatus: nextStatus,
+      message:
+        reason ??
+        "Payment refund detected; payout flagged for manual reconciliation",
+      createdAt: now,
+    });
+
+    return { updated: true, payoutId: payout._id, status: nextStatus };
+  },
+});
+
 export const processRapydPayoutWebhookEvent = internalMutation({
   args: {
     providerEventId: v.string(),

@@ -104,7 +104,9 @@ const resolveNextPaymentState = (
     payment.status,
     nextStatus,
   );
-  return { nextStatus, transitionedToCaptured };
+  const transitionedToRefunded =
+    payment.status !== "refunded" && nextStatus === "refunded";
+  return { nextStatus, transitionedToCaptured, transitionedToRefunded };
 };
 
 export const toRapydPaymentStatus = (
@@ -336,7 +338,8 @@ export const reprocessUnmatchedEventsForPayment = internalMutation({
         args.provider === RAPYD_PROVIDER
           ? toRapydPaymentStatus(event.statusRaw)
           : toBitpayPaymentStatus(event.statusRaw);
-      const { nextStatus, transitionedToCaptured } = resolveNextPaymentState(
+      const { nextStatus, transitionedToCaptured, transitionedToRefunded } =
+        resolveNextPaymentState(
         current,
         mappedStatus,
       );
@@ -366,6 +369,16 @@ export const reprocessUnmatchedEventsForPayment = internalMutation({
           {
             paymentId: args.paymentId,
             reason: "captured_via_reprocessed_webhook",
+          },
+        );
+      }
+      if (transitionedToRefunded) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.payouts.flagPayoutNeedsAttentionForRefund,
+          {
+            paymentId: args.paymentId,
+            reason: "payment_refunded_via_reprocessed_webhook",
           },
         );
       }
@@ -502,7 +515,8 @@ export const processRapydWebhookEvent = internalMutation({
       };
     }
 
-    const { nextStatus, transitionedToCaptured } = resolveNextPaymentState(
+    const { nextStatus, transitionedToCaptured, transitionedToRefunded } =
+      resolveNextPaymentState(
       payment,
       mappedStatus,
     );
@@ -528,6 +542,16 @@ export const processRapydWebhookEvent = internalMutation({
         {
           paymentId: payment._id,
           reason: "captured_via_rapyd_webhook",
+        },
+      );
+    }
+    if (transitionedToRefunded) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payouts.flagPayoutNeedsAttentionForRefund,
+        {
+          paymentId: payment._id,
+          reason: "payment_refunded_via_rapyd_webhook",
         },
       );
     }
@@ -676,7 +700,8 @@ export const processBitpayWebhookEvent = internalMutation({
       };
     }
 
-    const { nextStatus, transitionedToCaptured } = resolveNextPaymentState(
+    const { nextStatus, transitionedToCaptured, transitionedToRefunded } =
+      resolveNextPaymentState(
       payment,
       mappedStatus,
     );
@@ -702,6 +727,16 @@ export const processBitpayWebhookEvent = internalMutation({
         {
           paymentId: payment._id,
           reason: "captured_via_bitpay_webhook",
+        },
+      );
+    }
+    if (transitionedToRefunded) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payouts.flagPayoutNeedsAttentionForRefund,
+        {
+          paymentId: payment._id,
+          reason: "payment_refunded_via_bitpay_webhook",
         },
       );
     }
