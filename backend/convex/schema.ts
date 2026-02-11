@@ -169,6 +169,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_studio", ["studioId"])
+    .index("by_studio_status", ["studioId", "status"])
     .index("by_status", ["status", "startTime"])
     .index("by_status_claimedAt", ["status", "claimedAt"])
     .index("by_category_status", ["category", "status"])
