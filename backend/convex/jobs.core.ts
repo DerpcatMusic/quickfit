@@ -724,12 +724,19 @@ async function getClaimsForInstructorForMyJobs(
   const claims = await ctx.db
     .query("claims")
     .withIndex("by_instructor", (q) => q.eq("instructorId", instructorId))
-    .collect();
+    .order("desc")
+    .take(MAX_MY_JOBS_CLAIMS);
 
   const claimsWithJobs = await Promise.all(
     claims.map(async (claim) => {
       const job = await ctx.db.get(claim.jobId);
       if (!job) return null;
+      if (args.windowStartMs !== undefined && job.startTime < args.windowStartMs) {
+        return null;
+      }
+      if (args.windowEndMs !== undefined && job.startTime > args.windowEndMs) {
+        return null;
+      }
       const studio = await ctx.db.get(job.studioId);
       return {
         ...claim,
@@ -745,26 +752,14 @@ async function getClaimsForInstructorForMyJobs(
   const filtered = claimsWithJobs.filter(
     (entry): entry is NonNullable<typeof entry> => Boolean(entry),
   );
-
-  const windowed = filtered.filter((entry) => {
-    const startTime = entry.job.startTime;
-    if (args.windowStartMs !== undefined && startTime < args.windowStartMs) {
-      return false;
-    }
-    if (args.windowEndMs !== undefined && startTime > args.windowEndMs) {
-      return false;
-    }
-    return true;
-  });
-
-  windowed.sort((a, b) => {
+  filtered.sort((a, b) => {
     const aStart = a.job.startTime ?? 0;
     const bStart = b.job.startTime ?? 0;
     if (aStart !== bStart) return aStart - bStart;
     return (b._creationTime ?? 0) - (a._creationTime ?? 0);
   });
 
-  return windowed;
+  return filtered;
 }
 
 async function getStudioJobsForStudioLegacy(
@@ -1000,7 +995,10 @@ const postJob = mutation({
     const now = Date.now();
     const hoursUntilStart = (args.startTime - now) / (1000 * 60 * 60);
 
-    const baseRate = args.baseRate ?? user.studioPricing?.defaultBaseRate;
+    const baseRate =
+      args.baseRate ??
+      user.studioPricing?.defaultBaseRate ??
+      DEFAULT_STUDIO_BASE_RATE;
     if (!baseRate || baseRate <= 0) {
       throw new Error("BASE_RATE_REQUIRED");
     }
@@ -1088,7 +1086,28 @@ const postJob = mutation({
         error,
       );
     }
-    await syncJobReadModels(ctx as any, jobId);
+    try {
+      await syncJobReadModels(ctx as any, jobId);
+    } catch (error) {
+      // Read-model sync is best-effort. Canonical studio reads use jobs table.
+      console.warn(
+        `[postJob] Read-model sync failed for job ${jobId}, continuing`,
+        error,
+      );
+    }
+
+    if (!zoneId) {
+      try {
+        await ctx.scheduler.runAfter(0, internal.zones.backfillJobZoneForPostedJob, {
+          jobId,
+        });
+      } catch (error) {
+        console.warn(
+          `[postJob] Failed to schedule zone backfill for job ${jobId}`,
+          error,
+        );
+      }
+    }
 
     // If SOS, add to priority queue
     if (isSOS) {
@@ -1103,24 +1122,35 @@ const postJob = mutation({
     }
 
     // Schedule notification dispatch with version guard
-    await scheduleJobDispatch(ctx, jobId);
+    try {
+      await scheduleJobDispatch(ctx, jobId);
+    } catch (error) {
+      console.warn(
+        `[postJob] Failed to schedule dispatch for job ${jobId}`,
+        error,
+      );
+    }
 
-    await ctx.runMutation(internal.events.emitDomainEvent, {
-      aggregateType: "job",
-      aggregateId: jobId,
-      eventType: "job.posted",
-      source: "mutation",
-      actorUserId: user._id,
-      payload: {
-        studioId: user._id,
-        category: args.category,
-        startTime: args.startTime,
-        endTime: args.endTime,
-        currentRate,
-        isSOS,
-      },
-      occurredAt: now,
-    });
+    try {
+      await ctx.runMutation(internal.events.emitDomainEvent, {
+        aggregateType: "job",
+        aggregateId: jobId,
+        eventType: "job.posted",
+        source: "mutation",
+        actorUserId: user._id,
+        payload: {
+          studioId: user._id,
+          category: args.category,
+          startTime: args.startTime,
+          endTime: args.endTime,
+          currentRate,
+          isSOS,
+        },
+        occurredAt: now,
+      });
+    } catch (error) {
+      console.warn(`[postJob] Failed to emit domain event for job ${jobId}`, error);
+    }
 
     return jobId;
   },
@@ -1135,6 +1165,8 @@ const CLAIM_RESPONSE_TIMEOUT_MS = 2 * 60 * 1000;
 const DISPATCH_MAX_RETRIES = 4;
 const DISPATCH_BASE_DELAY_MS = 2 * 1000;
 const DISPATCH_MAX_DELAY_MS = 60 * 1000;
+const DEFAULT_STUDIO_BASE_RATE = 120;
+const MAX_MY_JOBS_CLAIMS = 250;
 
 async function scheduleJobDispatch(
   ctx: { db: any; scheduler: any },

@@ -5,6 +5,7 @@
 import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
+import { syncJobReadModels } from "./jobReadModels";
 
 // ==========================================
 // ZONE QUERIES
@@ -177,6 +178,38 @@ export const detectZoneForLocation = internalQuery({
     }
     
     return null;
+  },
+});
+
+export const backfillJobZoneForPostedJob = internalMutation({
+  args: {
+    jobId: v.id("jobs"),
+  },
+  handler: async (ctx, { jobId }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return { updated: false, reason: "missing" };
+    if (job.zoneId) return { updated: false, reason: "already_set" };
+
+    const zones = await ctx.db.query("zones").collect();
+    const point = { lat: job.latitude, lng: job.longitude };
+
+    let detectedZoneId: Id<"zones"> | undefined;
+    for (const zone of zones) {
+      if (isPointInPolygon(point, zone.polygon)) {
+        detectedZoneId = zone._id;
+        break;
+      }
+    }
+
+    if (!detectedZoneId) return { updated: false, reason: "not_found" };
+
+    await ctx.db.patch(jobId, {
+      zoneId: detectedZoneId,
+      updatedAt: Date.now(),
+    });
+    await syncJobReadModels(ctx as any, jobId);
+
+    return { updated: true, zoneId: detectedZoneId };
   },
 });
 

@@ -128,6 +128,16 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
       _initialLoadWatchdog = null;
     });
 
+    // Auth resolved but role still syncing: keep prior snapshot and avoid
+    // flashing auth-required/empty states.
+    if (user != null && (role == null || role.isEmpty)) {
+      _lastState = _lastState.copyWith(
+        isLoading: true,
+        error: null,
+      );
+      return _lastState;
+    }
+
     // Only subscribe if user is a studio.
     if (user != null && role == 'studio') {
       final sessionKey = '${user.uid}|$role';
@@ -257,6 +267,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
   }
 
   Future<String> _bootstrapFromQuery(String sessionKey, String userUid) async {
+    Object? lastError;
     for (final queryName in [_myJobsQueryName, _studioJobsQueryName]) {
       try {
         final payload = await ConvexClient.instance.query(queryName, const {});
@@ -272,15 +283,38 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         ));
         return queryName;
       } catch (e) {
+        lastError = e;
         // Keep studio/instructor paths centralized on jobs:getMyJobs.
         // Only use legacy studio query when shared query is unavailable.
         if (queryName == _myJobsQueryName &&
             !e.toString().contains('Could not find function')) {
-          log.e(
-              'Studio jobs bootstrap query failed [$queryName] without fallback: $e');
+          log.e('Studio jobs bootstrap query failed [$queryName] without fallback: $e');
+          if (_subscriptionSessionKey == sessionKey) {
+            _setState(
+              _lastState.copyWith(
+                isLoading: false,
+                error: _lastState.jobs.isEmpty
+                    ? 'Unable to load studio jobs. Pull to refresh.'
+                    : null,
+              ),
+            );
+          }
           return _myJobsQueryName;
         }
         log.e('Studio jobs bootstrap query failed [$queryName]: $e');
+      }
+    }
+    if (_subscriptionSessionKey == sessionKey) {
+      _setState(
+        _lastState.copyWith(
+          isLoading: false,
+          error: _lastState.jobs.isEmpty
+              ? 'Unable to load studio jobs. Pull to refresh.'
+              : null,
+        ),
+      );
+      if (lastError != null) {
+        log.e('Studio jobs bootstrap exhausted both query paths: $lastError');
       }
     }
     return _activeQueryName;
@@ -493,6 +527,9 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
       if (jobId.isEmpty) {
         throw StateError('jobs:postJob returned empty job id');
       }
+      if (!_looksLikeConvexId(jobId)) {
+        throw StateError('jobs:postJob returned invalid job id: $jobId');
+      }
 
       _setState(_lastState.copyWith(error: null));
       return jobId;
@@ -539,5 +576,12 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     if (ref.mounted) {
       state = next;
     }
+  }
+
+  bool _looksLikeConvexId(String value) {
+    final normalized = value.trim();
+    if (normalized.length < 8) return false;
+    if (normalized == 'null' || normalized == 'undefined') return false;
+    return RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(normalized);
   }
 }

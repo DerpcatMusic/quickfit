@@ -26,6 +26,8 @@ class StudioJobsScreen extends ConsumerStatefulWidget {
 }
 
 class _StudioJobsScreenState extends ConsumerState<StudioJobsScreen> {
+  String? _lastSurfacedError;
+
   Future<void> _openStudioBillingSheet() async {
     await StudioBillingSheet.show(context);
   }
@@ -175,6 +177,22 @@ class _StudioJobsScreenState extends ConsumerState<StudioJobsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<StudioJobsState>(studioJobsProvider, (previous, next) {
+      final error = next.error?.trim();
+      if (error == null || error.isEmpty) return;
+      if (next.jobs.isEmpty) return;
+      if (error == previous?.error || error == _lastSurfacedError) return;
+      _lastSurfacedError = error;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    });
+
     final state = ref.watch(studioJobsProvider);
     final auth = ref.watch(authProvider);
     final l10n = AppLocalizations.of(context)!;
@@ -229,6 +247,7 @@ class _StudioJobsScreenState extends ConsumerState<StudioJobsScreen> {
               ),
         body: _StudioJobsBody(
           state: state,
+          isAuthLoading: auth.isLoading,
           canUseStudioJobs: canUseStudioJobs,
           onRefresh: _refreshJobs,
           onOpenBilling: _openStudioBillingSheet,
@@ -245,6 +264,7 @@ class _StudioJobsScreenState extends ConsumerState<StudioJobsScreen> {
 class _StudioJobsBody extends StatelessWidget {
   const _StudioJobsBody({
     required this.state,
+    required this.isAuthLoading,
     required this.canUseStudioJobs,
     required this.onRefresh,
     required this.onOpenBilling,
@@ -255,6 +275,7 @@ class _StudioJobsBody extends StatelessWidget {
   });
 
   final StudioJobsState state;
+  final bool isAuthLoading;
   final bool canUseStudioJobs;
   final Future<void> Function() onRefresh;
   final VoidCallback onOpenBilling;
@@ -269,6 +290,10 @@ class _StudioJobsBody extends StatelessWidget {
     final theme = Theme.of(context);
     final activeJobs = state.activeJobs;
     final historyJobs = state.completedJobs;
+
+    if (isAuthLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     if (!canUseStudioJobs) {
       return _StatePanel(

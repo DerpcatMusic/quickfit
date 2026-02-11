@@ -1,4 +1,4 @@
-﻿# Features Status
+# Features Status
 
 This document is the single source of truth for what exists now vs what we still need.
 
@@ -69,11 +69,12 @@ Legend:
 - Studio jobs list read now uses canonical `jobs` index fallback even when projections are missing: `live`
 - Projection-backed studio jobs and instructor availability feed (with lifecycle sync + fallback): `partial`
 - Role-aware `jobs:getMyJobs` endpoint shared by studio/instructor "my jobs" flows: `partial`
+- Instructor `jobs:getMyJobs` claim hydration bounded + window-gated to avoid query timeouts: `partial`
 - Studio `My Jobs` loading watchdog + bootstrap fallback (prevents infinite spinner): `live`
 - Studio jobs bootstrap now falls back to legacy query only when `jobs:getMyJobs` is missing (not on transient timeout): `live`
 - Studio post-job mutation timeout guard with explicit failure surface: `live`
 - Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
-- Studio post-job no longer hard-fails when zone detection is unavailable/slow (posts without `zoneId` and continues dispatch): `live`
+- Studio post-job zoneId backfill after detection timeout (restores zone dispatch/map after best-effort post): `partial`
 - Instructor map studio markers show studio + posted-time context for open jobs: `live`
 - Instructor map radius mode falls back to canonical `jobs:getJobsForMap` if geo feed fails: `live`
 - Studio post-job verification requirement is explicitly configurable (defaults open): `live`

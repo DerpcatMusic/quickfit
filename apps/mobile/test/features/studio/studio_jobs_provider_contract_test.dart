@@ -30,6 +30,22 @@ void main() {
         ),
       );
     });
+
+    test('bootstrap failures terminate loading deterministically', () {
+      final source = File('lib/features/jobs/providers/studio_jobs_provider.dart')
+          .readAsStringSync();
+
+      expect(source, contains('Unable to load studio jobs. Pull to refresh.'));
+      expect(source, contains('isLoading: false,'));
+    });
+
+    test('post-job requires a valid convex id shape', () {
+      final source = File('lib/features/jobs/providers/studio_jobs_provider.dart')
+          .readAsStringSync();
+
+      expect(source, contains('_looksLikeConvexId(jobId)'));
+      expect(source, contains("RegExp(r'^[A-Za-z0-9_-]+\$')"));
+    });
   });
 
   group('Studio post-job pricing contract', () {
@@ -40,6 +56,17 @@ void main() {
       expect(source, contains('bool _hasUserEditedRate = false;'));
       expect(source, contains('if (!_hasUserEditedRate && defaultRate != null)'));
       expect(source, contains('_hasUserEditedRate = true;'));
+    });
+  });
+
+  group('Studio jobs screen contract', () {
+    test('auth loading state is guarded before auth-required panel', () {
+      final source = File(
+        'lib/features/studio/presentation/screens/studio_jobs_screen.dart',
+      ).readAsStringSync();
+
+      expect(source, contains('required this.isAuthLoading,'));
+      expect(source, contains('if (isAuthLoading) {'));
     });
   });
 }

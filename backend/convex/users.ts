@@ -119,9 +119,16 @@ export const completeOnboarding = mutation({
     );
 
     // Default dispatch mode based on what data is provided
-    const dispatchMode =
+    let dispatchMode =
       args.dispatchMode ??
       (args.zoneIds && args.zoneIds.length > 0 ? "zone" : "radius");
+    if (
+      args.role === "instructor" &&
+      dispatchMode === "zone" &&
+      (!args.zoneIds || args.zoneIds.length === 0)
+    ) {
+      dispatchMode = "radius";
+    }
 
     await ctx.db.patch(user._id, {
       role: args.role,

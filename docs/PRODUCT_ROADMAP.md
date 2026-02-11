@@ -28,11 +28,13 @@ Status values:
   - Studio-only radius controls are not exposed in studio profile flows.
   - Studio auth-required surfaces are localized (no hardcoded fallback strings).
   - Studio jobs list query avoids timeout-prone N+1 claim lookups on hot path.
+  - Instructor `jobs:getMyJobs` claim hydration is bounded on indexed reads to prevent timeout under long history.
   - Studio post action reports success even if follow-up list refresh times out.
   - Studio `My Jobs` screen cannot remain in indefinite loading state (watchdog + query bootstrap).
   - Studio `My Jobs` provider must tolerate dynamic subscription payloads and still terminate loading/error state deterministically.
   - Studio and instructor "my jobs" clients can consume a role-aware shared query endpoint.
   - Studio jobs bootstrap should not downgrade to legacy query path on transient timeout.
+  - Post-job recovers zone assignment asynchronously when inline zone detection times out.
   - Profile billing bootstrap does not retry timeouting queries on every rebuild.
   - Profile settings can apply provider account photo (Google/Apple) into backend avatar URL.
   - Foreground offline sync binds Convex auth before replay.
