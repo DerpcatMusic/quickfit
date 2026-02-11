@@ -22,24 +22,24 @@ class StudioBillingSheet {
 
   static String summaryFromIntegrations(
     List<Map<String, dynamic>> rows, {
-    BuildContext? context,
+    required BuildContext context,
   }) {
-    final l10n = context == null ? null : AppLocalizations.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final active = rows.cast<Map<String, dynamic>?>().firstWhere(
           (row) => row?['isActive'] == true,
           orElse: () => null,
         );
     if (active == null) {
-      return l10n?.studioBillingSummaryNotConnected ?? 'Not connected';
+      return l10n.studioBillingSummaryNotConnected;
     }
     final provider = (active['provider']?.toString() ?? '').toLowerCase();
     if (provider == 'morning') {
-      return l10n?.studioBillingSummaryMorningActive ?? 'Morning active';
+      return l10n.studioBillingSummaryMorningActive;
     }
     if (provider == 'icount') {
-      return l10n?.studioBillingSummaryIcountActive ?? 'iCount active';
+      return l10n.studioBillingSummaryIcountActive;
     }
-    return l10n?.studioBillingSummaryConnected ?? 'Connected';
+    return l10n.studioBillingSummaryConnected;
   }
 
   static Future<void> show(

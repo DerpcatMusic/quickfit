@@ -106,13 +106,13 @@ class StudioJobsState {
 @riverpod
 class StudioJobsNotifier extends _$StudioJobsNotifier {
   static const String _cacheKeyPrefix = 'studio_jobs';
-  static const String _studioJobsQueryName = 'jobs:getStudioJobs';
   static const String _myJobsQueryName = 'jobs:getMyJobs';
+  static const String _studioJobsQueryName = 'jobs:getStudioJobs';
   static const Duration _initialLoadTimeout = Duration(seconds: 10);
 
   SubscriptionHandle? _subscription;
   String? _subscriptionSessionKey;
-  String _activeQueryName = _studioJobsQueryName;
+  String _activeQueryName = _myJobsQueryName;
   Timer? _initialLoadWatchdog;
   StudioJobsState _lastState = const StudioJobsState();
 
@@ -135,7 +135,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         _subscription?.cancel();
         _subscription = null;
         _subscriptionSessionKey = sessionKey;
-        _activeQueryName = _studioJobsQueryName;
+        _activeQueryName = _myJobsQueryName;
 
         final cached = _loadFromCache(user.uid);
         _lastState = cached.copyWith(
@@ -217,10 +217,10 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         },
         onError: (message, value) {
           if (_subscriptionSessionKey != sessionKey) return;
-          if (queryName == _studioJobsQueryName &&
+          if (queryName == _myJobsQueryName &&
               message.contains('Could not find function')) {
             unawaited(_subscribeWithQueryName(
-              _myJobsQueryName,
+              _studioJobsQueryName,
               sessionKey,
               userUid,
             ));
@@ -236,10 +236,10 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
       );
     } catch (e) {
       if (_subscriptionSessionKey != sessionKey) return;
-      if (queryName == _studioJobsQueryName &&
+      if (queryName == _myJobsQueryName &&
           e.toString().contains('Could not find function')) {
         await _subscribeWithQueryName(
-          _myJobsQueryName,
+          _studioJobsQueryName,
           sessionKey,
           userUid,
         );
@@ -257,7 +257,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
   }
 
   Future<String> _bootstrapFromQuery(String sessionKey, String userUid) async {
-    for (final queryName in [_studioJobsQueryName, _myJobsQueryName]) {
+    for (final queryName in [_myJobsQueryName, _studioJobsQueryName]) {
       try {
         final payload = await ConvexClient.instance.query(queryName, const {});
         if (_subscriptionSessionKey != sessionKey) return queryName;
@@ -272,6 +272,14 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         ));
         return queryName;
       } catch (e) {
+        // Keep studio/instructor paths centralized on jobs:getMyJobs.
+        // Only use legacy studio query when shared query is unavailable.
+        if (queryName == _myJobsQueryName &&
+            !e.toString().contains('Could not find function')) {
+          log.e(
+              'Studio jobs bootstrap query failed [$queryName] without fallback: $e');
+          return _myJobsQueryName;
+        }
         log.e('Studio jobs bootstrap query failed [$queryName]: $e');
       }
     }

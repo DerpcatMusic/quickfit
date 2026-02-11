@@ -1214,6 +1214,78 @@ abstract class AppLocalizations {
   /// **'Type lesson freely (e.g. reformer flow, vinyasa, hiit core)'**
   String get postJobLessonTypeHint;
 
+  /// No description provided for @postJobCategoryYoga.
+  ///
+  /// In en, this message translates to:
+  /// **'Yoga'**
+  String get postJobCategoryYoga;
+
+  /// No description provided for @postJobCategoryPilates.
+  ///
+  /// In en, this message translates to:
+  /// **'Pilates'**
+  String get postJobCategoryPilates;
+
+  /// No description provided for @postJobCategoryReformerPilates.
+  ///
+  /// In en, this message translates to:
+  /// **'Reformer Pilates'**
+  String get postJobCategoryReformerPilates;
+
+  /// No description provided for @postJobCategoryMatPilates.
+  ///
+  /// In en, this message translates to:
+  /// **'Mat Pilates'**
+  String get postJobCategoryMatPilates;
+
+  /// No description provided for @postJobCategoryFunctionalTraining.
+  ///
+  /// In en, this message translates to:
+  /// **'Functional Training'**
+  String get postJobCategoryFunctionalTraining;
+
+  /// No description provided for @postJobCategoryHiit.
+  ///
+  /// In en, this message translates to:
+  /// **'HIIT'**
+  String get postJobCategoryHiit;
+
+  /// No description provided for @postJobCategoryStrength.
+  ///
+  /// In en, this message translates to:
+  /// **'Strength'**
+  String get postJobCategoryStrength;
+
+  /// No description provided for @postJobCategoryMobility.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobility'**
+  String get postJobCategoryMobility;
+
+  /// No description provided for @postJobCategoryBarre.
+  ///
+  /// In en, this message translates to:
+  /// **'Barre'**
+  String get postJobCategoryBarre;
+
+  /// No description provided for @postJobCategorySpinning.
+  ///
+  /// In en, this message translates to:
+  /// **'Spinning'**
+  String get postJobCategorySpinning;
+
+  /// No description provided for @postJobCategoryDance.
+  ///
+  /// In en, this message translates to:
+  /// **'Dance'**
+  String get postJobCategoryDance;
+
+  /// No description provided for @postJobCategoryPersonalTraining.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal Training'**
+  String get postJobCategoryPersonalTraining;
+
   /// No description provided for @postJobRateCurrency.
   ///
   /// In en, this message translates to:

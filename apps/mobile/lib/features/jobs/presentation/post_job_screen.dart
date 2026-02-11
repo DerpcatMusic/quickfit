@@ -403,6 +403,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   Widget _buildCategorySelector() {
     final theme = Theme.of(context);
     final colors = context.colors;
+    final l10n = AppLocalizations.of(context)!;
 
     return Wrap(
       spacing: 8,
@@ -436,7 +437,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    category.nameEn,
+                    _localizedCategoryLabel(l10n, category),
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: isSelected ? category.color : null,
                       fontWeight:
@@ -450,6 +451,38 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         );
       }).toList(),
     );
+  }
+
+  String _localizedCategoryLabel(
+    AppLocalizations l10n,
+    FitnessCategory category,
+  ) {
+    switch (category) {
+      case FitnessCategory.yoga:
+        return l10n.postJobCategoryYoga;
+      case FitnessCategory.pilates:
+        return l10n.postJobCategoryPilates;
+      case FitnessCategory.reformerPilates:
+        return l10n.postJobCategoryReformerPilates;
+      case FitnessCategory.matPilates:
+        return l10n.postJobCategoryMatPilates;
+      case FitnessCategory.functional:
+        return l10n.postJobCategoryFunctionalTraining;
+      case FitnessCategory.hiit:
+        return l10n.postJobCategoryHiit;
+      case FitnessCategory.strength:
+        return l10n.postJobCategoryStrength;
+      case FitnessCategory.mobility:
+        return l10n.postJobCategoryMobility;
+      case FitnessCategory.barre:
+        return l10n.postJobCategoryBarre;
+      case FitnessCategory.spinning:
+        return l10n.postJobCategorySpinning;
+      case FitnessCategory.dance:
+        return l10n.postJobCategoryDance;
+      case FitnessCategory.personalTraining:
+        return l10n.postJobCategoryPersonalTraining;
+    }
   }
 
   Widget _buildLessonTypeInput() {

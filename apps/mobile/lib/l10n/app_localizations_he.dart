@@ -625,6 +625,42 @@ class AppLocalizationsHe extends AppLocalizations {
       'Type lesson freely (e.g. reformer flow, vinyasa, hiit core)';
 
   @override
+  String get postJobCategoryYoga => 'יוגה';
+
+  @override
+  String get postJobCategoryPilates => 'פילאטיס';
+
+  @override
+  String get postJobCategoryReformerPilates => 'פילאטיס רפורמר';
+
+  @override
+  String get postJobCategoryMatPilates => 'פילאטיס מזרן';
+
+  @override
+  String get postJobCategoryFunctionalTraining => 'אימון פונקציונלי';
+
+  @override
+  String get postJobCategoryHiit => 'HIIT';
+
+  @override
+  String get postJobCategoryStrength => 'כוח';
+
+  @override
+  String get postJobCategoryMobility => 'ניידות';
+
+  @override
+  String get postJobCategoryBarre => 'באר';
+
+  @override
+  String get postJobCategorySpinning => 'ספינינג';
+
+  @override
+  String get postJobCategoryDance => 'ריקוד';
+
+  @override
+  String get postJobCategoryPersonalTraining => 'אימון אישי';
+
+  @override
   String get postJobRateCurrency => 'ILS';
 
   @override

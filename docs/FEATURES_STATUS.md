@@ -58,6 +58,7 @@ Legend:
 - Studio profile quick access to own available jobs: `live`
 - Free-text lesson type auto-tagging to existing categories: `partial`
 - Category chips without emoji/icon clutter: `live`
+- Post-job category chips are l10n-backed (no hardcoded category labels): `live`
 - Studio radius controls hidden outside instructor role: `live`
 - Studio-facing auth/error/action copy localization coverage: `partial`
 - Studio billing/invoicing sheet extracted to feature module and localized (no hardcoded UI copy): `live`
