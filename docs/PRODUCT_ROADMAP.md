@@ -1,102 +1,166 @@
-# Product Roadmap
+﻿# Product Roadmap
 
-This is the execution system for product delivery.
-
-How to use:
-1. Every roadmap item has an owner, status, and exit criteria.
-2. PRs must reference the roadmap item ID.
-3. Move status only when exit criteria are met.
+This roadmap now tracks the migration to a SaaS-grade, event-driven architecture.
 
 Status values:
 - `planned`
-- `in_progress`
-- `done`
+- `partial`
+- `live`
 - `blocked`
 
-## Phase 0: Stabilize Core Payment Rails
+## Phase 0: UX and Auth Stabilization (Start Now)
 
-### RM-001 Payment Webhook Reliability
-- Status: `in_progress`
-- Owner: Backend
-- Goal: Never lose payment state due to out-of-order or duplicate webhooks.
+### RM-100 Remove Studio Payment Provider Setup (Platform-Managed Payments)
+- Status: `live`
+- Owner: Mobile + Backend
+- Goal: Studios should never configure Rapyd/BitPay.
 - Exit criteria:
-  - Replay-safe dedupe in place.
-  - Unmatched webhook reprocessing path in place.
-  - Tests covering duplicate + late-arrival events.
+  - Studio billing UI shows payment rails as platform-managed only.
+  - `Connect Rapyd` / `Connect BitPay` removed from studio UI.
+  - Any remaining studio-payment integration API paths are marked deprecated.
 
-### RM-002 Payout Lifecycle Completeness
-- Status: `in_progress`
-- Owner: Backend
-- Goal: Payouts move from queued to terminal states reliably.
-- Exit criteria:
-  - Payout orchestration + retries live.
-  - Payout webhook updates live.
-  - Refund transition flags payout `needs_attention`.
-
-### RM-003 Secrets Hardening Migration
-- Status: `in_progress`
-- Owner: Backend/Ops
-- Goal: Remove plaintext provider credentials from active usage.
-- Exit criteria:
-  - `billing:migrateLegacyPlaintextSecrets` executed.
-  - Sealed fields verified populated.
-  - Legacy plaintext fields nulled.
-
-## Phase 1: Operational Readiness
-
-### RM-004 Payments/Payouts Ops Console
-- Status: `planned`
-- Owner: Backend + Mobile/Web Admin
-- Goal: Operators can resolve stuck payouts and failed invoices quickly.
-- Exit criteria:
-  - Query surfaces for `needs_attention` payouts and failed invoices.
-  - Action endpoints for retry/resolve notes.
-  - UI with filters + details.
-
-### RM-005 Alerting and Observability
-- Status: `planned`
-- Owner: Backend/Ops
-- Goal: detect payment/payout issues before users report them.
-- Exit criteria:
-  - Structured error events for webhook failure, payout terminal failure.
-  - Alert thresholds configured.
-  - On-call runbook checked in.
-
-## Phase 2: Product Completeness
-
-### RM-006 Invoice Integrations v1 (Morning/iCount)
-- Status: `planned`
-- Owner: Backend
-- Goal: robust invoice issuance with retries and stable links/refs.
-- Exit criteria:
-  - Provider adapters validated in sandbox.
-  - Deterministic retries and terminal states.
-  - Mobile detail screen shows consistent invoice reference/link.
-
-### RM-007 Instructor Earnings UX
-- Status: `planned`
+### RM-101 Auth Session Hardening (Web + Mobile)
+- Status: `partial`
 - Owner: Mobile
-- Goal: transparent payout timeline for instructors.
+- Goal: eliminate silent auth/session drift causing empty job lists or failed posting.
 - Exit criteria:
-  - Payment -> payout timeline states explained in UI.
-  - Better empty/error/retry UX across payment screens.
-  - Deep links to related job and invoice details.
+  - Studio job/post screens fail fast with explicit auth-required state.
+  - Studio-only radius controls are not exposed in studio profile flows.
+  - Studio auth-required surfaces are localized (no hardcoded fallback strings).
+  - Foreground offline sync binds Convex auth before replay.
+  - Sign-out clears/quarantines pending mutations by user scope.
 
-## Phase 3: Ship Gate
+### RM-102 Offline Queue Correctness
+- Status: `partial`
+- Owner: Mobile
+- Goal: no cross-user replay, no dead failed queue entries.
+- Exit criteria:
+  - Queue is user-scoped (`pending_mutations_<uid>`).
+  - Failed mutations can be retried deterministically.
+  - Pending job actions disable duplicate gesture-triggered mutations.
 
-### RM-008 Production Go-Live Checklist
+### RM-103 Job Completion + Ratings Lifecycle
+- Status: `partial`
+- Owner: Backend + Mobile
+- Goal: close the loop from confirmed job to completed job and two-way feedback.
+- Exit criteria:
+  - Studio can mark confirmed jobs as completed from app surfaces.
+  - Ratings can be submitted exactly once per side per completed job.
+  - Rating UX is localized and available to both studio and instructor.
+
+### RM-104 Studio Discovery and Public Profile
+- Status: `partial`
+- Owner: Backend + Mobile
+- Goal: make studio availability discoverable from map and profile surfaces.
+- Exit criteria:
+  - Instructor can tap studio pin and open public studio profile.
+  - Public studio profile shows currently available jobs.
+  - Studio profile includes direct access to own available jobs view.
+
+## Phase 1: Event Backbone (Domain Outbox)
+
+### RM-110 Domain Event Log Introduction
+- Status: `partial`
+- Owner: Backend
+- Goal: every critical lifecycle write emits immutable domain events.
+- Exit criteria:
+  - `domainEvents` table added with indexes and replay metadata.
+  - Jobs/claims/payments/payouts mutations emit canonical events.
+  - Event emission covered by tests.
+
+### RM-111 Consumer Checkpoints + Idempotent Processors
+- Status: `partial`
+- Owner: Backend
+- Goal: deterministic event consumption under retries/duplicates.
+- Exit criteria:
+  - `eventConsumers` checkpoint table live.
+  - Worker processors are idempotent with lock/version guards.
+  - Replay command can safely reprocess a bounded range.
+
+## Phase 2: Read Models and Caching
+
+### RM-120 Studio and Instructor Read Models
+- Status: `planned`
+- Owner: Backend + Mobile
+- Goal: remove N+1 list queries and provide predictable low-latency reads.
+- Exit criteria:
+  - `readModel_studioJobs` and `readModel_instructorFeed` in place.
+  - Mobile list screens switched to read models.
+  - Old hot-path query joins removed or demoted.
+
+### RM-121 Payment and Payout Timeline Projection
+- Status: `planned`
+- Owner: Backend + Mobile
+- Goal: single source timeline from payment created to payout terminal state.
+- Exit criteria:
+  - `readModel_paymentTimeline` projection built from events.
+  - Instructor payment detail uses projected timeline.
+  - Invoice attachment references included in timeline nodes.
+
+## Phase 3: Webhooks and Async Integration Processing
+
+### RM-130 Webhook Inbox Pattern
+- Status: `planned`
+- Owner: Backend
+- Goal: webhook ingestion is always durable and fast-ack.
+- Exit criteria:
+  - `webhookInbox` table added with dedupe keys.
+  - HTTP handlers persist event then return quickly.
+  - Async processors apply business transitions from inbox records.
+
+### RM-131 Payment/Payout Reconciliation Worker
+- Status: `partial`
+- Owner: Backend
+- Goal: out-of-order provider events converge automatically.
+- Exit criteria:
+  - Unmatched events reprocessed to completion (not capped single pass). ✅
+  - Stuck payouts flagged with reason and retry tooling.
+  - Alerting hooks for repeated terminal failures.
+
+## Phase 4: Ops, Security, and Cost Efficiency
+
+### RM-140 Studio Payment Integrations Deprecation
+- Status: `partial`
+- Owner: Backend/Ops
+- Goal: fully remove old per-studio payment architecture.
+- Exit criteria:
+  - `studioPaymentIntegrations` no longer required by runtime logic.
+  - Fallback to platform env/sealed secrets only for payment rails.
+  - Data migration and cleanup script executed.
+
+### RM-141 Observability and SLOs
+- Status: `planned`
+- Owner: Backend/Ops
+- Goal: production-grade reliability controls.
+- Exit criteria:
+  - SLO dashboards for posting/claiming/payment/payout flows.
+  - Alert policies for webhook lag, payout retry storms, failed projections.
+  - Runbook and incident playbooks checked in.
+
+## Phase 5: Ship Gate and Competitive Differentiation
+
+### RM-150 Production Readiness Gate
 - Status: `planned`
 - Owner: Product + Engineering
-- Goal: hard go/no-go decision with evidence.
+- Goal: objective go/no-go on reliability and UX quality.
 - Exit criteria:
-  - Full staging E2E run (checkout -> capture -> payout -> invoice -> UI).
-  - Production webhook callbacks verified.
-  - Rollback strategy documented.
-  - Post-launch monitoring confirmed.
+  - Full E2E staging run (post -> claim -> pay -> payout -> invoice -> timeline).
+  - Security and replay/idempotency checks signed off.
+  - Rollback and forward-fix procedures verified.
 
-## Current Priority Order
-1. RM-001
-2. RM-002
-3. RM-003
-4. RM-004
-5. RM-008
+### RM-151 Competitive UX: Marketplace Grade Studio Console
+- Status: `planned`
+- Owner: Mobile + Product
+- Goal: studio UX parity/superiority vs category competitors.
+- Exit criteria:
+  - Unified design system across studio and instructor experiences.
+  - Fast list filters/search and robust empty/error states.
+  - Payment/invoice transparency embedded into job history UI.
+
+## Active Priority Order
+1. RM-101
+2. RM-102
+3. RM-110
+4. RM-111
+5. RM-120
+6. RM-140

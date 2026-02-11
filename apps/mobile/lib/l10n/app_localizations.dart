@@ -1151,7 +1151,7 @@ abstract class AppLocalizations {
   /// No description provided for @postJobSosTitle.
   ///
   /// In en, this message translates to:
-  /// **'SOS Job - 15% Rate Boost Applied'**
+  /// **'Priority dispatch'**
   String get postJobSosTitle;
 
   /// No description provided for @postJobSosDescription.
@@ -1163,7 +1163,7 @@ abstract class AppLocalizations {
   /// No description provided for @postJobButtonWithRate.
   ///
   /// In en, this message translates to:
-  /// **'Post Job ? ILS {rate}'**
+  /// **'Post Job - ILS {rate}'**
   String postJobButtonWithRate(Object rate);
 
   /// No description provided for @postJobPleaseEnterClassTitle.
@@ -1183,6 +1183,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Please enter a valid rate'**
   String get postJobPleaseEnterValidRate;
+
+  /// No description provided for @postJobLessonTypeRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Please select or type a lesson type so we can auto-tag the category.'**
+  String get postJobLessonTypeRequired;
+
+  /// No description provided for @postJobLessonTypeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type lesson freely (e.g. reformer flow, vinyasa, hiit core)'**
+  String get postJobLessonTypeHint;
+
+  /// No description provided for @postJobRateCurrency.
+  ///
+  /// In en, this message translates to:
+  /// **'ILS'**
+  String get postJobRateCurrency;
+
+  /// No description provided for @postJobSosRateBonusLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'+15%'**
+  String get postJobSosRateBonusLabel;
+
+  /// No description provided for @postJobStudioLocationFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio Location'**
+  String get postJobStudioLocationFallback;
 
   /// No description provided for @postJobStudioAddressNotSet.
   ///
@@ -1430,6 +1460,78 @@ abstract class AppLocalizations {
   /// **'Claim rejected.'**
   String get studioJobsClaimRejected;
 
+  /// No description provided for @studioJobsCompleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark class completed?'**
+  String get studioJobsCompleteConfirmTitle;
+
+  /// No description provided for @studioJobsCompleteConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This marks the job as completed and unlocks post-job rating.'**
+  String get studioJobsCompleteConfirmBody;
+
+  /// No description provided for @studioJobsCompleteConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark completed'**
+  String get studioJobsCompleteConfirmAction;
+
+  /// No description provided for @studioJobsCompleteSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Job marked as completed.'**
+  String get studioJobsCompleteSuccess;
+
+  /// No description provided for @studioJobsCompleteFailure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to complete job.'**
+  String get studioJobsCompleteFailure;
+
+  /// No description provided for @studioJobsBillingTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Billing'**
+  String get studioJobsBillingTooltip;
+
+  /// No description provided for @studioJobsTabActiveWithCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Active ({count})'**
+  String studioJobsTabActiveWithCount(Object count);
+
+  /// No description provided for @studioJobsTabHistoryWithCount.
+  ///
+  /// In en, this message translates to:
+  /// **'History ({count})'**
+  String studioJobsTabHistoryWithCount(Object count);
+
+  /// No description provided for @studioJobsSummaryActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get studioJobsSummaryActive;
+
+  /// No description provided for @studioJobsSummaryHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get studioJobsSummaryHistory;
+
+  /// No description provided for @studioJobsSummaryPayments.
+  ///
+  /// In en, this message translates to:
+  /// **'Payments'**
+  String get studioJobsSummaryPayments;
+
+  /// No description provided for @studioJobsSectionEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No jobs yet in this section.'**
+  String get studioJobsSectionEmpty;
+
   /// No description provided for @studioJobsCancelTitle.
   ///
   /// In en, this message translates to:
@@ -1579,6 +1681,126 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cancelled'**
   String get studioJobsStatusCancelled;
+
+  /// No description provided for @studioAuthRequiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio session required'**
+  String get studioAuthRequiredTitle;
+
+  /// No description provided for @studioAuthRequiredBodyJobs.
+  ///
+  /// In en, this message translates to:
+  /// **'You are not authenticated as a studio. Sign in again to view and post jobs.'**
+  String get studioAuthRequiredBodyJobs;
+
+  /// No description provided for @studioAuthRequiredBodyPostJob.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again as a studio to post jobs.'**
+  String get studioAuthRequiredBodyPostJob;
+
+  /// No description provided for @studioAuthRequiredSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio authentication required. Please sign in again.'**
+  String get studioAuthRequiredSnack;
+
+  /// No description provided for @authGoToLogin.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to login'**
+  String get authGoToLogin;
+
+  /// No description provided for @profileStudioBillingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Billing & Invoicing'**
+  String get profileStudioBillingTitle;
+
+  /// No description provided for @profileStudioBillingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-issue invoices for instructor payments'**
+  String get profileStudioBillingSubtitle;
+
+  /// No description provided for @profileStudioPublicJobsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My Available Jobs'**
+  String get profileStudioPublicJobsTitle;
+
+  /// No description provided for @profileStudioPublicJobsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'View public profile with active jobs'**
+  String get profileStudioPublicJobsSubtitle;
+
+  /// No description provided for @profileStudioActiveJobsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} active'**
+  String profileStudioActiveJobsCount(Object count);
+
+  /// No description provided for @studioPublicProfileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio Profile'**
+  String get studioPublicProfileTitle;
+
+  /// No description provided for @studioPublicProfileNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio not found'**
+  String get studioPublicProfileNotFound;
+
+  /// No description provided for @studioPublicProfileFallbackName.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio'**
+  String get studioPublicProfileFallbackName;
+
+  /// No description provided for @studioPublicProfileOpenJobsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Open jobs: {count}'**
+  String studioPublicProfileOpenJobsCount(Object count);
+
+  /// No description provided for @studioPublicProfileActiveJobsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Active jobs: {count}'**
+  String studioPublicProfileActiveJobsCount(Object count);
+
+  /// No description provided for @studioPublicProfileAvailableJobsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Available Jobs'**
+  String get studioPublicProfileAvailableJobsTitle;
+
+  /// No description provided for @studioPublicProfileNoAvailableJobs.
+  ///
+  /// In en, this message translates to:
+  /// **'No available jobs right now.'**
+  String get studioPublicProfileNoAvailableJobs;
+
+  /// No description provided for @studioPublicProfileUntitledClass.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled class'**
+  String get studioPublicProfileUntitledClass;
+
+  /// No description provided for @studioPublicProfileCategoryFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'general'**
+  String get studioPublicProfileCategoryFallback;
+
+  /// No description provided for @studioPublicProfileRateCurrency.
+  ///
+  /// In en, this message translates to:
+  /// **'ILS'**
+  String get studioPublicProfileRateCurrency;
 
   /// No description provided for @jobDetailClaimQueued.
   ///

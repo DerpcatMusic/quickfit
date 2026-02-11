@@ -100,6 +100,112 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     }
   }
 
+  Future<void> _handleCompleteJob() async {
+    try {
+      await ConvexService.instance.completeJob(widget.jobId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Job marked as completed.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to complete job: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleSubmitRating({
+    required String toUserId,
+    required String targetLabel,
+  }) async {
+    final commentController = TextEditingController();
+    double selectedRating = 5;
+
+    final submit = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: Text('Rate $targetLabel'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'How was your experience?',
+                    style: Theme.of(dialogContext).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Slider(
+                    value: selectedRating,
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    label: selectedRating.toStringAsFixed(0),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        selectedRating = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: commentController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: 'Optional comment',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('Submit'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (submit != true) {
+      commentController.dispose();
+      return;
+    }
+
+    try {
+      await ConvexService.instance.submitRating(
+        jobId: widget.jobId,
+        toUserId: toUserId,
+        rating: selectedRating,
+        comment: commentController.text,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rating submitted.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to submit rating: $e')),
+        );
+      }
+    } finally {
+      commentController.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -337,6 +443,60 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                               ),
                       ),
                     ],
+                  ),
+                ],
+
+                if (isStudio && status == 'confirmed') ...[
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: isCupertino
+                        ? CupertinoButton.filled(
+                            onPressed: _handleCompleteJob,
+                            child: Text(l10n.studioJobsCompleteConfirmAction),
+                          )
+                        : FilledButton.icon(
+                            onPressed: _handleCompleteJob,
+                            icon: const Icon(LucideIcons.checkCircle2),
+                            label: Text(l10n.studioJobsCompleteConfirmAction),
+                          ),
+                  ),
+                ],
+
+                if (status == 'completed' &&
+                    ((isStudio && (job['claimedBy'] as String?) != null) ||
+                        (!isStudio && userRole == 'primary'))) ...[
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: isCupertino
+                        ? CupertinoButton.filled(
+                            onPressed: () {
+                              final toUserId = isStudio
+                                  ? (job['claimedBy'] as String?)
+                                  : (job['studioId'] as String?);
+                              if (toUserId == null) return;
+                              _handleSubmitRating(
+                                toUserId: toUserId,
+                                targetLabel: isStudio ? 'instructor' : 'studio',
+                              );
+                            },
+                            child: const Text('Rate counterpart'),
+                          )
+                        : FilledButton.icon(
+                            onPressed: () {
+                              final toUserId = isStudio
+                                  ? (job['claimedBy'] as String?)
+                                  : (job['studioId'] as String?);
+                              if (toUserId == null) return;
+                              _handleSubmitRating(
+                                toUserId: toUserId,
+                                targetLabel: isStudio ? 'instructor' : 'studio',
+                              );
+                            },
+                            icon: const Icon(LucideIcons.star),
+                            label: const Text('Rate counterpart'),
+                          ),
                   ),
                 ],
 

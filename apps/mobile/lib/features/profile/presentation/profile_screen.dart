@@ -21,6 +21,7 @@ import 'package:quickfit/core/utils/platform.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:quickfit/features/profile/presentation/models/profile_settings_draft.dart';
 import 'package:quickfit/features/profile/presentation/widgets/profile_primitives.dart';
+import 'package:quickfit/features/jobs/providers/studio_jobs_provider.dart';
 import 'package:quickfit/l10n/app_localizations.dart';
 import 'package:quickfit/shared/widgets/studio_billing_sheet.dart';
 
@@ -189,6 +190,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
+    final authState = ref.read(authProvider);
     final address = _addressController.text.trim();
     final nextLat = _lat;
     final nextLng = _lng;
@@ -199,7 +201,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       address: address,
       latitude: nextLat,
       longitude: nextLng,
-      radiusKm: _radiusKm,
+      radiusKm: authState.role == 'instructor' ? _radiusKm : null,
       categories: _selectedCategories.toList(),
     );
     if (!mounted || !success) return;
@@ -292,6 +294,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
+    final studioJobsState = ref.watch(studioJobsProvider);
     _hydrateFromAuth(authState);
     if (authState.role == 'studio' && !_billingLoaded && !_isBillingLoading) {
       unawaited(_loadBillingIntegrations());
@@ -299,6 +302,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     final theme = Theme.of(context);
     final colors = context.colors;
+    final studioActiveJobsCount =
+        authState.role == 'studio' ? studioJobsState.activeJobs.length : 0;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -324,7 +329,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   if (_isEditing)
-                    _buildEditForm(theme)
+                    _buildEditForm(theme, authState)
                   else ...[
                     if (authState.role == 'instructor') ...[
                       _buildVerificationCard(authState.isVerified),
@@ -334,7 +339,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     const SizedBox(height: 16),
                     _buildCategoriesSection(authState),
                     const SizedBox(height: 16),
-                    _buildSettingsSection(authState),
+                    _buildSettingsSection(
+                      authState,
+                      studioActiveJobsCount: studioActiveJobsCount,
+                    ),
                     const SizedBox(height: 16),
                     _buildSignOutSection(),
                     const SizedBox(height: 28),
@@ -482,9 +490,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildEditForm(ThemeData theme) {
+  Widget _buildEditForm(ThemeData theme, AuthState authState) {
     final localeCode = Localizations.localeOf(context).languageCode;
     final isCupertino = isCupertinoPlatform(context);
+    final isInstructor = authState.role == 'instructor';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -578,52 +587,54 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        ProfileSectionCard(
-          title: _l10n.searchRadius,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _l10n.maximumDistance,
-                        style: theme.textTheme.bodyLarge,
-                      ),
-                      Text(
-                        _l10n.radiusKmLabel(_radiusKm.toStringAsFixed(1)),
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: theme.colorScheme.primary,
+        if (isInstructor) ...[
+          ProfileSectionCard(
+            title: _l10n.searchRadius,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _l10n.maximumDistance,
+                          style: theme.textTheme.bodyLarge,
                         ),
-                      ),
-                    ],
-                  ),
-                  isCupertino
-                      ? CupertinoSlider(
-                          value: _radiusKm.clamp(0.1, 15.0),
-                          min: 0.1,
-                          max: 15.0,
-                          divisions: 149,
-                          onChanged: (value) =>
-                              setState(() => _radiusKm = value),
-                        )
-                      : Slider(
-                          value: _radiusKm.clamp(0.1, 15.0),
-                          min: 0.1,
-                          max: 15.0,
-                          divisions: 149,
-                          onChanged: (value) =>
-                              setState(() => _radiusKm = value),
+                        Text(
+                          _l10n.radiusKmLabel(_radiusKm.toStringAsFixed(1)),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: theme.colorScheme.primary,
+                          ),
                         ),
-                ],
+                      ],
+                    ),
+                    isCupertino
+                        ? CupertinoSlider(
+                            value: _radiusKm.clamp(0.1, 15.0),
+                            min: 0.1,
+                            max: 15.0,
+                            divisions: 149,
+                            onChanged: (value) =>
+                                setState(() => _radiusKm = value),
+                          )
+                        : Slider(
+                            value: _radiusKm.clamp(0.1, 15.0),
+                            min: 0.1,
+                            max: 15.0,
+                            divisions: 149,
+                            onChanged: (value) =>
+                                setState(() => _radiusKm = value),
+                          ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
         ProfileSectionCard(
           title: _l10n.expertise,
           children: [
@@ -828,6 +839,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _editRadius() async {
+    if (ref.read(authProvider).role != 'instructor') return;
     final isCupertino = isCupertinoPlatform(context);
     var radiusDraft = _radiusKm.clamp(0.1, 15.0);
 
@@ -1713,7 +1725,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildSettingsSection(AuthState authState) {
+  Widget _buildSettingsSection(
+    AuthState authState, {
+    required int studioActiveJobsCount,
+  }) {
     final providers =
         (authState.user?.providerData ?? const <firebase_auth.UserInfo>[])
             .map((p) => _providerLabel(p.providerId))
@@ -1754,10 +1769,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         if (authState.role == 'studio')
           ProfileTile(
             icon: LucideIcons.creditCard,
-            title: 'Billing & Invoicing',
-            subtitle: 'Auto-issue invoices for instructor payments',
+            title: _l10n.profileStudioBillingTitle,
+            subtitle: _l10n.profileStudioBillingSubtitle,
             trailing: _buildTrailingText(_billingSummaryText()),
             onTap: _openStudioBillingSheet,
+          ),
+        if (authState.role == 'studio' && authState.convexUserId != null)
+          ProfileTile(
+            icon: LucideIcons.briefcase,
+            title: _l10n.profileStudioPublicJobsTitle,
+            subtitle: _l10n.profileStudioPublicJobsSubtitle,
+            trailing: _buildTrailingText(
+              _l10n.profileStudioActiveJobsCount(studioActiveJobsCount),
+            ),
+            onTap: () => context.push(
+              AppRoutes.studioPublicProfile
+                  .replaceFirst(':id', authState.convexUserId!),
+            ),
           ),
         ProfileTile(
           icon: LucideIcons.refreshCw,
@@ -1989,7 +2017,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final success = await ref.read(authProvider.notifier).resetOnboarding();
       if (!mounted) return;
       if (success) {
-        context.go(AppRoutes.onboarding);
+        // Let GoRouter redirect based on updated auth state.
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_l10n.somethingWentWrong)),

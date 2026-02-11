@@ -586,7 +586,7 @@ class AppLocalizationsHe extends AppLocalizations {
       'Any special requirements or notes for the instructor...';
 
   @override
-  String get postJobSosTitle => 'SOS Job - 15% Rate Boost Applied';
+  String get postJobSosTitle => 'Priority dispatch';
 
   @override
   String get postJobSosDescription =>
@@ -594,7 +594,7 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String postJobButtonWithRate(Object rate) {
-    return 'Post Job ? ILS $rate';
+    return 'Post Job - ILS $rate';
   }
 
   @override
@@ -605,6 +605,23 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get postJobPleaseEnterValidRate => 'Please enter a valid rate';
+
+  @override
+  String get postJobLessonTypeRequired =>
+      'Please select or type a lesson type so we can auto-tag the category.';
+
+  @override
+  String get postJobLessonTypeHint =>
+      'Type lesson freely (e.g. reformer flow, vinyasa, hiit core)';
+
+  @override
+  String get postJobRateCurrency => 'ILS';
+
+  @override
+  String get postJobSosRateBonusLabel => '+15%';
+
+  @override
+  String get postJobStudioLocationFallback => 'Studio Location';
 
   @override
   String get postJobStudioAddressNotSet =>
@@ -746,6 +763,47 @@ class AppLocalizationsHe extends AppLocalizations {
   String get studioJobsClaimRejected => 'Claim rejected.';
 
   @override
+  String get studioJobsCompleteConfirmTitle => 'Mark class completed?';
+
+  @override
+  String get studioJobsCompleteConfirmBody =>
+      'This marks the job as completed and unlocks post-job rating.';
+
+  @override
+  String get studioJobsCompleteConfirmAction => 'Mark completed';
+
+  @override
+  String get studioJobsCompleteSuccess => 'Job marked as completed.';
+
+  @override
+  String get studioJobsCompleteFailure => 'Failed to complete job.';
+
+  @override
+  String get studioJobsBillingTooltip => 'Billing';
+
+  @override
+  String studioJobsTabActiveWithCount(Object count) {
+    return 'Active ($count)';
+  }
+
+  @override
+  String studioJobsTabHistoryWithCount(Object count) {
+    return 'History ($count)';
+  }
+
+  @override
+  String get studioJobsSummaryActive => 'Active';
+
+  @override
+  String get studioJobsSummaryHistory => 'History';
+
+  @override
+  String get studioJobsSummaryPayments => 'Payments';
+
+  @override
+  String get studioJobsSectionEmpty => 'No jobs yet in this section.';
+
+  @override
   String get studioJobsCancelTitle => 'Cancel job?';
 
   @override
@@ -823,6 +881,78 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get studioJobsStatusCancelled => 'Cancelled';
+
+  @override
+  String get studioAuthRequiredTitle => 'Studio session required';
+
+  @override
+  String get studioAuthRequiredBodyJobs =>
+      'You are not authenticated as a studio. Sign in again to view and post jobs.';
+
+  @override
+  String get studioAuthRequiredBodyPostJob =>
+      'Sign in again as a studio to post jobs.';
+
+  @override
+  String get studioAuthRequiredSnack =>
+      'Studio authentication required. Please sign in again.';
+
+  @override
+  String get authGoToLogin => 'Go to login';
+
+  @override
+  String get profileStudioBillingTitle => 'Billing & Invoicing';
+
+  @override
+  String get profileStudioBillingSubtitle =>
+      'Auto-issue invoices for instructor payments';
+
+  @override
+  String get profileStudioPublicJobsTitle => 'My Available Jobs';
+
+  @override
+  String get profileStudioPublicJobsSubtitle =>
+      'View public profile with active jobs';
+
+  @override
+  String profileStudioActiveJobsCount(Object count) {
+    return '$count active';
+  }
+
+  @override
+  String get studioPublicProfileTitle => 'Studio Profile';
+
+  @override
+  String get studioPublicProfileNotFound => 'Studio not found';
+
+  @override
+  String get studioPublicProfileFallbackName => 'Studio';
+
+  @override
+  String studioPublicProfileOpenJobsCount(Object count) {
+    return 'Open jobs: $count';
+  }
+
+  @override
+  String studioPublicProfileActiveJobsCount(Object count) {
+    return 'Active jobs: $count';
+  }
+
+  @override
+  String get studioPublicProfileAvailableJobsTitle => 'Available Jobs';
+
+  @override
+  String get studioPublicProfileNoAvailableJobs =>
+      'No available jobs right now.';
+
+  @override
+  String get studioPublicProfileUntitledClass => 'Untitled class';
+
+  @override
+  String get studioPublicProfileCategoryFallback => 'general';
+
+  @override
+  String get studioPublicProfileRateCurrency => 'ILS';
 
   @override
   String get jobDetailClaimQueued => 'Claim request queued.';

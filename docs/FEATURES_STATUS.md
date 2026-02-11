@@ -1,4 +1,4 @@
-# Features Status
+﻿# Features Status
 
 This document is the single source of truth for what exists now vs what we still need.
 
@@ -12,20 +12,26 @@ Legend:
 - Auth + user sync: `live`
 - Onboarding (studio/instructor): `live`
 - Job posting/claiming/responding/canceling: `live`
+- Studio job completion mutation + UI action: `live`
+- Post-job rating submission API: `partial`
+- Public studio profile with visible available jobs: `live`
 - Backup claim/promotion lifecycle: `partial`
 - Zone + radius dispatch: `partial`
 - Offline mutation replay for claims: `partial`
+- User-scoped offline queue semantics: `partial`
 
 ## Verification
 - Upload via Convex storage + ownership checks: `live`
 - AI verification action integration: `partial`
 - Admin/manual review UX completeness: `planned`
 
-## Payments (Studio charge)
+## Payments (Platform-Managed)
 - Rapyd checkout creation (`rapyd:createCheckoutForJob`): `live`
-- BitPay checkout action path: `partial`
+- BitPay checkout action path: `blocked` (disabled pending payout rail parity)
 - Payment ledger + webhook audit (`payments`, `paymentEvents`): `live`
-- Webhook dedupe + replay hardening: `partial`
+- Webhook dedupe + replay hardening: `partial` (signature-validated dedupe + uncapped reprocess)
+- Studio-configurable payment provider setup UI: `live` (removed from studio flow)
+- Event-driven webhook inbox processing: `planned`
 
 ## Payouts (Instructor disbursement)
 - Payout destination CRUD (`payoutDestinations`): `live`
@@ -45,6 +51,22 @@ Legend:
 - Invoice open from detail: `live`
 - Payout destination management screen: `live`
 - Advanced payout status/explanations: `planned`
+
+## Mobile Marketplace UX
+- Instructor map studio-pin tap -> studio public profile: `live`
+- Studio profile quick access to own available jobs: `live`
+- Free-text lesson type auto-tagging to existing categories: `partial`
+- Category chips without emoji/icon clutter: `live`
+- Studio radius controls hidden outside instructor role: `live`
+- Studio-facing auth/error/action copy localization coverage: `partial`
+- Studio post-job sticky bottom submit CTA: `live`
+
+## Architecture Modernization
+- Domain event outbox (`domainEvents`): `partial`
+- Event consumer checkpoints: `partial`
+- Studio/instructor projection read models: `planned`
+- Payment/payout timeline projection: `planned`
+- Legacy per-studio payment integration runtime dependency removal: `partial`
 
 ## Security and Operations
 - Sealed secrets infra: `live`

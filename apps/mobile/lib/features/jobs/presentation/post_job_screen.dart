@@ -1,21 +1,18 @@
-// Post Job Screen - Studio job posting
-// lib/features/jobs/presentation/post_job_screen.dart
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-// import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 
 import '../../../core/constants/categories.dart';
 import '../../../core/router/app_routes.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/platform.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/studio_jobs_provider.dart';
 import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
-import 'package:quickfit/core/utils/platform.dart';
-import 'package:quickfit/l10n/app_localizations.dart';
 
 class PostJobScreen extends ConsumerStatefulWidget {
   const PostJobScreen({super.key});
@@ -30,16 +27,28 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   FitnessCategory? _selectedCategory;
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = TimeOfDay.now();
-  TimeOfDay _endTime = TimeOfDay(hour: TimeOfDay.now().hour + 1, minute: 0);
+  TimeOfDay _endTime = _defaultEndTime();
   final _titleController = TextEditingController();
+  final _lessonTypeController = TextEditingController();
   final _rateController = TextEditingController();
   final _notesController = TextEditingController();
   bool _isSubmitting = false;
 
+  static TimeOfDay _defaultEndTime() {
+    final now = TimeOfDay.now();
+    final totalMinutes = (now.hour * 60) + now.minute + 60;
+    if (totalMinutes >= 24 * 60) {
+      return const TimeOfDay(hour: 23, minute: 59);
+    }
+    return TimeOfDay(
+      hour: totalMinutes ~/ 60,
+      minute: totalMinutes % 60,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    // Set default rate based on first category
     _selectedCategory = FitnessCategory.yoga;
     _rateController.text = '${defaultRates[_selectedCategory!.id] ?? 120}';
   }
@@ -47,6 +56,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _lessonTypeController.dispose();
     _rateController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -65,13 +75,22 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   int get _displayRate {
     final baseRate = int.tryParse(_rateController.text) ?? 0;
     if (_isSosJob) {
-      return (baseRate * 1.15).round(); // 15% boost
+      return (baseRate * 1.15).round();
     }
     return baseRate;
   }
 
   Future<void> _submit() async {
     final l10n = AppLocalizations.of(context)!;
+    final auth = ref.read(authProvider);
+    if (!auth.isAuthenticated || auth.role != 'studio') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.studioAuthRequiredSnack)),
+      );
+      context.go(AppRoutes.login);
+      return;
+    }
+
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -80,9 +99,19 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       return;
     }
 
+    final inferredCategory = FitnessCategory.inferFromFreeText(
+      '${_lessonTypeController.text} ${_titleController.text} ${_notesController.text}',
+    );
+    if (_selectedCategory == null && inferredCategory != null) {
+      _selectedCategory = inferredCategory;
+      _rateController.text = '${defaultRates[inferredCategory.id] ?? 120}';
+    }
+
     if (_selectedCategory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.postJobPleaseSelectCategory)),
+        SnackBar(
+          content: Text(l10n.postJobLessonTypeRequired),
+        ),
       );
       return;
     }
@@ -95,15 +124,10 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       return;
     }
 
-    final auth = ref.read(authProvider);
-
-    // For studios, we MUST have a location set during onboarding
-    // Check both lat/lng from auth state
     if (auth.latitude == null || auth.longitude == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.postJobStudioAddressNotSet)),
       );
-      // Navigate to onboarding/profile setup
       context.push(AppRoutes.onboarding);
       return;
     }
@@ -127,181 +151,238 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
     setState(() => _isSubmitting = true);
 
-    final jobId = await ref.read(studioJobsProvider.notifier).postJob(
-          title: title,
-          category: _selectedCategory!.id,
-          startTime: startDateTime,
-          endTime: endDateTime,
-          baseRate: rate,
-          address: auth.homeAddress ?? 'Studio Location',
-          latitude: auth.latitude!,
-          longitude: auth.longitude!,
-          description: _notesController.text.trim().isEmpty
-              ? null
-              : _notesController.text.trim(),
-        );
+    try {
+      await ref.read(studioJobsProvider.notifier).postJob(
+            title: title,
+            category: _selectedCategory!.id,
+            startTime: startDateTime,
+            endTime: endDateTime,
+            baseRate: rate,
+            address: auth.homeAddress ?? l10n.postJobStudioLocationFallback,
+            latitude: auth.latitude!,
+            longitude: auth.longitude!,
+            description: _notesController.text.trim().isEmpty
+                ? null
+                : _notesController.text.trim(),
+          );
 
-    if (mounted) {
+      await ref.read(studioJobsProvider.notifier).refresh();
+      if (!mounted) return;
       setState(() => _isSubmitting = false);
-
-      if (jobId != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(LucideIcons.checkCircle2, color: Colors.white),
-                SizedBox(width: 8),
-                Text(l10n.postJobSuccessMessage),
-              ],
-            ),
-            backgroundColor: Colors.green[600],
-            behavior: SnackBarBehavior.floating,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(LucideIcons.checkCircle2, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(child: Text(l10n.postJobSuccessMessage)),
+            ],
           ),
-        );
-        context.go(AppRoutes.studioJobs);
-      }
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      context.go(AppRoutes.studioJobs);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.mapErrorWithMessage(e.toString())),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final auth = ref.watch(authProvider);
+
+    if (!auth.isAuthenticated || auth.role != 'studio') {
+      return Scaffold(
+        appBar: adaptiveAppBar(
+          context,
+          title: l10n.postJobTitle,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  LucideIcons.logIn,
+                  size: 36,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  l10n.studioAuthRequiredTitle,
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  l10n.studioAuthRequiredBodyPostJob,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: context.colors.mutedText,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FilledButton(
+                  onPressed: () => context.go(AppRoutes.login),
+                  child: Text(l10n.authGoToLogin),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: theme.colorScheme.surface,
       appBar: adaptiveAppBar(
         context,
         title: l10n.postJobTitle,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title
-              _buildSectionTitle(l10n.postJobClassTitle),
-              const SizedBox(height: 12),
-              _buildTitleInput(),
-              const SizedBox(height: 24),
-
-              // Category selection
-              _buildSectionTitle(l10n.postJobClassType),
-              const SizedBox(height: 12),
-              _buildCategorySelector(),
-              const SizedBox(height: 24),
-
-              // Date selection
-              _buildSectionTitle(l10n.postJobDate),
-              const SizedBox(height: 12),
-              _buildDateSelector(),
-              const SizedBox(height: 24),
-
-              // Time selection
-              _buildSectionTitle(l10n.postJobTime),
-              const SizedBox(height: 12),
-              _buildTimeSelector(),
-              const SizedBox(height: 24),
-
-              // Rate
-              _buildSectionTitle(l10n.postJobRateIls),
-              const SizedBox(height: 12),
-              _buildRateInput(),
-              const SizedBox(height: 24),
-
-              // Notes
-              _buildSectionTitle(l10n.postJobNotesOptional),
-              const SizedBox(height: 12),
-              _buildNotesInput(),
-              const SizedBox(height: 32),
-
-              // SOS indicator
-              if (_isSosJob) _buildSosWarning(),
-              const SizedBox(height: 16),
-
-              // Submit button
-              _buildSubmitButton(),
-              const SizedBox(height: 32),
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              theme.colorScheme.primary.withValues(alpha: 0.06),
+              theme.colorScheme.surface,
+              theme.colorScheme.surface,
             ],
+          ),
+        ),
+        child: SafeArea(
+          bottom: true,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _FormSectionLabel(title: l10n.postJobClassTitle),
+                  const SizedBox(height: 10),
+                  _buildTitleInput(),
+                  const SizedBox(height: 20),
+                  _FormSectionLabel(title: l10n.postJobClassType),
+                  const SizedBox(height: 10),
+                  _buildLessonTypeInput(),
+                  const SizedBox(height: 10),
+                  _buildCategorySelector(),
+                  const SizedBox(height: 20),
+                  _FormSectionLabel(title: l10n.postJobDate),
+                  const SizedBox(height: 10),
+                  _buildDateSelector(),
+                  const SizedBox(height: 20),
+                  _FormSectionLabel(title: l10n.postJobTime),
+                  const SizedBox(height: 10),
+                  _buildTimeSelector(),
+                  const SizedBox(height: 20),
+                  _FormSectionLabel(title: l10n.postJobRateIls),
+                  const SizedBox(height: 10),
+                  _buildRateInput(),
+                  const SizedBox(height: 20),
+                  _FormSectionLabel(title: l10n.postJobNotesOptional),
+                  const SizedBox(height: 10),
+                  _buildNotesInput(),
+                  if (_isSosJob) ...[
+                    const SizedBox(height: 20),
+                    _buildSosWarning(),
+                  ],
+                  const SizedBox(height: 96),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: _PrimarySubmitButton(
+            isSubmitting: _isSubmitting,
+            onPressed: _isSubmitting ? null : _submit,
+            text: l10n.postJobButtonWithRate(_displayRate.toString()),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: Colors.black87,
-      ),
-    );
-  }
-
   Widget _buildTitleInput() {
     final l10n = AppLocalizations.of(context)!;
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
+    return _FieldCard(
       child: TextField(
         controller: _titleController,
-        style: const TextStyle(fontWeight: FontWeight.w600),
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
         decoration: InputDecoration(
           hintText: l10n.postJobTitleHint,
-          hintStyle:
-              TextStyle(color: Colors.grey[400], fontWeight: FontWeight.normal),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.all(16),
+          isCollapsed: true,
         ),
       ),
     );
   }
 
   Widget _buildCategorySelector() {
+    final theme = Theme.of(context);
+    final colors = context.colors;
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: FitnessCategory.values.map((category) {
         final isSelected = _selectedCategory == category;
-        return GestureDetector(
-          onTap: () {
-            setState(() {
-              _selectedCategory = category;
-              _rateController.text = '${defaultRates[category.id] ?? 120}';
-            });
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? category.color.withValues(alpha: 0.15)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected ? category.color : Colors.grey[300]!,
-                width: isSelected ? 2 : 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(category.emoji, style: const TextStyle(fontSize: 18)),
-                const SizedBox(width: 8),
-                Text(
-                  category.nameEn,
-                  style: TextStyle(
-                    color: isSelected ? category.color : Colors.grey[700],
-                    fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              setState(() {
+                _selectedCategory = category;
+                _rateController.text = '${defaultRates[category.id] ?? 120}';
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 170),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? category.color.withValues(alpha: 0.12)
+                    : theme.colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isSelected ? category.color : colors.cardBorder,
+                  width: isSelected ? 1.6 : 1,
                 ),
-              ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    category.nameEn,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: isSelected ? category.color : null,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -309,8 +390,34 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     );
   }
 
+  Widget _buildLessonTypeInput() {
+    final l10n = AppLocalizations.of(context)!;
+    return _FieldCard(
+      child: TextField(
+        controller: _lessonTypeController,
+        decoration: InputDecoration(
+          hintText: l10n.postJobLessonTypeHint,
+          border: InputBorder.none,
+          isCollapsed: true,
+        ),
+        onChanged: (value) {
+          final inferred = FitnessCategory.inferFromFreeText(value);
+          if (inferred == null) return;
+          setState(() {
+            _selectedCategory = inferred;
+            _rateController.text = '${defaultRates[inferred.id] ?? 120}';
+          });
+        },
+      ),
+    );
+  }
+
   Widget _buildDateSelector() {
-    return GestureDetector(
+    final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context).toLanguageTag();
+    final dateText = DateFormat.yMMMMEEEEd(locale).format(_selectedDate);
+
+    return _FieldCard(
       onTap: () async {
         final date = await showDatePicker(
           context: context,
@@ -322,43 +429,41 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           setState(() => _selectedDate = date);
         }
       },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Row(
-          children: [
-            Icon(LucideIcons.calendar, color: Colors.grey[600]),
-            const SizedBox(width: 12),
-            Text(
-              DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate),
-              style: const TextStyle(fontSize: 16),
+      child: Row(
+        children: [
+          Icon(LucideIcons.calendar, size: 18, color: context.colors.mutedText),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              dateText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyLarge,
             ),
-            const Spacer(),
-            Icon(LucideIcons.chevronDown, color: Colors.grey[400]),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          Icon(LucideIcons.chevronDown,
+              size: 16, color: context.colors.mutedText),
+        ],
       ),
     );
   }
 
   Widget _buildTimeSelector() {
+    final l10n = AppLocalizations.of(context)!;
     return Row(
       children: [
         Expanded(
           child: _buildTimePicker(
-            label: AppLocalizations.of(context)!.postJobStartLabel,
+            label: l10n.postJobStartLabel,
             time: _startTime,
             onChanged: (time) => setState(() => _startTime = time),
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
         Expanded(
           child: _buildTimePicker(
-            label: AppLocalizations.of(context)!.postJobEndLabel,
+            label: l10n.postJobEndLabel,
             time: _endTime,
             onChanged: (time) => setState(() => _endTime = time),
           ),
@@ -372,7 +477,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     required TimeOfDay time,
     required ValueChanged<TimeOfDay> onChanged,
   }) {
-    return GestureDetector(
+    final theme = Theme.of(context);
+
+    return _FieldCard(
       onTap: () async {
         final picked = await showTimePicker(
           context: context,
@@ -382,73 +489,65 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           onChanged(picked);
         }
       },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: context.colors.mutedText,
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(LucideIcons.clock, size: 18, color: Colors.grey[600]),
-                const SizedBox(width: 8),
-                Text(
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(LucideIcons.clock,
+                  size: 16, color: context.colors.mutedText),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
                   time.format(context),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildRateInput() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
+    final theme = Theme.of(context);
+    final colors = context.colors;
+    final l10n = AppLocalizations.of(context)!;
+
+    return _FieldCard(
       child: Row(
         children: [
-          const Text(
-            'ILS ',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF6366F1),
+          Text(
+            l10n.postJobRateCurrency,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.primary,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: TextField(
               controller: _rateController,
               keyboardType: TextInputType.number,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 hintText: AppLocalizations.of(context)!.postJobRateHint,
+                isCollapsed: true,
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -457,22 +556,16 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.green[100],
-                borderRadius: BorderRadius.circular(6),
+                color: colors.successBackground,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: colors.successBorder),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.trending_up, size: 14, color: Colors.green[700]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '+15%',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+              child: Text(
+                l10n.postJobSosRateBonusLabel,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: colors.successText,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
         ],
@@ -482,20 +575,14 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   Widget _buildNotesInput() {
     final l10n = AppLocalizations.of(context)!;
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
+    return _FieldCard(
       child: TextField(
         controller: _notesController,
         maxLines: 3,
         decoration: InputDecoration(
           hintText: l10n.postJobNotesHint,
-          hintStyle: TextStyle(color: Colors.grey[400]),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.all(16),
+          isCollapsed: true,
         ),
       ),
     );
@@ -503,46 +590,43 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   Widget _buildSosWarning() {
     final l10n = AppLocalizations.of(context)!;
+    final colors = context.colors;
+    final theme = Theme.of(context);
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.orange[50]!,
-            Colors.red[50]!,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange[200]!),
+        color: colors.urgentBackground.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.urgentBorder.withValues(alpha: 0.65)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.orange[100],
-              shape: BoxShape.circle,
+              color: colors.urgentBackground,
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(LucideIcons.zap, color: Colors.orange[700], size: 20),
+            child: Icon(LucideIcons.zap, color: colors.urgentBorder, size: 18),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   l10n.postJobSosTitle,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.orange[800],
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colors.urgentText,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   l10n.postJobSosDescription,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.orange[700],
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.urgentText,
                   ),
                 ),
               ],
@@ -552,66 +636,142 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       ),
     );
   }
+}
 
-  Widget _buildSubmitButton() {
+class _FormSectionLabel extends StatelessWidget {
+  const _FormSectionLabel({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Text(
+        title.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.0,
+              fontWeight: FontWeight.w700,
+              color: context.colors.mutedText,
+            ),
+      ),
+    );
+  }
+}
+
+class _FieldCard extends StatelessWidget {
+  const _FieldCard({
+    required this.child,
+    this.onTap,
+  });
+
+  final Widget child;
+  final Future<void> Function()? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.colors;
+
+    final content = AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.cardBorder),
+      ),
+      child: child,
+    );
+
+    if (onTap == null) return content;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: content,
+      ),
+    );
+  }
+}
+
+class _PrimarySubmitButton extends StatelessWidget {
+  const _PrimarySubmitButton({
+    required this.isSubmitting,
+    required this.onPressed,
+    required this.text,
+  });
+
+  final bool isSubmitting;
+  final VoidCallback? onPressed;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
     final isCupertino = isCupertinoPlatform(context);
-    final l10n = AppLocalizations.of(context)!;
+
+    if (isCupertino) {
+      return SizedBox(
+        width: double.infinity,
+        child: CupertinoButton.filled(
+          onPressed: onPressed,
+          child: _ButtonContent(isSubmitting: isSubmitting, text: text),
+        ),
+      );
+    }
+
     return SizedBox(
       width: double.infinity,
-      height: 56,
-      child: isCupertino
-          ? CupertinoButton.filled(
-              onPressed: _isSubmitting ? null : _submit,
-              child: _isSubmitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(LucideIcons.send, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          l10n.postJobButtonWithRate(_displayRate.toString()),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-            )
-          : FilledButton(
-              onPressed: _isSubmitting ? null : _submit,
-              child: _isSubmitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(LucideIcons.send, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          l10n.postJobButtonWithRate(_displayRate.toString()),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+      height: 52,
+      child: FilledButton(
+        onPressed: onPressed,
+        child: _ButtonContent(isSubmitting: isSubmitting, text: text),
+      ),
+    );
+  }
+}
+
+class _ButtonContent extends StatelessWidget {
+  const _ButtonContent({
+    required this.isSubmitting,
+    required this.text,
+  });
+
+  final bool isSubmitting;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isSubmitting) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Colors.white,
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(LucideIcons.send, size: 18),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
             ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -272,9 +272,9 @@
   "postJobEndLabel": "End",
   "postJobRateHint": "0",
   "postJobNotesHint": "Any special requirements or notes for the instructor...",
-  "postJobSosTitle": "SOS Job - 15% Rate Boost Applied",
+  "postJobSosTitle": "Priority dispatch",
   "postJobSosDescription": "Jobs starting within 3 hours get priority notifications and boosted rates to attract instructors faster.",
-  "postJobButtonWithRate": "Post Job ? ILS {rate}",
+  "postJobButtonWithRate": "Post Job - ILS {rate}",
   "@postJobButtonWithRate": {
     "placeholders": {
       "rate": {}
@@ -283,6 +283,11 @@
   "postJobPleaseEnterClassTitle": "Please enter a class title",
   "postJobPleaseSelectCategory": "Please select a category",
   "postJobPleaseEnterValidRate": "Please enter a valid rate",
+  "postJobLessonTypeRequired": "Please select or type a lesson type so we can auto-tag the category.",
+  "postJobLessonTypeHint": "Type lesson freely (e.g. reformer flow, vinyasa, hiit core)",
+  "postJobRateCurrency": "ILS",
+  "postJobSosRateBonusLabel": "+15%",
+  "postJobStudioLocationFallback": "Studio Location",
   "postJobStudioAddressNotSet": "Studio address not set. Please complete onboarding first.",
   "postJobStartTimeFuture": "Start time must be in the future",
   "postJobEndTimeAfterStart": "End time must be after start time",
@@ -329,6 +334,28 @@
   "addToGoogleCalendar": "Add to Google Calendar",
   "studioJobsClaimAccepted": "Claim accepted!",
   "studioJobsClaimRejected": "Claim rejected.",
+  "studioJobsCompleteConfirmTitle": "Mark class completed?",
+  "studioJobsCompleteConfirmBody": "This marks the job as completed and unlocks post-job rating.",
+  "studioJobsCompleteConfirmAction": "Mark completed",
+  "studioJobsCompleteSuccess": "Job marked as completed.",
+  "studioJobsCompleteFailure": "Failed to complete job.",
+  "studioJobsBillingTooltip": "Billing",
+  "studioJobsTabActiveWithCount": "Active ({count})",
+  "@studioJobsTabActiveWithCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioJobsTabHistoryWithCount": "History ({count})",
+  "@studioJobsTabHistoryWithCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioJobsSummaryActive": "Active",
+  "studioJobsSummaryHistory": "History",
+  "studioJobsSummaryPayments": "Payments",
+  "studioJobsSectionEmpty": "No jobs yet in this section.",
   "studioJobsCancelTitle": "Cancel job?",
   "studioJobsCancelBody": "This action cannot be undone.",
   "studioJobsCancelNo": "No",
@@ -364,6 +391,41 @@
   "studioJobsStatusConfirmed": "Confirmed",
   "studioJobsStatusCompleted": "Completed",
   "studioJobsStatusCancelled": "Cancelled",
+  "studioAuthRequiredTitle": "Studio session required",
+  "studioAuthRequiredBodyJobs": "You are not authenticated as a studio. Sign in again to view and post jobs.",
+  "studioAuthRequiredBodyPostJob": "Sign in again as a studio to post jobs.",
+  "studioAuthRequiredSnack": "Studio authentication required. Please sign in again.",
+  "authGoToLogin": "Go to login",
+  "profileStudioBillingTitle": "Billing & Invoicing",
+  "profileStudioBillingSubtitle": "Auto-issue invoices for instructor payments",
+  "profileStudioPublicJobsTitle": "My Available Jobs",
+  "profileStudioPublicJobsSubtitle": "View public profile with active jobs",
+  "profileStudioActiveJobsCount": "{count} active",
+  "@profileStudioActiveJobsCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioPublicProfileTitle": "Studio Profile",
+  "studioPublicProfileNotFound": "Studio not found",
+  "studioPublicProfileFallbackName": "Studio",
+  "studioPublicProfileOpenJobsCount": "Open jobs: {count}",
+  "@studioPublicProfileOpenJobsCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioPublicProfileActiveJobsCount": "Active jobs: {count}",
+  "@studioPublicProfileActiveJobsCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioPublicProfileAvailableJobsTitle": "Available Jobs",
+  "studioPublicProfileNoAvailableJobs": "No available jobs right now.",
+  "studioPublicProfileUntitledClass": "Untitled class",
+  "studioPublicProfileCategoryFallback": "general",
+  "studioPublicProfileRateCurrency": "ILS",
   "jobDetailClaimQueued": "Claim request queued.",
   "jobDetailWithdrawalQueued": "Withdrawal request queued.",
   "jobDetailNoActiveClaim": "No active claim found.",
