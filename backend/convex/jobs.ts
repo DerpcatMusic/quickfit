@@ -711,6 +711,62 @@ function sortStudioJobsByPriority<
   return jobs;
 }
 
+type ClaimsWindowArgs = {
+  windowStartMs?: number;
+  windowEndMs?: number;
+};
+
+async function getClaimsForInstructorForMyJobs(
+  ctx: { db: QueryCtx["db"] },
+  instructorId: Id<"users">,
+  args: ClaimsWindowArgs,
+) {
+  const claims = await ctx.db
+    .query("claims")
+    .withIndex("by_instructor", (q) => q.eq("instructorId", instructorId))
+    .collect();
+
+  const claimsWithJobs = await Promise.all(
+    claims.map(async (claim) => {
+      const job = await ctx.db.get(claim.jobId);
+      if (!job) return null;
+      const studio = await ctx.db.get(job.studioId);
+      return {
+        ...claim,
+        job: {
+          ...job,
+          studioName: studio?.businessName || studio?.name,
+          studioAvatarUrl: studio?.avatarUrl,
+        },
+      };
+    }),
+  );
+
+  const filtered = claimsWithJobs.filter(
+    (entry): entry is NonNullable<typeof entry> => Boolean(entry),
+  );
+
+  const windowed = filtered.filter((entry) => {
+    const startTime = entry.job.startTime;
+    if (args.windowStartMs !== undefined && startTime < args.windowStartMs) {
+      return false;
+    }
+    if (args.windowEndMs !== undefined && startTime > args.windowEndMs) {
+      return false;
+    }
+    return true;
+  });
+
+  windowed.sort((a, b) => {
+    const aStart = a.job.startTime ?? 0;
+    const bStart = b.job.startTime ?? 0;
+    if (aStart !== bStart) return aStart - bStart;
+    return (b._creationTime ?? 0) - (a._creationTime ?? 0);
+  });
+
+  return windowed;
+}
+
 async function getStudioJobsForStudioLegacy(
   ctx: { db: QueryCtx["db"] },
   studioId: Id<"users">,
@@ -870,6 +926,69 @@ export const getStudioJobs = query({
     if (!user || user.role !== "studio") throw new Error("STUDIO_ONLY");
 
     return await getStudioJobsForStudio(ctx, user._id);
+  },
+});
+
+export const getMyJobs = query({
+  args: {
+    windowStartMs: v.optional(v.number()),
+    windowEndMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("AUTH_REQUIRED");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!user) throw new Error("USER_NOT_FOUND");
+
+    if (user.role === "studio") {
+      return {
+        role: "studio" as const,
+        studioJobs: await getStudioJobsForStudio(ctx, user._id),
+        instructorClaims: [],
+      };
+    }
+
+    return {
+      role: "instructor" as const,
+      studioJobs: [],
+      instructorClaims: await getClaimsForInstructorForMyJobs(
+        ctx,
+        user._id,
+        args,
+      ),
+    };
+  },
+});
+
+export const getMyJobsInternal = internalQuery({
+  args: {
+    userId: v.id("users"),
+    windowStartMs: v.optional(v.number()),
+    windowEndMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) return { role: "unknown", studioJobs: [], instructorClaims: [] };
+    if (user.role === "studio") {
+      return {
+        role: "studio" as const,
+        studioJobs: await getStudioJobsForStudio(ctx, user._id),
+        instructorClaims: [],
+      };
+    }
+    return {
+      role: "instructor" as const,
+      studioJobs: [],
+      instructorClaims: await getClaimsForInstructorForMyJobs(
+        ctx,
+        user._id,
+        args,
+      ),
+    };
   },
 });
 

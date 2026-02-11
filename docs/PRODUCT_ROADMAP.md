@@ -29,6 +29,8 @@ Status values:
   - Studio auth-required surfaces are localized (no hardcoded fallback strings).
   - Studio jobs list query avoids timeout-prone N+1 claim lookups on hot path.
   - Studio post action reports success even if follow-up list refresh times out.
+  - Studio `My Jobs` screen cannot remain in indefinite loading state (watchdog + query bootstrap).
+  - Studio and instructor "my jobs" clients can consume a role-aware shared query endpoint.
   - Profile billing bootstrap does not retry timeouting queries on every rebuild.
   - Foreground offline sync binds Convex auth before replay.
   - Sign-out clears/quarantines pending mutations by user scope.

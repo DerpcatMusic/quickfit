@@ -106,9 +106,14 @@ class StudioJobsState {
 @riverpod
 class StudioJobsNotifier extends _$StudioJobsNotifier {
   static const String _cacheKeyPrefix = 'studio_jobs';
+  static const String _myJobsQueryName = 'jobs:getMyJobs';
+  static const String _legacyStudioJobsQueryName = 'jobs:getStudioJobs';
+  static const Duration _initialLoadTimeout = Duration(seconds: 10);
 
   SubscriptionHandle? _subscription;
   String? _subscriptionSessionKey;
+  String _activeQueryName = _myJobsQueryName;
+  Timer? _initialLoadWatchdog;
   StudioJobsState _lastState = const StudioJobsState();
 
   @override
@@ -119,6 +124,8 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     ref.onDispose(() {
       _subscription?.cancel();
       _subscription = null;
+      _initialLoadWatchdog?.cancel();
+      _initialLoadWatchdog = null;
     });
 
     // Only subscribe if user is a studio.
@@ -178,14 +185,39 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
   }
 
   Future<void> _subscribeToMyJobs(String sessionKey, String userUid) async {
+    _startLoadWatchdog(sessionKey);
+    final preferredQuery = await _bootstrapFromQuery(sessionKey, userUid);
+    if (_subscriptionSessionKey != sessionKey) return;
+    await _subscribeWithQueryName(preferredQuery, sessionKey, userUid);
+  }
+
+  Future<void> _subscribeWithQueryName(
+    String queryName,
+    String sessionKey,
+    String userUid,
+  ) async {
     try {
+      _activeQueryName = queryName;
       _subscription = await ConvexClient.instance.subscribe(
-        name: 'jobs:getStudioJobs',
+        name: queryName,
         args: const {},
-        onUpdate: (data) => _handleJobsUpdate(data, sessionKey, userUid),
+        onUpdate: (data) {
+          _cancelLoadWatchdog();
+          _handleJobsUpdate(data, sessionKey, userUid);
+        },
         onError: (message, value) {
           if (_subscriptionSessionKey != sessionKey) return;
-          log.e('Studio jobs subscription error: $message');
+          if (queryName == _myJobsQueryName &&
+              message.contains('Could not find function')) {
+            unawaited(_subscribeWithQueryName(
+              _legacyStudioJobsQueryName,
+              sessionKey,
+              userUid,
+            ));
+            return;
+          }
+          _cancelLoadWatchdog();
+          log.e('Studio jobs subscription error [$queryName]: $message');
           _setState(_lastState.copyWith(
             isLoading: false,
             error: message,
@@ -194,12 +226,72 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
       );
     } catch (e) {
       if (_subscriptionSessionKey != sessionKey) return;
-      log.e('Failed to subscribe to studio jobs: $e');
+      if (queryName == _myJobsQueryName &&
+          e.toString().contains('Could not find function')) {
+        await _subscribeWithQueryName(
+          _legacyStudioJobsQueryName,
+          sessionKey,
+          userUid,
+        );
+        return;
+      }
+      _cancelLoadWatchdog();
+      log.e('Failed to subscribe to studio jobs [$queryName]: $e');
+      _setState(
+        _lastState.copyWith(
+          isLoading: false,
+          error: e.toString(),
+        ),
+      );
+    }
+  }
+
+  Future<String> _bootstrapFromQuery(String sessionKey, String userUid) async {
+    for (final queryName in [
+      _myJobsQueryName,
+      _legacyStudioJobsQueryName,
+    ]) {
+      try {
+        final payload = await ConvexClient.instance.query(queryName, const {});
+        if (_subscriptionSessionKey != sessionKey) return queryName;
+        final rows = _decodeRowsFromPayload(payload);
+        final jobsList = rows.map(StudioJobRecord.fromJson).toList()
+          ..sort((a, b) => b.job.createdAt.compareTo(a.job.createdAt));
+        unawaited(HiveService().save(_cacheKeyForUser(userUid), rows));
+        _setState(_lastState.copyWith(
+          jobs: jobsList,
+          isLoading: false,
+          error: null,
+        ));
+        return queryName;
+      } catch (e) {
+        final isMissingFn = e.toString().contains('Could not find function');
+        if (queryName == _myJobsQueryName && isMissingFn) {
+          continue;
+        }
+        log.e('Studio jobs bootstrap query failed [$queryName]: $e');
+      }
+    }
+    return _activeQueryName;
+  }
+
+  void _startLoadWatchdog(String sessionKey) {
+    _cancelLoadWatchdog();
+    _initialLoadWatchdog = Timer(_initialLoadTimeout, () {
+      if (_subscriptionSessionKey != sessionKey) return;
+      if (!_lastState.isLoading) return;
       _setState(_lastState.copyWith(
         isLoading: false,
-        error: e.toString(),
+        error: _lastState.jobs.isEmpty
+            ? 'Studio jobs request timed out. Pull to refresh.'
+            : _lastState.error,
       ));
-    }
+    });
+  }
+
+  void _cancelLoadWatchdog() {
+    _initialLoadWatchdog?.cancel();
+    _initialLoadWatchdog = null;
   }
 
   List<Map<String, dynamic>> _decodeRowsFromPayload(dynamic payload) {
@@ -210,11 +302,23 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     }
 
     final dynamic parsed = payload is String ? json.decode(payload) : payload;
-    if (parsed is! List) return const [];
-    return parsed
-        .whereType<Map>()
-        .map((entry) => Map<String, dynamic>.from(entry))
-        .toList(growable: false);
+    if (parsed is List) {
+      return parsed
+          .whereType<Map>()
+          .map((entry) => Map<String, dynamic>.from(entry))
+          .toList(growable: false);
+    }
+    if (parsed is Map) {
+      final mapped = Map<String, dynamic>.from(parsed);
+      final studioJobs = mapped['studioJobs'];
+      if (studioJobs is List) {
+        return studioJobs
+            .whereType<Map>()
+            .map((entry) => Map<String, dynamic>.from(entry))
+            .toList(growable: false);
+      }
+    }
+    return const [];
   }
 
   void _handleJobsUpdate(String data, String sessionKey, String userUid) {
@@ -264,16 +368,18 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     _subscription?.cancel();
     _subscription = null;
     _subscriptionSessionKey = sessionKey;
+    _startLoadWatchdog(sessionKey);
     _setState(_lastState.copyWith(isLoading: true, error: null));
 
     try {
       final payload =
-          await ConvexClient.instance.query('jobs:getStudioJobs', {});
+          await ConvexClient.instance.query(_activeQueryName, const {});
       if (_subscriptionSessionKey == sessionKey) {
         final rows = _decodeRowsFromPayload(payload);
         final jobsList = rows.map(StudioJobRecord.fromJson).toList()
           ..sort((a, b) => b.job.createdAt.compareTo(a.job.createdAt));
         unawaited(HiveService().save(_cacheKeyForUser(user.uid), rows));
+        _cancelLoadWatchdog();
         _setState(_lastState.copyWith(
           jobs: jobsList,
           isLoading: false,
@@ -282,7 +388,8 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
       }
     } catch (e) {
       if (_subscriptionSessionKey == sessionKey) {
-        log.e('Studio jobs refresh query failed: $e');
+        _cancelLoadWatchdog();
+        log.e('Studio jobs refresh query failed [$_activeQueryName]: $e');
         _setState(_lastState.copyWith(
           isLoading: false,
           error: e.toString(),

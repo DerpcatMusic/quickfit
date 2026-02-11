@@ -88,9 +88,12 @@ class ScheduleState {
 @Riverpod(keepAlive: true)
 class ScheduleNotifier extends _$ScheduleNotifier {
   static const _cacheKey = 'instructor_schedule_v2';
+  static const _myJobsQueryName = 'jobs:getMyJobs';
+  static const _legacyClaimsQueryName = 'claims:getMyClaims';
   SubscriptionHandle? _subscription;
   bool _bootstrapped = false;
   bool _isSubscribing = false;
+  String _activeQueryName = _myJobsQueryName;
 
   @override
   ScheduleState build() {
@@ -160,15 +163,35 @@ class ScheduleNotifier extends _$ScheduleNotifier {
       _subscription?.cancel();
       _subscription = null;
       _subscription = await ConvexClient.instance.subscribe(
-        name: 'claims:getMyClaims',
+        name: _activeQueryName,
         args: const {},
         onUpdate: _handleUpdate,
-        onError: (err, _) {
+        onError: (err, _) async {
           if (!ref.mounted) return;
+          if (_activeQueryName == _myJobsQueryName &&
+              err.contains('Could not find function')) {
+            _activeQueryName = _legacyClaimsQueryName;
+            await _subscribe();
+            return;
+          }
           state = state.copyWith(isLoading: false, error: err);
         },
       );
     } catch (e) {
+      if (_activeQueryName == _myJobsQueryName &&
+          e.toString().contains('Could not find function')) {
+        _activeQueryName = _legacyClaimsQueryName;
+        _subscription = await ConvexClient.instance.subscribe(
+          name: _activeQueryName,
+          args: const {},
+          onUpdate: _handleUpdate,
+          onError: (err, _) {
+            if (!ref.mounted) return;
+            state = state.copyWith(isLoading: false, error: err);
+          },
+        );
+        return;
+      }
       if (!ref.mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     } finally {
@@ -190,7 +213,23 @@ class ScheduleNotifier extends _$ScheduleNotifier {
       }
 
       final parsed = json.decode(data);
-      if (parsed is! List) {
+      List<dynamic> claimsPayload;
+      if (parsed is List) {
+        claimsPayload = parsed;
+      } else if (parsed is Map) {
+        final mapped = Map<String, dynamic>.from(parsed);
+        final maybeClaims = mapped['instructorClaims'];
+        if (maybeClaims is! List) {
+          state = state.copyWith(
+            events: const [],
+            isLoading: false,
+            error: null,
+            lastUpdated: DateTime.now(),
+          );
+          return;
+        }
+        claimsPayload = maybeClaims;
+      } else {
         state = state.copyWith(
           events: const [],
           isLoading: false,
@@ -201,7 +240,7 @@ class ScheduleNotifier extends _$ScheduleNotifier {
       }
 
       final events = <ScheduleEvent>[];
-      for (final rawClaim in parsed) {
+      for (final rawClaim in claimsPayload) {
         if (rawClaim is! Map) continue;
         try {
           final claim = Map<String, dynamic>.from(rawClaim);

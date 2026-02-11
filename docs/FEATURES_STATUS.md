@@ -63,6 +63,8 @@ Legend:
 - Studio post-job sticky bottom submit CTA: `live`
 - Studio jobs list query hot-path optimized to reduce timeout risk: `partial`
 - Projection-backed studio jobs and instructor availability feed (with lifecycle sync + fallback): `partial`
+- Role-aware `jobs:getMyJobs` endpoint shared by studio/instructor "my jobs" flows: `partial`
+- Studio `My Jobs` loading watchdog + bootstrap fallback (prevents infinite spinner): `live`
 - Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
 - Instructor map studio markers show studio + posted-time context for open jobs: `live`
 - Studio post-job verification requirement is explicitly configurable (defaults open): `live`

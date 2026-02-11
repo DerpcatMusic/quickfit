@@ -58,6 +58,7 @@ test("test harness happy path", async () => {
   assert.equal(result.studioInstructorVisibilityRealtimeCorrect, true);
   assert.equal(result.postingVisibilityForUnverifiedCorrect, true);
   assert.equal(result.readModelProjectionConsistencyCorrect, true);
+  assert.equal(result.centralizedMyJobsQueryConsistent, true);
 });
 
 test("test harness rejects invalid token", async () => {

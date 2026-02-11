@@ -393,6 +393,7 @@ export const runTestSuite = action({
     studioInstructorVisibilityRealtimeCorrect: boolean;
     postingVisibilityForUnverifiedCorrect: boolean;
     readModelProjectionConsistencyCorrect: boolean;
+    centralizedMyJobsQueryConsistent: boolean;
   }> => {
     const expected = process.env.TEST_HARNESS_TOKEN;
     if (!expected || token !== expected) {
@@ -1073,6 +1074,27 @@ export const runTestSuite = action({
       confirmedVisibilityJob?.status === "confirmed" &&
       pendingVisibilityClaim?.status === "pending" &&
       acceptedVisibilityClaim?.status === "accepted";
+    const studioMyJobsSnapshot = await ctx.runQuery(
+      internal.jobs.getMyJobsInternal,
+      { userId: studioId },
+    );
+    const instructorMyJobsSnapshot = await ctx.runQuery(
+      internal.jobs.getMyJobsInternal,
+      { userId: instructorId },
+    );
+    const centralizedMyJobsQueryConsistent =
+      studioMyJobsSnapshot.role === "studio" &&
+      (studioMyJobsSnapshot.studioJobs as Array<{ _id: Id<"jobs"> }>).some(
+        (job) => job._id === visibilityJobId,
+      ) &&
+      instructorMyJobsSnapshot.role === "instructor" &&
+      (instructorMyJobsSnapshot.instructorClaims as Array<{
+        jobId: Id<"jobs">;
+        status: string;
+      }>).some(
+        (claim) =>
+          claim.jobId === visibilityJobId && claim.status === "accepted",
+      );
     readModelProjectionConsistencyCorrect =
       readModelProjectionConsistencyCorrect &&
       claimedVisibilityProjection.studioProjectionExists &&
@@ -1114,6 +1136,7 @@ export const runTestSuite = action({
       studioInstructorVisibilityRealtimeCorrect,
       postingVisibilityForUnverifiedCorrect,
       readModelProjectionConsistencyCorrect,
+      centralizedMyJobsQueryConsistent,
     };
 
     if (cleanup) {
