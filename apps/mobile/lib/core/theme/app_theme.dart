@@ -1,12 +1,11 @@
 /// QuickFit App Theme Configuration
 ///
-/// Material 3 theme with purple/white branding, solid colors, no shadows.
+/// Material 3 theme with cobalt-forward branding and crisp surfaces.
 library;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
@@ -81,16 +80,17 @@ class AppTheme {
       outlineVariant: appColors.divider,
     );
 
-    final textTheme = GoogleFonts.notoSansHebrewTextTheme(
-      isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
-    ).apply(
+    final textTheme = (isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme).apply(
       bodyColor: scheme.onSurface,
       displayColor: scheme.onSurface,
+      fontFamily: 'Noto Sans Hebrew',
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      fontFamily: 'Noto Sans Hebrew',
+      fontFamilyFallback: const <String>['Noto Sans', 'Roboto', 'sans-serif'],
       textTheme: textTheme,
       extensions: [appColors],
       platform: defaultTargetPlatform,

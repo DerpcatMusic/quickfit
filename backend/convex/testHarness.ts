@@ -19,6 +19,10 @@ function nowPlusMinutes(mins: number) {
   return Date.now() + mins * 60 * 1000;
 }
 
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
 export const createTestUser = internalMutation({
   args: {
     role: v.union(v.literal("studio"), v.literal("instructor")),
@@ -59,7 +63,7 @@ export const createTestUser = internalMutation({
         args.categories,
         true,
         true,
-        args.radiusKm ?? DEFAULT_RADIUS_KM
+        args.radiusKm ?? DEFAULT_RADIUS_KM,
       );
     }
 
@@ -76,11 +80,28 @@ export const createTestJob = internalMutation({
     longitude: v.number(),
     address: v.string(),
     baseRate: v.number(),
+    startTimeMs: v.optional(v.number()),
+    endTimeMs: v.optional(v.number()),
+    status: v.optional(
+      v.union(
+        v.literal("open"),
+        v.literal("claimed"),
+        v.literal("backup_claimed"),
+        v.literal("confirmed"),
+        v.literal("completed"),
+        v.literal("cancelled"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
-    const startTime = nowPlusMinutes(60);
-    const endTime = nowPlusMinutes(120);
-    const durationMinutes = 60;
+    const startTime = args.startTimeMs ?? nowPlusMinutes(60);
+    const endTime = args.endTimeMs ?? startTime + 60 * 60 * 1000;
+    const durationMinutes = Math.max(
+      1,
+      Math.round((endTime - startTime) / (60 * 1000)),
+    );
+    const status = args.status ?? "open";
+    const now = Date.now();
 
     const jobId = await ctx.db.insert("jobs", {
       studioId: args.studioId,
@@ -96,22 +117,24 @@ export const createTestJob = internalMutation({
       latitude: args.latitude,
       longitude: args.longitude,
       address: args.address,
-      status: "open",
+      status,
       requiresVerification: false,
       notificationsSent: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     });
 
-    await syncJobLocation(
-      ctx,
-      jobId,
-      { latitude: args.latitude, longitude: args.longitude },
-      args.category,
-      "open",
-      false,
-      args.baseRate
-    );
+    if (status === "open") {
+      await syncJobLocation(
+        ctx,
+        jobId,
+        { latitude: args.latitude, longitude: args.longitude },
+        args.category,
+        "open",
+        false,
+        args.baseRate,
+      );
+    }
 
     return jobId;
   },
@@ -130,7 +153,7 @@ export const claimJobAs = internalMutation({
       instructor.latitude ?? 0,
       instructor.longitude ?? 0,
       job.latitude,
-      job.longitude
+      job.longitude,
     );
     const now = Date.now();
 
@@ -156,7 +179,11 @@ export const claimJobAs = internalMutation({
       return claimId;
     }
 
-    if (job.status === "claimed" && job.claimedBy !== instructorId && !job.backupClaimedBy) {
+    if (
+      job.status === "claimed" &&
+      job.claimedBy !== instructorId &&
+      !job.backupClaimedBy
+    ) {
       const claimId = await ctx.db.insert("claims", {
         jobId,
         instructorId,
@@ -219,7 +246,7 @@ export const respondToClaimAs = internalMutation({
         job.category,
         "open",
         job.requiresVerification,
-        job.currentRate
+        job.currentRate,
       );
     }
   },
@@ -304,7 +331,10 @@ export const runTestSuite = action({
     token: v.string(),
     cleanup: v.optional(v.boolean()),
   },
-  handler: async (ctx, { token, cleanup }): Promise<{
+  handler: async (
+    ctx,
+    { token, cleanup },
+  ): Promise<{
     studioId: Id<"users">;
     instructorId: Id<"users">;
     backupInstructorId: Id<"users">;
@@ -317,64 +347,90 @@ export const runTestSuite = action({
     staleJobStatus: string | undefined;
     backupJobStatus: string | undefined;
     backupPromoted: boolean;
+    backupClaimStatus: string | undefined;
+    rejectDoubleRespondBlocked: boolean;
     redispatchStatus: string | undefined;
     redispatchNotificationsSent: boolean | undefined;
+    cancelledJobStatus: string | undefined;
+    cancelledAcceptedClaimReconciled: boolean;
+    idempotentClaimDedupeWorked: boolean;
+    idempotentWithdrawReplaySafe: boolean;
+    claimsWindowFilterAndOrderCorrect: boolean;
+    studioJobsPriorityOrderingCorrect: boolean;
+    studioInstructorVisibilityRealtimeCorrect: boolean;
   }> => {
     const expected = process.env.TEST_HARNESS_TOKEN;
     if (!expected || token !== expected) {
       throw new Error("Unauthorized test harness call");
     }
 
-    const studioId = await ctx.runMutation(internal.testHarness.createTestUser, {
-      role: "studio",
-      name: "Test Studio",
-      email: "studio@test.local",
-      categories: ["pilates"],
-      latitude: 32.0853,
-      longitude: 34.7818,
-    });
+    const studioId = await ctx.runMutation(
+      internal.testHarness.createTestUser,
+      {
+        role: "studio",
+        name: "Test Studio",
+        email: "studio@test.local",
+        categories: ["pilates"],
+        latitude: 32.0853,
+        longitude: 34.7818,
+      },
+    );
 
-    const instructorId = await ctx.runMutation(internal.testHarness.createTestUser, {
-      role: "instructor",
-      name: "Test Instructor",
-      email: "instructor@test.local",
-      categories: ["pilates"],
-      latitude: 32.0865,
-      longitude: 34.7825,
-      radiusKm: 5,
-    });
-    const backupInstructorId = await ctx.runMutation(internal.testHarness.createTestUser, {
-      role: "instructor",
-      name: "Backup Instructor",
-      email: "backup@test.local",
-      categories: ["pilates"],
-      latitude: 32.0866,
-      longitude: 34.7826,
-      radiusKm: 5,
-    });
+    const instructorId = await ctx.runMutation(
+      internal.testHarness.createTestUser,
+      {
+        role: "instructor",
+        name: "Test Instructor",
+        email: "instructor@test.local",
+        categories: ["pilates"],
+        latitude: 32.0865,
+        longitude: 34.7825,
+        radiusKm: 5,
+      },
+    );
+    const backupInstructorId = await ctx.runMutation(
+      internal.testHarness.createTestUser,
+      {
+        role: "instructor",
+        name: "Backup Instructor",
+        email: "backup@test.local",
+        categories: ["pilates"],
+        latitude: 32.0866,
+        longitude: 34.7826,
+        radiusKm: 5,
+      },
+    );
 
     const jobId = await ctx.runMutation(internal.testHarness.createTestJob, {
       studioId,
       title: "Test Pilates Class",
       category: "pilates",
       latitude: 32.0858,
-      longitude: 34.7820,
+      longitude: 34.782,
       address: "Tel Aviv",
       baseRate: 200,
     });
 
-    const matches = await ctx.runQuery(internal.geo.findInstructorsForJobQuery, {
-      jobPoint: { latitude: 32.0858, longitude: 34.7820 },
-      jobCategory: "pilates",
-      requiresVerification: false,
-    });
-    const mismatched = await ctx.runQuery(internal.geo.findInstructorsForJobQuery, {
-      jobPoint: { latitude: 32.0858, longitude: 34.7820 },
-      jobCategory: "yoga",
-      requiresVerification: false,
-    });
+    const matches = await ctx.runQuery(
+      internal.geo.findInstructorsForJobQuery,
+      {
+        jobPoint: { latitude: 32.0858, longitude: 34.782 },
+        jobCategory: "pilates",
+        requiresVerification: false,
+      },
+    );
+    const mismatched = await ctx.runQuery(
+      internal.geo.findInstructorsForJobQuery,
+      {
+        jobPoint: { latitude: 32.0858, longitude: 34.782 },
+        jobCategory: "yoga",
+        requiresVerification: false,
+      },
+    );
 
-    await ctx.runAction(internal.notifications.dispatchJobNotifications, { jobId });
+    await ctx.runAction(internal.notifications.dispatchJobNotifications, {
+      jobId,
+    });
 
     const claimId = await ctx.runMutation(internal.testHarness.claimJobAs, {
       jobId,
@@ -389,71 +445,503 @@ export const runTestSuite = action({
     const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });
 
     // Expiry flow test (stale claim)
-    const staleJobId = await ctx.runMutation(internal.testHarness.createTestJob, {
-      studioId,
-      title: "Stale Claim Pilates",
-      category: "pilates",
-      latitude: 32.0858,
-      longitude: 34.7820,
-      address: "Tel Aviv",
-      baseRate: 180,
-    });
-    const staleClaimId = await ctx.runMutation(internal.testHarness.claimJobAs, {
-      jobId: staleJobId,
-      instructorId,
-    });
+    const staleJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Stale Claim Pilates",
+        category: "pilates",
+        latitude: 32.0858,
+        longitude: 34.782,
+        address: "Tel Aviv",
+        baseRate: 180,
+      },
+    );
+    const staleClaimId = await ctx.runMutation(
+      internal.testHarness.claimJobAs,
+      {
+        jobId: staleJobId,
+        instructorId,
+      },
+    );
     await ctx.runMutation(internal.testHarness.backdateClaim, {
       jobId: staleJobId,
       minutesAgo: 5,
     });
     await ctx.runMutation(internal.jobs.expireStaleClaims, {});
-    const staleJob = await ctx.runQuery(internal.jobs.getJobInternal, { jobId: staleJobId });
+    const staleJob = await ctx.runQuery(internal.jobs.getJobInternal, {
+      jobId: staleJobId,
+    });
 
     // Backup promotion flow
-    const backupJobId = await ctx.runMutation(internal.testHarness.createTestJob, {
-      studioId,
-      title: "Backup Pilates Class",
-      category: "pilates",
-      latitude: 32.0859,
-      longitude: 34.7821,
-      address: "Tel Aviv",
-      baseRate: 190,
-    });
-    const primaryClaimId = await ctx.runMutation(internal.testHarness.claimJobAs, {
-      jobId: backupJobId,
-      instructorId,
-    });
-    const backupClaimId = await ctx.runMutation(internal.testHarness.claimJobAs, {
-      jobId: backupJobId,
-      instructorId: backupInstructorId,
-    });
+    const backupJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Backup Pilates Class",
+        category: "pilates",
+        latitude: 32.0859,
+        longitude: 34.7821,
+        address: "Tel Aviv",
+        baseRate: 190,
+      },
+    );
+    const primaryClaimId = await ctx.runMutation(
+      internal.testHarness.claimJobAs,
+      {
+        jobId: backupJobId,
+        instructorId,
+      },
+    );
+    const backupClaimId = await ctx.runMutation(
+      internal.testHarness.claimJobAs,
+      {
+        jobId: backupJobId,
+        instructorId: backupInstructorId,
+      },
+    );
     await ctx.runMutation(internal.jobs.respondToClaimInternal, {
       claimId: primaryClaimId,
       accept: false,
     });
-    const backupJob = await ctx.runQuery(internal.jobs.getJobInternal, { jobId: backupJobId });
+    const backupJob = await ctx.runQuery(internal.jobs.getJobInternal, {
+      jobId: backupJobId,
+    });
+    const backupClaim = await ctx.runQuery(internal.claims.getClaimById, {
+      claimId: backupClaimId,
+    });
+    let rejectDoubleRespondBlocked = false;
+    try {
+      await ctx.runMutation(internal.jobs.respondToClaimInternal, {
+        claimId: primaryClaimId,
+        accept: true,
+      });
+    } catch {
+      rejectDoubleRespondBlocked = true;
+    }
 
     // Re-dispatch after rejection (no backup)
-    const redispatchJobId = await ctx.runMutation(internal.testHarness.createTestJob, {
-      studioId,
-      title: "Redispatch Pilates",
-      category: "pilates",
-      latitude: 32.0857,
-      longitude: 34.7822,
-      address: "Tel Aviv",
-      baseRate: 175,
-    });
-    await ctx.runAction(internal.notifications.dispatchJobNotifications, { jobId: redispatchJobId });
-    const redispatchClaimId = await ctx.runMutation(internal.testHarness.claimJobAs, {
+    const redispatchJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Redispatch Pilates",
+        category: "pilates",
+        latitude: 32.0857,
+        longitude: 34.7822,
+        address: "Tel Aviv",
+        baseRate: 175,
+      },
+    );
+    await ctx.runAction(internal.notifications.dispatchJobNotifications, {
       jobId: redispatchJobId,
-      instructorId,
     });
+    const redispatchClaimId = await ctx.runMutation(
+      internal.testHarness.claimJobAs,
+      {
+        jobId: redispatchJobId,
+        instructorId,
+      },
+    );
     await ctx.runMutation(internal.jobs.respondToClaimInternal, {
       claimId: redispatchClaimId,
       accept: false,
     });
-    await ctx.runAction(internal.notifications.dispatchJobNotifications, { jobId: redispatchJobId });
-    const redispatchJob = await ctx.runQuery(internal.jobs.getJobInternal, { jobId: redispatchJobId });
+    await ctx.runAction(internal.notifications.dispatchJobNotifications, {
+      jobId: redispatchJobId,
+    });
+    const redispatchJob = await ctx.runQuery(internal.jobs.getJobInternal, {
+      jobId: redispatchJobId,
+    });
+
+    // Cancel flow reconciliation (accepted claim should no longer remain accepted)
+    const cancelledJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Cancelled Accepted Claim",
+        category: "pilates",
+        latitude: 32.086,
+        longitude: 34.7823,
+        address: "Tel Aviv",
+        baseRate: 210,
+      },
+    );
+    const cancelledAcceptedClaimId = await ctx.runMutation(
+      internal.testHarness.claimJobAs,
+      {
+        jobId: cancelledJobId,
+        instructorId,
+      },
+    );
+    await ctx.runMutation(internal.jobs.respondToClaimInternal, {
+      claimId: cancelledAcceptedClaimId,
+      accept: true,
+    });
+    await ctx.runMutation(internal.jobs.cancelJobInternalByStudio, {
+      jobId: cancelledJobId,
+      studioId,
+    });
+    const cancelledJob = await ctx.runQuery(internal.jobs.getJobInternal, {
+      jobId: cancelledJobId,
+    });
+    const cancelledAcceptedClaim = await ctx.runQuery(
+      internal.claims.getClaimById,
+      {
+        claimId: cancelledAcceptedClaimId,
+      },
+    );
+
+    // Idempotency replay flow (claim + withdraw)
+    const idempotentJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Idempotent Claim Flow",
+        category: "pilates",
+        latitude: 32.0861,
+        longitude: 34.7824,
+        address: "Tel Aviv",
+        baseRate: 215,
+      },
+    );
+    const idemClaim1 = await ctx.runMutation(
+      internal.jobs.claimJobInternalByInstructor,
+      {
+        jobId: idempotentJobId,
+        instructorId,
+        idempotencyKey: "idem-claim-key",
+      },
+    );
+    const idemClaim2 = await ctx.runMutation(
+      internal.jobs.claimJobInternalByInstructor,
+      {
+        jobId: idempotentJobId,
+        instructorId,
+        idempotencyKey: "idem-claim-key",
+      },
+    );
+
+    await ctx.runMutation(
+      internal.jobs.withdrawClaimInternalByJobAndInstructorIdempotent,
+      {
+        jobId: idempotentJobId,
+        instructorId,
+        idempotencyKey: "idem-withdraw-key",
+      },
+    );
+    let idempotentWithdrawReplaySafe = true;
+    try {
+      await ctx.runMutation(
+        internal.jobs.withdrawClaimInternalByJobAndInstructorIdempotent,
+        {
+          jobId: idempotentJobId,
+          instructorId,
+          idempotencyKey: "idem-withdraw-key",
+        },
+      );
+    } catch {
+      idempotentWithdrawReplaySafe = false;
+    }
+    const idemClaimAfterWithdraw = await ctx.runQuery(
+      internal.claims.getClaimById,
+      {
+        claimId: idemClaim1.claimId,
+      },
+    );
+
+    // Claims window filter/order coverage for claims:getMyClaims
+    const claimsWindowFixtures: Array<{
+      jobId: Id<"jobs">;
+      claimId: Id<"claims">;
+    }> = [];
+    const claimWindowBase = Date.now() + 24 * 60 * 60 * 1000;
+    const claimWindowStart = claimWindowBase + 30 * 60 * 1000;
+    const claimWindowMiddle = claimWindowBase + 60 * 60 * 1000;
+    const claimWindowEnd = claimWindowBase + 90 * 60 * 1000;
+
+    const createClaimWindowFixture = async (
+      title: string,
+      startTimeMs: number,
+    ) => {
+      const fixtureJobId = await ctx.runMutation(
+        internal.testHarness.createTestJob,
+        {
+          studioId,
+          title,
+          category: "pilates",
+          latitude: 32.0858,
+          longitude: 34.782,
+          address: "Tel Aviv",
+          baseRate: 205,
+          startTimeMs,
+          endTimeMs: startTimeMs + 60 * 60 * 1000,
+        },
+      );
+      const fixtureClaimId = await ctx.runMutation(
+        internal.testHarness.claimJobAs,
+        {
+          jobId: fixtureJobId,
+          instructorId,
+        },
+      );
+      claimsWindowFixtures.push({
+        jobId: fixtureJobId,
+        claimId: fixtureClaimId,
+      });
+      return { jobId: fixtureJobId, claimId: fixtureClaimId };
+    };
+
+    const beforeWindow = await createClaimWindowFixture(
+      "Claims Window Before",
+      claimWindowStart - 60 * 1000,
+    );
+    const atWindowStart = await createClaimWindowFixture(
+      "Claims Window Start Boundary",
+      claimWindowStart,
+    );
+    const middleOlder = await createClaimWindowFixture(
+      "Claims Window Middle Older",
+      claimWindowMiddle,
+    );
+    await sleep(5);
+    const middleNewer = await createClaimWindowFixture(
+      "Claims Window Middle Newer",
+      claimWindowMiddle,
+    );
+    const atWindowEnd = await createClaimWindowFixture(
+      "Claims Window End Boundary",
+      claimWindowEnd,
+    );
+    const afterWindow = await createClaimWindowFixture(
+      "Claims Window After",
+      claimWindowEnd + 60 * 1000,
+    );
+
+    const claimsInWindow = await ctx.runQuery(
+      internal.claims.getClaimsForInstructorInternal,
+      {
+        instructorId,
+        windowStartMs: claimWindowStart,
+        windowEndMs: claimWindowEnd,
+      },
+    );
+
+    const actualWindowOrder = claimsInWindow.map(
+      (claim: { _id: Id<"claims"> }) => claim._id,
+    );
+    const expectedWindowOrder = [
+      atWindowStart.claimId,
+      middleNewer.claimId,
+      middleOlder.claimId,
+      atWindowEnd.claimId,
+    ];
+
+    const claimsWindowOrderMatches =
+      actualWindowOrder.length === expectedWindowOrder.length &&
+      expectedWindowOrder.every(
+        (claimId, index) => actualWindowOrder[index] === claimId,
+      );
+
+    const claimsWindowExcludesOutOfWindow =
+      !actualWindowOrder.includes(beforeWindow.claimId) &&
+      !actualWindowOrder.includes(afterWindow.claimId);
+
+    const claimsWindowFilterAndOrderCorrect =
+      claimsWindowOrderMatches && claimsWindowExcludesOutOfWindow;
+
+    // Studio ordering priority coverage for jobs:getStudioJobs
+    const studioOrderingJobIds: Id<"jobs">[] = [];
+    const studioOrderBase = Date.now() + 48 * 60 * 60 * 1000;
+
+    const createStudioOrderingJob = async (
+      title: string,
+      startTimeMs: number,
+      status:
+        | "open"
+        | "claimed"
+        | "backup_claimed"
+        | "confirmed"
+        | "completed"
+        | "cancelled",
+    ) => {
+      const fixtureJobId = await ctx.runMutation(
+        internal.testHarness.createTestJob,
+        {
+          studioId,
+          title,
+          category: "pilates",
+          latitude: 32.0858,
+          longitude: 34.782,
+          address: "Tel Aviv",
+          baseRate: 195,
+          startTimeMs,
+          endTimeMs: startTimeMs + 60 * 60 * 1000,
+          status,
+        },
+      );
+      studioOrderingJobIds.push(fixtureJobId);
+      return fixtureJobId;
+    };
+
+    const backupClaimedOrderingJobId = await createStudioOrderingJob(
+      "Studio Ordering Backup Claimed",
+      studioOrderBase + 20 * 60 * 1000,
+      "backup_claimed",
+    );
+    const claimedOrderingJobId = await createStudioOrderingJob(
+      "Studio Ordering Claimed",
+      studioOrderBase + 30 * 60 * 1000,
+      "claimed",
+    );
+    const openOlderOrderingJobId = await createStudioOrderingJob(
+      "Studio Ordering Open Older",
+      studioOrderBase + 40 * 60 * 1000,
+      "open",
+    );
+    await sleep(5);
+    const openNewerOrderingJobId = await createStudioOrderingJob(
+      "Studio Ordering Open Newer",
+      studioOrderBase + 40 * 60 * 1000,
+      "open",
+    );
+    const openLaterOrderingJobId = await createStudioOrderingJob(
+      "Studio Ordering Open Later",
+      studioOrderBase + 50 * 60 * 1000,
+      "open",
+    );
+    const confirmedOrderingJobId = await createStudioOrderingJob(
+      "Studio Ordering Confirmed",
+      studioOrderBase + 10 * 60 * 1000,
+      "confirmed",
+    );
+    const completedOrderingJobId = await createStudioOrderingJob(
+      "Studio Ordering Completed",
+      studioOrderBase + 5 * 60 * 1000,
+      "completed",
+    );
+    const cancelledOrderingJobId = await createStudioOrderingJob(
+      "Studio Ordering Cancelled",
+      studioOrderBase + 1 * 60 * 1000,
+      "cancelled",
+    );
+
+    const orderedStudioJobs = await ctx.runQuery(
+      internal.jobs.getStudioJobsForStudioInternal,
+      { studioId },
+    );
+
+    const expectedStudioOrder = [
+      backupClaimedOrderingJobId,
+      claimedOrderingJobId,
+      openNewerOrderingJobId,
+      openOlderOrderingJobId,
+      openLaterOrderingJobId,
+      confirmedOrderingJobId,
+      completedOrderingJobId,
+      cancelledOrderingJobId,
+    ];
+    const expectedStudioOrderSet = new Set(expectedStudioOrder);
+    const actualStudioOrder = orderedStudioJobs
+      .filter((job: { _id: Id<"jobs"> }) => expectedStudioOrderSet.has(job._id))
+      .map((job: { _id: Id<"jobs"> }) => job._id);
+
+    const studioJobsPriorityOrderingCorrect =
+      actualStudioOrder.length === expectedStudioOrder.length &&
+      expectedStudioOrder.every(
+        (jobId, index) => actualStudioOrder[index] === jobId,
+      );
+
+    // Studio -> instructor visibility lifecycle (open -> claimed/pending -> confirmed/accepted)
+    const visibilityJobId = await ctx.runMutation(
+      internal.testHarness.createTestJob,
+      {
+        studioId,
+        title: "Visibility Realtime Pilates",
+        category: "pilates",
+        latitude: 32.0856,
+        longitude: 34.7819,
+        address: "Tel Aviv",
+        baseRate: 185,
+        startTimeMs: Date.now() + 72 * 60 * 60 * 1000,
+        endTimeMs: Date.now() + 73 * 60 * 60 * 1000,
+      },
+    );
+
+    const openStudioJobsSnapshot = await ctx.runQuery(
+      internal.jobs.getStudioJobsForStudioInternal,
+      { studioId },
+    );
+    const openVisibilityJob = openStudioJobsSnapshot.find(
+      (listedJob: {
+        _id: Id<"jobs">;
+        status: string;
+        claimId?: Id<"claims">;
+      }) => listedJob._id === visibilityJobId,
+    );
+
+    const visibilityClaimId = await ctx.runMutation(
+      internal.testHarness.claimJobAs,
+      {
+        jobId: visibilityJobId,
+        instructorId,
+      },
+    );
+
+    const claimedStudioJobsSnapshot = await ctx.runQuery(
+      internal.jobs.getStudioJobsForStudioInternal,
+      { studioId },
+    );
+    const claimedVisibilityJob = claimedStudioJobsSnapshot.find(
+      (listedJob: {
+        _id: Id<"jobs">;
+        status: string;
+        claimId?: Id<"claims">;
+      }) => listedJob._id === visibilityJobId,
+    );
+
+    const pendingInstructorClaimsSnapshot = await ctx.runQuery(
+      internal.claims.getClaimsForInstructorInternal,
+      { instructorId },
+    );
+    const pendingVisibilityClaim = pendingInstructorClaimsSnapshot.find(
+      (claim: { jobId: Id<"jobs">; status: string }) =>
+        claim.jobId === visibilityJobId,
+    );
+
+    await ctx.runMutation(internal.jobs.respondToClaimInternal, {
+      claimId: visibilityClaimId,
+      accept: true,
+    });
+
+    const confirmedStudioJobsSnapshot = await ctx.runQuery(
+      internal.jobs.getStudioJobsForStudioInternal,
+      { studioId },
+    );
+    const confirmedVisibilityJob = confirmedStudioJobsSnapshot.find(
+      (listedJob: {
+        _id: Id<"jobs">;
+        status: string;
+        claimId?: Id<"claims">;
+      }) => listedJob._id === visibilityJobId,
+    );
+
+    const acceptedInstructorClaimsSnapshot = await ctx.runQuery(
+      internal.claims.getClaimsForInstructorInternal,
+      { instructorId },
+    );
+    const acceptedVisibilityClaim = acceptedInstructorClaimsSnapshot.find(
+      (claim: { jobId: Id<"jobs">; status: string }) =>
+        claim.jobId === visibilityJobId,
+    );
+
+    const studioInstructorVisibilityRealtimeCorrect =
+      openVisibilityJob?.status === "open" &&
+      claimedVisibilityJob?.status === "claimed" &&
+      claimedVisibilityJob?.claimId === visibilityClaimId &&
+      confirmedVisibilityJob?.status === "confirmed" &&
+      pendingVisibilityClaim?.status === "pending" &&
+      acceptedVisibilityClaim?.status === "accepted";
 
     const result = {
       studioId,
@@ -467,9 +955,23 @@ export const runTestSuite = action({
       notificationsSent: job?.notificationsSent,
       staleJobStatus: staleJob?.status,
       backupJobStatus: backupJob?.status,
-      backupPromoted: backupJob?.claimedBy === backupInstructorId && backupJob?.status === "claimed",
+      backupPromoted:
+        backupJob?.claimedBy === backupInstructorId &&
+        backupJob?.status === "claimed",
+      backupClaimStatus: backupClaim?.status,
+      rejectDoubleRespondBlocked,
       redispatchStatus: redispatchJob?.status,
       redispatchNotificationsSent: redispatchJob?.notificationsSent,
+      cancelledJobStatus: cancelledJob?.status,
+      cancelledAcceptedClaimReconciled:
+        cancelledAcceptedClaim?.status === "rejected",
+      idempotentClaimDedupeWorked: idemClaim1.claimId === idemClaim2.claimId,
+      idempotentWithdrawReplaySafe:
+        idempotentWithdrawReplaySafe &&
+        idemClaimAfterWithdraw?.status === "withdrawn",
+      claimsWindowFilterAndOrderCorrect,
+      studioJobsPriorityOrderingCorrect,
+      studioInstructorVisibilityRealtimeCorrect,
     };
 
     if (cleanup) {
@@ -485,6 +987,30 @@ export const runTestSuite = action({
         jobId: redispatchJobId,
         claimIds: [redispatchClaimId],
       });
+      await ctx.runMutation(internal.testHarness.cleanupTestJob, {
+        jobId: cancelledJobId,
+        claimIds: [cancelledAcceptedClaimId],
+      });
+      await ctx.runMutation(internal.testHarness.cleanupTestJob, {
+        jobId: idempotentJobId,
+        claimIds: [idemClaim1.claimId],
+      });
+      await ctx.runMutation(internal.testHarness.cleanupTestJob, {
+        jobId: visibilityJobId,
+        claimIds: [visibilityClaimId],
+      });
+      for (const fixture of claimsWindowFixtures) {
+        await ctx.runMutation(internal.testHarness.cleanupTestJob, {
+          jobId: fixture.jobId,
+          claimIds: [fixture.claimId],
+        });
+      }
+      for (const orderingJobId of studioOrderingJobIds) {
+        await ctx.runMutation(internal.testHarness.cleanupTestJob, {
+          jobId: orderingJobId,
+          claimIds: [],
+        });
+      }
       await ctx.runMutation(internal.testHarness.cleanupTestData, {
         jobId,
         claimId,

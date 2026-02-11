@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:quickfit/l10n/app_localizations.dart';
+import 'package:quickfit/core/router/app_routes.dart';
 
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:quickfit/features/auth/presentation/login_screen.dart';
@@ -24,45 +25,35 @@ import 'package:quickfit/shared/layouts/app_scaffold.dart';
 
 part 'app_router.g.dart';
 
-// Route paths
-abstract class AppRoutes {
-  static const String splash = '/';
-  static const String login = '/login';
-  static const String onboarding = '/onboarding';
-
-  // Instructor routes
-  static const String instructorHome = '/instructor';
-  static const String instructorJobs = '/instructor/jobs';
-  static const String instructorSchedule = '/instructor/schedule';
-  static const String instructorProfile = '/instructor/profile';
-  static const String instructorMap = '/instructor/map';
-
-  // Studio routes
-  static const String studioHome = '/studio';
-  static const String studioJobs = '/studio/jobs';
-  static const String studioPostJob = '/studio/post';
-  static const String studioProfile = '/studio/profile';
-
-  // Shared routes
-  static const String verification = '/verification';
-  static const String settings = '/settings';
-  static const String jobDetail = '/jobs/:id';
-}
-
 // Auth state change notifier for GoRouter refresh
 class _AuthRefreshNotifier extends ChangeNotifier {
   _AuthRefreshNotifier(this._ref) {
-    _ref.listen(authProvider, (_, __) {
+    _lastSnapshot = _snapshot(_ref.read(authProvider));
+    _ref.listen(authProvider, (previous, next) {
+      final nextSnapshot = _snapshot(next);
+      if (nextSnapshot == _lastSnapshot) return;
+      _lastSnapshot = nextSnapshot;
       notifyListeners();
     });
   }
 
   final Ref _ref;
+  String? _lastSnapshot;
+
+  String _snapshot(AuthState state) {
+    return [
+      state.user?.uid ?? '',
+      state.isLoading ? '1' : '0',
+      state.hasCompletedOnboarding ? '1' : '0',
+      state.role ?? '',
+    ].join('|');
+  }
 }
 
 @riverpod
 GoRouter router(Ref ref) {
   final refreshNotifier = _AuthRefreshNotifier(ref);
+  ref.onDispose(refreshNotifier.dispose);
 
   final goRouter = GoRouter(
     initialLocation: AppRoutes.splash,
@@ -77,9 +68,13 @@ GoRouter router(Ref ref) {
       final isLoginRoute = state.matchedLocation == AppRoutes.login;
       final isOnboardingRoute = state.matchedLocation == AppRoutes.onboarding;
       final isSplashRoute = state.matchedLocation == AppRoutes.splash;
+      final isVerificationRoute =
+          state.matchedLocation == AppRoutes.verification;
+      final isStudioRoute = state.matchedLocation.startsWith('/studio');
+      final isInstructorRoute = state.matchedLocation.startsWith('/instructor');
 
-      // Still loading
-      if (auth.isLoading) {
+      // Still loading while we do not yet have a logged-in user.
+      if (auth.isLoading && !isLoggedIn) {
         return isSplashRoute ? null : AppRoutes.splash;
       }
 
@@ -93,9 +88,30 @@ GoRouter router(Ref ref) {
         return isOnboardingRoute ? null : AppRoutes.onboarding;
       }
 
+      if (userRole == null) {
+        return isSplashRoute ? null : AppRoutes.splash;
+      }
+
       // Logged in with onboarding complete
       if (isLoginRoute || isOnboardingRoute || isSplashRoute) {
         // Redirect to appropriate home based on role
+        return userRole == 'studio'
+            ? AppRoutes.studioHome
+            : AppRoutes.instructorHome;
+      }
+
+      if (isStudioRoute && userRole != 'studio') {
+        return userRole == 'instructor'
+            ? AppRoutes.instructorHome
+            : AppRoutes.splash;
+      }
+
+      if (isInstructorRoute && userRole != 'instructor') {
+        return userRole == 'studio' ? AppRoutes.studioHome : AppRoutes.splash;
+      }
+
+      // Verification is instructor-only.
+      if (isVerificationRoute && userRole != 'instructor') {
         return userRole == 'studio'
             ? AppRoutes.studioHome
             : AppRoutes.instructorHome;

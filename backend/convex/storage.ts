@@ -1,21 +1,47 @@
 // convex/storage.ts
 // File storage for certificate uploads
 
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
+
+const UPLOAD_SESSION_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Generate a signed URL for uploading a file to Convex storage.
  * Returns a URL that the client can POST to.
  */
 export const generateUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    purpose: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    // Generate signed URL for upload
-    return await ctx.storage.generateUploadUrl();
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .first();
+    if (!user) throw new Error("User not found");
+
+    const uploadUrl = await ctx.storage.generateUploadUrl();
+    const now = Date.now();
+    const uploadToken = `${now}_${Math.random().toString(36).slice(2)}${Math.random()
+      .toString(36)
+      .slice(2)}`;
+
+    await ctx.db.insert("uploadSessions", {
+      token: uploadToken,
+      userId: user._id,
+      purpose: args.purpose,
+      expiresAt: now + UPLOAD_SESSION_TTL_MS,
+      createdAt: now,
+    });
+
+    return {
+      uploadUrl,
+      uploadToken,
+    };
   },
 });
 
@@ -55,9 +81,10 @@ export const getUrl = query({
 export const registerUploadedFile = mutation({
   args: {
     storageId: v.id("_storage"),
+    uploadToken: v.string(),
     purpose: v.optional(v.string()),
   },
-  handler: async (ctx, { storageId, purpose }) => {
+  handler: async (ctx, { storageId, uploadToken, purpose }) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
@@ -66,6 +93,20 @@ export const registerUploadedFile = mutation({
       .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
       .first();
     if (!user) throw new Error("User not found");
+
+    const session = await ctx.db
+      .query("uploadSessions")
+      .withIndex("by_token", (q) => q.eq("token", uploadToken))
+      .first();
+    if (!session) throw new Error("Invalid upload token");
+    if (session.userId !== user._id) throw new Error("Upload token owner mismatch");
+    if (session.expiresAt <= Date.now()) throw new Error("Upload token expired");
+    if (session.purpose && purpose && session.purpose !== purpose) {
+      throw new Error("Upload purpose mismatch");
+    }
+    if (session.usedAt && session.storageId && session.storageId !== storageId) {
+      throw new Error("Upload token already used");
+    }
 
     const existing = await ctx.db
       .query("userFiles")
@@ -76,15 +117,40 @@ export const registerUploadedFile = mutation({
       if (existing.userId !== user._id) {
         throw new Error("Storage object already owned by another user");
       }
+      if (!session.usedAt) {
+        await ctx.db.patch(session._id, {
+          usedAt: Date.now(),
+          storageId,
+        });
+      }
       return existing._id;
     }
 
-    return await ctx.db.insert("userFiles", {
+    const recordId = await ctx.db.insert("userFiles", {
       userId: user._id,
       storageId,
       purpose,
       createdAt: Date.now(),
     });
+
+    await ctx.db.patch(session._id, {
+      usedAt: Date.now(),
+      storageId,
+    });
+
+    return recordId;
+  },
+});
+
+export const getFileOwnerByStorageIdInternal = internalQuery({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, { storageId }) => {
+    return await ctx.db
+      .query("userFiles")
+      .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+      .first();
   },
 });
 

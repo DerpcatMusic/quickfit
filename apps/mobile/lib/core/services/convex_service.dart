@@ -266,4 +266,349 @@ class ConvexService {
       rethrow;
     }
   }
+
+  Future<dynamic> _tryQueryByNames(
+    List<String> names,
+    Map<String, String> args,
+  ) async {
+    Object? lastError;
+    for (final name in names) {
+      try {
+        return await ConvexClient.instance.query(name, args);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError ?? Exception('All query candidates failed');
+  }
+
+  /// Returns current studio invoicing integrations (sensitive secrets are masked).
+  Future<List<Map<String, dynamic>>> getMyInvoicingIntegrations() async {
+    try {
+      final result = await ConvexClient.instance.query(
+        'billing:listMyInvoicingIntegrations',
+        {},
+      );
+      if (result.isEmpty || result == 'null') return <Map<String, dynamic>>[];
+      final decoded = json.decode(result);
+      if (decoded is! List) return <Map<String, dynamic>>[];
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+    } catch (e) {
+      debugPrint('getMyInvoicingIntegrations failed: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  /// Creates or updates a studio invoicing integration.
+  Future<void> upsertMyInvoicingIntegration({
+    required String provider, // morning | icount
+    required String baseUrl,
+    bool isActive = true,
+    String? displayName,
+    String? apiToken,
+    String? apiKey,
+    String? accountId,
+    double? defaultVatRate,
+  }) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'billing:upsertMyInvoicingIntegration',
+        args: {
+          'provider': provider,
+          'baseUrl': baseUrl,
+          'isActive': isActive,
+          if (displayName != null) 'displayName': displayName,
+          if (apiToken != null) 'apiToken': apiToken,
+          if (apiKey != null) 'apiKey': apiKey,
+          if (accountId != null) 'accountId': accountId,
+          if (defaultVatRate != null) 'defaultVatRate': defaultVatRate,
+        },
+      );
+    } catch (e) {
+      debugPrint('upsertMyInvoicingIntegration failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Activates/deactivates one provider integration.
+  Future<void> setMyInvoicingIntegrationActive({
+    required String provider, // morning | icount
+    required bool isActive,
+  }) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'billing:setMyInvoicingIntegrationActive',
+        args: {
+          'provider': provider,
+          'isActive': isActive,
+        },
+      );
+    } catch (e) {
+      debugPrint('setMyInvoicingIntegrationActive failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Deletes one provider integration.
+  Future<void> removeMyInvoicingIntegration({
+    required String provider, // morning | icount
+  }) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'billing:removeMyInvoicingIntegration',
+        args: {'provider': provider},
+      );
+    } catch (e) {
+      debugPrint('removeMyInvoicingIntegration failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Returns current studio payment integrations (sensitive secrets are masked).
+  Future<List<Map<String, dynamic>>> getMyPaymentIntegrations() async {
+    try {
+      final result = await ConvexClient.instance.query(
+        'billing:listMyPaymentIntegrations',
+        {},
+      );
+      if (result.isEmpty || result == 'null') return <Map<String, dynamic>>[];
+      final decoded = json.decode(result);
+      if (decoded is! List) return <Map<String, dynamic>>[];
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+    } catch (e) {
+      debugPrint('getMyPaymentIntegrations failed: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  /// Creates or updates a studio payment integration.
+  Future<void> upsertMyPaymentIntegration({
+    required String provider, // rapyd | bitpay
+    bool isActive = true,
+    String mode = 'sandbox', // sandbox | production
+    String? displayName,
+    String? apiToken,
+    String? apiKey,
+    String? webhookSecret,
+    String? accountId,
+    String? merchantId,
+  }) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'billing:upsertMyPaymentIntegration',
+        args: {
+          'provider': provider,
+          'isActive': isActive,
+          'mode': mode,
+          if (displayName != null) 'displayName': displayName,
+          if (apiToken != null) 'apiToken': apiToken,
+          if (apiKey != null) 'apiKey': apiKey,
+          if (webhookSecret != null) 'webhookSecret': webhookSecret,
+          if (accountId != null) 'accountId': accountId,
+          if (merchantId != null) 'merchantId': merchantId,
+        },
+      );
+    } catch (e) {
+      debugPrint('upsertMyPaymentIntegration failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Activates/deactivates one payment provider integration.
+  Future<void> setMyPaymentIntegrationActive({
+    required String provider, // rapyd | bitpay
+    required bool isActive,
+  }) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'billing:setMyPaymentIntegrationActive',
+        args: {
+          'provider': provider,
+          'isActive': isActive,
+        },
+      );
+    } catch (e) {
+      debugPrint('setMyPaymentIntegrationActive failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Deletes one payment provider integration.
+  Future<void> removeMyPaymentIntegration({
+    required String provider, // rapyd | bitpay
+  }) async {
+    try {
+      await ConvexClient.instance.mutation(
+        name: 'billing:removeMyPaymentIntegration',
+        args: {'provider': provider},
+      );
+    } catch (e) {
+      debugPrint('removeMyPaymentIntegration failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> listMyPayments({int limit = 50}) async {
+    try {
+      final result = await _tryQueryByNames(
+        const ['payments:listMyPayments'],
+        {'limit': limit.toString()},
+      );
+      if (result == null || result.toString().isEmpty || result == 'null') {
+        return <Map<String, dynamic>>[];
+      }
+      final decoded = json.decode(result.toString());
+      if (decoded is! List) return <Map<String, dynamic>>[];
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+    } catch (e) {
+      debugPrint('listMyPayments failed: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<Map<String, dynamic>?> getMyPaymentDetail(String paymentId) async {
+    try {
+      final result = await _tryQueryByNames(
+        const ['payments:getMyPaymentDetail'],
+        {'paymentId': paymentId},
+      );
+      if (result == null || result.toString().isEmpty || result == 'null') {
+        return null;
+      }
+      final decoded = json.decode(result.toString());
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (e) {
+      debugPrint('getMyPaymentDetail failed: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getMyPaymentForJob(String jobId) async {
+    try {
+      final result = await _tryQueryByNames(
+        const ['payments:getMyPaymentForJob'],
+        {'jobId': jobId},
+      );
+      if (result == null || result.toString().isEmpty || result == 'null') {
+        return null;
+      }
+      final decoded = json.decode(result.toString());
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (e) {
+      debugPrint('getMyPaymentForJob failed: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> createRapydCheckoutForJob({
+    required String jobId,
+    required String returnUrl,
+    String? cancelUrl,
+    String? idempotencyKey,
+  }) async {
+    try {
+      final result = await ConvexClient.instance.action(
+        name: 'rapyd:createCheckoutForJob',
+        args: {
+          'jobId': jobId,
+          'returnUrl': returnUrl,
+          if (cancelUrl != null) 'cancelUrl': cancelUrl,
+          if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+        },
+      );
+      if (result.isEmpty || result == 'null') return null;
+      final decoded = json.decode(result);
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (e) {
+      debugPrint('createRapydCheckoutForJob failed: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getPaymentsPreflight() async {
+    try {
+      final result = await _tryQueryByNames(
+        const ['paymentsDiagnostics:getPaymentsPreflight'],
+        const {},
+      );
+      if (result == null || result.toString().isEmpty || result == 'null') {
+        return null;
+      }
+      final decoded = json.decode(result.toString());
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (e) {
+      debugPrint('getPaymentsPreflight failed: $e');
+      return null;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> listMyPayoutDestinations() async {
+    try {
+      final result = await _tryQueryByNames(
+        const ['payments:listMyPayoutDestinations'],
+        const {},
+      );
+      if (result == null || result.toString().isEmpty || result == 'null') {
+        return <Map<String, dynamic>>[];
+      }
+      final decoded = json.decode(result.toString());
+      if (decoded is! List) return <Map<String, dynamic>>[];
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+    } catch (e) {
+      debugPrint('listMyPayoutDestinations failed: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<Map<String, dynamic>?> upsertMyPayoutDestination({
+    required String provider,
+    required String type,
+    required String externalRecipientId,
+    String? label,
+    String? country,
+    String? currency,
+    String? last4,
+    bool isDefault = true,
+    String status = 'verified',
+  }) async {
+    try {
+      final result = await ConvexClient.instance.mutation(
+        name: 'payments:upsertMyPayoutDestination',
+        args: {
+          'provider': provider,
+          'type': type,
+          'externalRecipientId': externalRecipientId,
+          if (label != null) 'label': label,
+          if (country != null) 'country': country,
+          if (currency != null) 'currency': currency,
+          if (last4 != null) 'last4': last4,
+          'isDefault': isDefault,
+          'status': status,
+        },
+      );
+      if (result.isEmpty || result == 'null') return null;
+      final decoded = json.decode(result);
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (e) {
+      debugPrint('upsertMyPayoutDestination failed: $e');
+      return null;
+    }
+  }
 }

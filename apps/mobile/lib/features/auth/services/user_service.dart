@@ -115,6 +115,66 @@ class UserService {
     );
   }
 
+  /// Updates instructor dispatch configuration without mutating onboarding fields.
+  ///
+  /// Uses dedicated profile + dispatch mutations to avoid overwriting unrelated
+  /// user data (e.g. name/categories) during map interactions.
+  Future<void> updateDispatchPreferences({
+    required String dispatchMode,
+    List<String>? zoneIds,
+    double? radiusKm,
+    double? latitude,
+    double? longitude,
+    String? address,
+  }) async {
+    // Persist address/location/radius if provided.
+    if (address != null ||
+        latitude != null ||
+        longitude != null ||
+        radiusKm != null) {
+      await _convex.mutation(
+        name: 'users:updateProfile',
+        args: {
+          if (address != null) 'homeAddress': address,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
+          if (radiusKm != null) 'radiusKm': radiusKm,
+        },
+      );
+    }
+
+    // Persist dispatch mode + mode-specific payload.
+    await _convex.mutation(
+      name: 'users:updateDispatchMode',
+      args: {
+        'mode': dispatchMode,
+        if (dispatchMode == 'radius' && latitude != null) 'latitude': latitude,
+        if (dispatchMode == 'radius' && longitude != null)
+          'longitude': longitude,
+        if (dispatchMode == 'radius' && radiusKm != null) 'radiusKm': radiusKm,
+        if (dispatchMode == 'zone' && zoneIds != null) 'zoneIds': zoneIds,
+      },
+    );
+  }
+
+  Future<void> updateSettingsPreferences({
+    bool? notificationsEnabled,
+    bool? regularJobAlerts,
+    bool? sosJobAlerts,
+    String? languageCode,
+  }) async {
+    await _convex.mutation(
+      name: 'users:updateSettingsPreferences',
+      args: {
+        if (notificationsEnabled != null)
+          'notificationsEnabled': notificationsEnabled,
+        if (regularJobAlerts != null) 'regularJobAlerts': regularJobAlerts,
+        if (sosJobAlerts != null) 'sosJobAlerts': sosJobAlerts,
+        if (languageCode != null) 'languageCode': languageCode,
+      },
+    );
+  }
+
   /// Updates the user's FCM token in the backend.
   Future<void> updateFcmToken() async {
     final token = NotificationService.instance.fcmToken;

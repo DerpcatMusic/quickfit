@@ -55,53 +55,6 @@ abstract class _$JobsNotifier extends $Notifier<JobsState> {
   }
 }
 
-@ProviderFor(StudioJobsNotifier)
-final studioJobsProvider = StudioJobsNotifierProvider._();
-
-final class StudioJobsNotifierProvider
-    extends $NotifierProvider<StudioJobsNotifier, JobsState> {
-  StudioJobsNotifierProvider._()
-      : super(
-          from: null,
-          argument: null,
-          retry: null,
-          name: r'studioJobsProvider',
-          isAutoDispose: false,
-          dependencies: null,
-          $allTransitiveDependencies: null,
-        );
-
-  @override
-  String debugGetCreateSourceHash() => _$studioJobsNotifierHash();
-
-  @$internal
-  @override
-  StudioJobsNotifier create() => StudioJobsNotifier();
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(JobsState value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<JobsState>(value),
-    );
-  }
-}
-
-String _$studioJobsNotifierHash() =>
-    r'b1271010dfa933e080fc0c2f09365fc16d18bc3e';
-
-abstract class _$StudioJobsNotifier extends $Notifier<JobsState> {
-  JobsState build();
-  @$mustCallSuper
-  @override
-  void runBuild() {
-    final ref = this.ref as $Ref<JobsState, JobsState>;
-    final element = ref.element as $ClassProviderElement<
-        AnyNotifier<JobsState, JobsState>, JobsState, Object?, Object?>;
-    element.handleCreate(ref, build);
-  }
-}
-
 @ProviderFor(job)
 final jobProvider = JobFamily._();
 

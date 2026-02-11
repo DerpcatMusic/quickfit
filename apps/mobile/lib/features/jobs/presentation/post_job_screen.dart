@@ -10,11 +10,12 @@ import 'package:lucide_icons/lucide_icons.dart';
 // import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 
 import '../../../core/constants/categories.dart';
-import '../../../core/router/app_router.dart';
+import '../../../core/router/app_routes.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../providers/jobs_provider.dart';
+import '../providers/studio_jobs_provider.dart';
 import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
 import 'package:quickfit/core/utils/platform.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 
 class PostJobScreen extends ConsumerStatefulWidget {
   const PostJobScreen({super.key});
@@ -70,17 +71,18 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context)!;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a class title')),
+        SnackBar(content: Text(l10n.postJobPleaseEnterClassTitle)),
       );
       return;
     }
 
     if (_selectedCategory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a category')),
+        SnackBar(content: Text(l10n.postJobPleaseSelectCategory)),
       );
       return;
     }
@@ -88,7 +90,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     final rate = double.tryParse(_rateController.text);
     if (rate == null || rate <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid rate')),
+        SnackBar(content: Text(l10n.postJobPleaseEnterValidRate)),
       );
       return;
     }
@@ -99,9 +101,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     // Check both lat/lng from auth state
     if (auth.latitude == null || auth.longitude == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text(
-                'Studio address not set. Please complete onboarding first.')),
+        SnackBar(content: Text(l10n.postJobStudioAddressNotSet)),
       );
       // Navigate to onboarding/profile setup
       context.push(AppRoutes.onboarding);
@@ -113,14 +113,14 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
     if (startDateTime.isBefore(DateTime.now())) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Start time must be in the future')),
+        SnackBar(content: Text(l10n.postJobStartTimeFuture)),
       );
       return;
     }
 
     if (endDateTime.isBefore(startDateTime) || endDateTime == startDateTime) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('End time must be after start time')),
+        SnackBar(content: Text(l10n.postJobEndTimeAfterStart)),
       );
       return;
     }
@@ -147,11 +147,11 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       if (jobId != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Row(
+            content: Row(
               children: [
                 Icon(LucideIcons.checkCircle2, color: Colors.white),
                 SizedBox(width: 8),
-                Text('Job posted! Instructors are being notified.'),
+                Text(l10n.postJobSuccessMessage),
               ],
             ),
             backgroundColor: Colors.green[600],
@@ -165,11 +165,12 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: adaptiveAppBar(
         context,
-        title: 'Post a Job',
+        title: l10n.postJobTitle,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -179,37 +180,37 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Title
-              _buildSectionTitle('Class Title'),
+              _buildSectionTitle(l10n.postJobClassTitle),
               const SizedBox(height: 12),
               _buildTitleInput(),
               const SizedBox(height: 24),
 
               // Category selection
-              _buildSectionTitle('Class Type'),
+              _buildSectionTitle(l10n.postJobClassType),
               const SizedBox(height: 12),
               _buildCategorySelector(),
               const SizedBox(height: 24),
 
               // Date selection
-              _buildSectionTitle('Date'),
+              _buildSectionTitle(l10n.postJobDate),
               const SizedBox(height: 12),
               _buildDateSelector(),
               const SizedBox(height: 24),
 
               // Time selection
-              _buildSectionTitle('Time'),
+              _buildSectionTitle(l10n.postJobTime),
               const SizedBox(height: 12),
               _buildTimeSelector(),
               const SizedBox(height: 24),
 
               // Rate
-              _buildSectionTitle('Rate (ILS)'),
+              _buildSectionTitle(l10n.postJobRateIls),
               const SizedBox(height: 12),
               _buildRateInput(),
               const SizedBox(height: 24),
 
               // Notes
-              _buildSectionTitle('Notes (optional)'),
+              _buildSectionTitle(l10n.postJobNotesOptional),
               const SizedBox(height: 12),
               _buildNotesInput(),
               const SizedBox(height: 32),
@@ -240,6 +241,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   }
 
   Widget _buildTitleInput() {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -250,7 +252,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         controller: _titleController,
         style: const TextStyle(fontWeight: FontWeight.w600),
         decoration: InputDecoration(
-          hintText: 'e.g. Morning Vinyasa Flow',
+          hintText: l10n.postJobTitleHint,
           hintStyle:
               TextStyle(color: Colors.grey[400], fontWeight: FontWeight.normal),
           border: InputBorder.none,
@@ -348,7 +350,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       children: [
         Expanded(
           child: _buildTimePicker(
-            label: 'Start',
+            label: AppLocalizations.of(context)!.postJobStartLabel,
             time: _startTime,
             onChanged: (time) => setState(() => _startTime = time),
           ),
@@ -356,7 +358,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         const SizedBox(width: 16),
         Expanded(
           child: _buildTimePicker(
-            label: 'End',
+            label: AppLocalizations.of(context)!.postJobEndLabel,
             time: _endTime,
             onChanged: (time) => setState(() => _endTime = time),
           ),
@@ -444,9 +446,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
-                hintText: '0',
+                hintText: AppLocalizations.of(context)!.postJobRateHint,
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -479,6 +481,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   }
 
   Widget _buildNotesInput() {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -489,7 +492,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         controller: _notesController,
         maxLines: 3,
         decoration: InputDecoration(
-          hintText: 'Any special requirements or notes for the instructor...',
+          hintText: l10n.postJobNotesHint,
           hintStyle: TextStyle(color: Colors.grey[400]),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.all(16),
@@ -499,6 +502,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   }
 
   Widget _buildSosWarning() {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -527,7 +531,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'SOS Job - 15% Rate Boost Applied',
+                  l10n.postJobSosTitle,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: Colors.orange[800],
@@ -535,7 +539,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Jobs starting within 3 hours get priority notifications and boosted rates to attract instructors faster.',
+                  l10n.postJobSosDescription,
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.orange[700],
@@ -551,6 +555,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   Widget _buildSubmitButton() {
     final isCupertino = isCupertinoPlatform(context);
+    final l10n = AppLocalizations.of(context)!;
     return SizedBox(
       width: double.infinity,
       height: 56,
@@ -572,7 +577,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                         const Icon(LucideIcons.send, size: 18),
                         const SizedBox(width: 8),
                         Text(
-                          'Post Job • ILS $_displayRate',
+                          l10n.postJobButtonWithRate(_displayRate.toString()),
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -598,7 +603,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                         const Icon(LucideIcons.send, size: 18),
                         const SizedBox(width: 8),
                         Text(
-                          'Post Job • ILS $_displayRate',
+                          l10n.postJobButtonWithRate(_displayRate.toString()),
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,

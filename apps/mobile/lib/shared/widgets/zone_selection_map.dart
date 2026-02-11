@@ -7,11 +7,13 @@ library;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:quickfit/shared/widgets/quickfit_map.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:quickfit/core/services/map_style_service.dart';
 import 'package:quickfit/core/models/zone.dart';
 import 'package:quickfit/core/constants/map_constants.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 
 // Zone and CityCluster are now imported from core/models/zone.dart
 
@@ -37,6 +39,7 @@ class ZoneSelectionMap extends StatefulWidget {
   final List<QuickFitJobMarker>? jobs;
   final Function(String jobId)? onJobTap;
   final double topPadding;
+  final bool interactionEnabled;
 
   const ZoneSelectionMap({
     super.key,
@@ -48,6 +51,7 @@ class ZoneSelectionMap extends StatefulWidget {
     this.jobs,
     this.onJobTap,
     this.topPadding = 0,
+    this.interactionEnabled = true,
   });
 
   @override
@@ -60,6 +64,12 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
   String _searchQuery = '';
   final _searchController = TextEditingController();
   bool _isMapReady = false;
+  bool _zoneLayersReady = false;
+  bool _cityLayersReady = false;
+  bool _jobLayersReady = false;
+  final Set<String> _activeLayerIds = <String>{};
+  String? _activeStyleString;
+  int _styleGeneration = 0;
   List<CityCluster> _cityClusters = [];
   int _jobsSignature = 0;
 
@@ -165,9 +175,24 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
   }
 
   Future<void> _onStyleLoaded() async {
+    final activeGeneration = _styleGeneration;
     if (_controller == null) return;
-    setState(() => _isMapReady = true);
-    await _setupLayers();
+    _zoneLayersReady = false;
+    _cityLayersReady = false;
+    _jobLayersReady = false;
+    _isMapReady = false;
+    _activeLayerIds.clear();
+    var didSetupLayers = false;
+    try {
+      await _setupLayers();
+      didSetupLayers = true;
+    } catch (e) {
+      debugPrint('ZoneSelectionMap style setup error: $e');
+    }
+    if (!mounted || activeGeneration != _styleGeneration) return;
+    if (mounted) {
+      setState(() => _isMapReady = didSetupLayers);
+    }
   }
 
   Future<void> _setupLayers() async {
@@ -208,6 +233,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       ),
       // NO minzoom - zones always visible!
     );
+    _activeLayerIds.add('zones-unselected');
 
     // Zone borders - always visible
     await controller.addLineLayer(
@@ -220,6 +246,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       ),
       // NO minzoom - zones always visible!
     );
+    _activeLayerIds.add('zones-border');
 
     // --------------------------------------------------------------------------
     // SELECTED ZONES - Prominent highlight
@@ -233,6 +260,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
         fillOpacity: MapConstants.zoneSelectedOpacity,
       ),
     );
+    _activeLayerIds.add('zones-selected-fill');
 
     await controller.addLineLayer(
       'zones-selected',
@@ -243,6 +271,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
         lineOpacity: 1.0,
       ),
     );
+    _activeLayerIds.add('zones-selected-border');
 
     // --------------------------------------------------------------------------
     // CITY LABELS - Just text, no ugly polygons
@@ -260,6 +289,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       ),
       maxzoom: MapConstants.cityToZoneZoomThreshold,
     );
+    _activeLayerIds.add('cities-circles');
 
     await controller.addSymbolLayer(
       'cities',
@@ -276,6 +306,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       ),
       maxzoom: MapConstants.cityToZoneZoomThreshold,
     );
+    _activeLayerIds.add('cities-labels');
 
     // --------------------------------------------------------------------------
     // ZONE LABELS - At higher zoom
@@ -294,6 +325,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
       ),
       minzoom: MapConstants.zoneLabelMinZoom,
     );
+    _activeLayerIds.add('zones-labels');
+    _zoneLayersReady = true;
+    _cityLayersReady = true;
 
     // Jobs (Top Layer)
     await _addJobSource();
@@ -313,6 +347,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
           circleStrokeColor: '#FFFFFF',
         ),
       );
+      _activeLayerIds.add('jobs-circles');
 
       await controller.addSymbolLayer(
         'jobs',
@@ -334,6 +369,8 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
           textAnchor: 'top',
         ),
       );
+      _activeLayerIds.add('jobs-labels');
+      _jobLayersReady = true;
     }
     if (widget.jobs != null) {
       _jobsSignature = _computeJobsSignature(widget.jobs!);
@@ -536,15 +573,19 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
   }
 
   void _onMapClick(math.Point<double> screenPoint, LatLng coordinates) async {
+    if (!mounted || !widget.interactionEnabled || !_isMapReady) return;
     if (_controller == null) return;
     final zoom = _controller!.cameraPosition?.zoom ?? 0;
 
     // --------------------------------------------------------------------------
     // 1. Check for Jobs First (Any Zoom)
     // --------------------------------------------------------------------------
-    if (widget.jobs != null) {
-      final jobFeatures = await _controller!.queryRenderedFeatures(
-          screenPoint, ['jobs-circles', 'jobs-labels'], null);
+    if (widget.jobs != null && _jobLayersReady) {
+      final jobFeatures = await _safeQueryRenderedFeatures(
+        screenPoint,
+        ['jobs-circles', 'jobs-labels'],
+      );
+      if (!mounted) return;
 
       if (jobFeatures.isNotEmpty) {
         final props = jobFeatures.first['properties'];
@@ -560,11 +601,13 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
     // 2. ZONE CLICK - Try zones at ALL zoom levels
     // --------------------------------------------------------------------------
     // Query zone layers - they're now visible at all zooms
-    final zoneFeatures = await _controller!.queryRenderedFeatures(
-      screenPoint,
-      ['zones-unselected', 'zones-selected-fill', 'zones-border'],
-      null,
-    );
+    final zoneFeatures = _zoneLayersReady
+        ? await _safeQueryRenderedFeatures(
+            screenPoint,
+            ['zones-unselected', 'zones-selected-fill', 'zones-border'],
+          )
+        : const <dynamic>[];
+    if (!mounted) return;
 
     if (zoneFeatures.isNotEmpty) {
       final props = zoneFeatures.first['properties'];
@@ -587,11 +630,13 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
     // 3. CITY LABEL CLICK - At low zoom, toggle city zones
     // --------------------------------------------------------------------------
     if (zoom < MapConstants.cityToZoneZoomThreshold) {
-      final cityFeatures = await _controller!.queryRenderedFeatures(
-        screenPoint,
-        ['cities-circles', 'cities-labels'],
-        null,
-      );
+      final cityFeatures = _cityLayersReady
+          ? await _safeQueryRenderedFeatures(
+              screenPoint,
+              ['cities-circles', 'cities-labels'],
+            )
+          : const <dynamic>[];
+      if (!mounted) return;
 
       if (cityFeatures.isNotEmpty) {
         final props = cityFeatures.first['properties'];
@@ -624,6 +669,24 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
     }
   }
 
+  Future<List<dynamic>> _safeQueryRenderedFeatures(
+    math.Point<double> screenPoint,
+    List<String> layerIds,
+  ) async {
+    final controller = _controller;
+    if (controller == null) return const <dynamic>[];
+    if (!_isMapReady) return const <dynamic>[];
+    final activeLayers =
+        layerIds.where((layerId) => _activeLayerIds.contains(layerId)).toList();
+    if (activeLayers.isEmpty) return const <dynamic>[];
+    try {
+      return await controller.queryRenderedFeatures(
+          screenPoint, activeLayers, null);
+    } catch (_) {
+      return const <dynamic>[];
+    }
+  }
+
   bool _isPointInPolygon(LatLng point, List<LatLng> polygon) {
     bool inside = false;
     final x = point.longitude;
@@ -644,6 +707,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
   }
 
   void _toggleZoneSelection(String zoneId) {
+    if (!mounted) return;
     setState(() {
       if (_selectedZoneIds.contains(zoneId)) {
         _selectedZoneIds.remove(zoneId);
@@ -669,6 +733,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
   }
 
   void _selectZone(Zone zone) {
+    if (!mounted) return;
     if (!_selectedZoneIds.contains(zone.id)) {
       _toggleZoneSelection(zone.id);
     }
@@ -683,6 +748,9 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
     final media = MediaQuery.of(context);
     final topInset = media.padding.top;
     final bottomInset = media.padding.bottom;
+    final l10n = AppLocalizations.of(context)!;
+    final styleString = MapStyleService.getStyleString(theme.brightness);
+    _markStyleReload(styleString);
 
     // Filter zones for search
     final results = _filteredZones;
@@ -701,9 +769,13 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
               target: widget.initialCenter ?? _israelCenter,
               zoom: widget.initialZoom,
             ),
-            styleString: MapStyleService.getStyleString(theme.brightness),
+            styleString: styleString,
             onMapClick: _onMapClickWithDelay,
             trackCameraPosition: true,
+            rotateGesturesEnabled: widget.interactionEnabled,
+            scrollGesturesEnabled: widget.interactionEnabled,
+            zoomGesturesEnabled: widget.interactionEnabled,
+            tiltGesturesEnabled: false,
           ),
         ),
 
@@ -712,151 +784,158 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
           top: 16 + widget.topPadding + topInset,
           left: 16,
           right: 16,
-          child: Column(
-            children: [
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search zones or cities...',
-                    prefixIcon: const Icon(LucideIcons.search),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(LucideIcons.x),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                  ),
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                ),
-              ),
-              if (results.isNotEmpty)
+          child: PointerInterceptor(
+            child: Column(
+              children: [
                 Card(
-                  margin: const EdgeInsets.only(top: 4),
-                  child: Container(
-                    constraints: const BoxConstraints(maxHeight: 280),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${results.length} matched',
-                                style: theme.textTheme.bodySmall
-                                    ?.copyWith(color: theme.hintColor),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  final ids = results.map((z) => z.id).toSet();
-                                  setState(() => _selectedZoneIds.addAll(ids));
-                                  _updateSelectedSource();
-                                  widget.onSelectionChanged
-                                      ?.call(_selectedZoneIds);
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                                child: const Text('Select All'),
-                              ),
-                            ],
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: l10n.mapSearchZonesOrCitiesHint,
+                      prefixIcon: const Icon(LucideIcons.search),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(LucideIcons.x),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                  ),
+                ),
+                if (results.isNotEmpty)
+                  Card(
+                    margin: const EdgeInsets.only(top: 4),
+                    child: Container(
+                      constraints: const BoxConstraints(maxHeight: 280),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  l10n.mapMatchedCount(results.length),
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(color: theme.hintColor),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    final ids =
+                                        results.map((z) => z.id).toSet();
+                                    setState(
+                                        () => _selectedZoneIds.addAll(ids));
+                                    _updateSelectedSource();
+                                    widget.onSelectionChanged
+                                        ?.call(_selectedZoneIds);
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                  },
+                                  child: Text(l10n.mapSelectAll),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        // City Match Section
-                        if (_searchQuery.isNotEmpty) ...[
-                          (() {
-                            final cityMatch = _cityClusters.firstWhere(
-                                (c) =>
-                                    c.name.toLowerCase() ==
-                                    _searchQuery.toLowerCase(),
-                                orElse: () => CityCluster(
-                                    name: '',
-                                    centroid: const LatLng(0, 0),
-                                    zoneCount: 0));
+                          // City Match Section
+                          if (_searchQuery.isNotEmpty) ...[
+                            (() {
+                              final cityMatch = _cityClusters.firstWhere(
+                                  (c) =>
+                                      c.name.toLowerCase() ==
+                                      _searchQuery.toLowerCase(),
+                                  orElse: () => CityCluster(
+                                      name: '',
+                                      centroid: const LatLng(0, 0),
+                                      zoneCount: 0));
 
-                            if (cityMatch.name.isNotEmpty) {
-                              // Simple visual for City Match
-                              return ListTile(
-                                leading: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                      color: theme.colorScheme.primaryContainer,
-                                      shape: BoxShape.circle),
-                                  child: Icon(LucideIcons.building,
-                                      size: 16,
-                                      color: theme.colorScheme.primary),
-                                ),
-                                title: Text('Select all in ${cityMatch.name}'),
-                                subtitle: Text('${cityMatch.zoneCount} zones'),
-                                trailing: const Icon(LucideIcons.chevronRight,
-                                    size: 16),
-                                onTap: () {
-                                  final zonesInCity = widget.zones
-                                      .where((z) =>
-                                          z.city?.trim() == cityMatch.name)
-                                      .map((z) => z.id)
-                                      .toList();
-                                  setState(() {
-                                    _selectedZoneIds.addAll(zonesInCity);
-                                    _searchQuery = '';
-                                  });
-                                  _searchController.clear();
-                                  _updateSelectedSource();
-                                  widget.onSelectionChanged
-                                      ?.call(_selectedZoneIds);
-                                  _controller?.animateCamera(
-                                      CameraUpdate.newLatLngZoom(
-                                          cityMatch.centroid, 13));
-                                },
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          })(),
-                          const Divider(height: 1),
-                        ],
-                        Flexible(
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: results.length,
-                            itemBuilder: (context, index) {
-                              final zone = results[index];
-                              final isSelected =
-                                  _selectedZoneIds.contains(zone.id);
-                              return ListTile(
-                                dense: true,
-                                leading: Icon(
-                                  isSelected
-                                      ? LucideIcons.checkCircle2
-                                      : LucideIcons.mapPin,
-                                  color: isSelected
-                                      ? theme.colorScheme.primary
+                              if (cityMatch.name.isNotEmpty) {
+                                return ListTile(
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                        color:
+                                            theme.colorScheme.primaryContainer,
+                                        shape: BoxShape.circle),
+                                    child: Icon(LucideIcons.building,
+                                        size: 16,
+                                        color: theme.colorScheme.primary),
+                                  ),
+                                  title: Text(
+                                      l10n.mapSelectAllInCity(cityMatch.name)),
+                                  subtitle: Text(l10n
+                                      .zonesSelectedLabel(cityMatch.zoneCount)),
+                                  trailing: const Icon(LucideIcons.chevronRight,
+                                      size: 16),
+                                  onTap: () {
+                                    final zonesInCity = widget.zones
+                                        .where((z) =>
+                                            z.city?.trim() == cityMatch.name)
+                                        .map((z) => z.id)
+                                        .toList();
+                                    setState(() {
+                                      _selectedZoneIds.addAll(zonesInCity);
+                                      _searchQuery = '';
+                                    });
+                                    _searchController.clear();
+                                    _updateSelectedSource();
+                                    widget.onSelectionChanged
+                                        ?.call(_selectedZoneIds);
+                                    _controller?.animateCamera(
+                                        CameraUpdate.newLatLngZoom(
+                                            cityMatch.centroid, 13));
+                                  },
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            })(),
+                            const Divider(height: 1),
+                          ],
+                          Flexible(
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: results.length,
+                              itemBuilder: (context, index) {
+                                final zone = results[index];
+                                final isSelected =
+                                    _selectedZoneIds.contains(zone.id);
+                                return ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    isSelected
+                                        ? LucideIcons.checkCircle2
+                                        : LucideIcons.mapPin,
+                                    color: isSelected
+                                        ? theme.colorScheme.primary
+                                        : null,
+                                    size: 18,
+                                  ),
+                                  title: Text(zone.nameHebrew),
+                                  subtitle: zone.city != null
+                                      ? Text(zone.city!)
                                       : null,
-                                  size: 18,
-                                ),
-                                title: Text(zone.nameHebrew),
-                                subtitle:
-                                    zone.city != null ? Text(zone.city!) : null,
-                                onTap: () => _selectZone(zone),
-                              );
-                            },
+                                  onTap: () => _selectZone(zone),
+                                );
+                              },
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
 
@@ -869,7 +948,7 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
-                '${_selectedZoneIds.length} zones selected',
+                l10n.zonesSelectedLabel(_selectedZoneIds.length),
                 style: theme.textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.onPrimaryContainer,
@@ -892,12 +971,23 @@ class _ZoneSelectionMapState extends State<ZoneSelectionMap> {
                 widget.onSelectionChanged?.call(_selectedZoneIds);
               },
               icon: const Icon(LucideIcons.trash2),
-              label: const Text('Clear All'),
+              label: Text(l10n.mapClearAll),
               backgroundColor: theme.colorScheme.error,
               foregroundColor: theme.colorScheme.onError,
             ),
           ),
       ],
     );
+  }
+
+  void _markStyleReload(String styleString) {
+    if (_activeStyleString == styleString) return;
+    _activeStyleString = styleString;
+    _styleGeneration += 1;
+    _isMapReady = false;
+    _zoneLayersReady = false;
+    _cityLayersReady = false;
+    _jobLayersReady = false;
+    _activeLayerIds.clear();
   }
 }

@@ -9,7 +9,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:quickfit/l10n/app_localizations.dart';
 
-import '../../../core/router/app_router.dart';
+import '../../../core/router/app_routes.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/platform.dart';
@@ -144,23 +144,23 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
             final isSelected = _selectedCategory == cat.id;
             if (isCupertino) {
               return CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 color: isSelected
                     ? theme.colorScheme.primary
                     : theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
                 onPressed: () {
-                  setSheetState(() =>
-                      _selectedCategory = isSelected ? null : cat.id);
-                  setState(() =>
-                      _selectedCategory = isSelected ? null : cat.id);
+                  setSheetState(
+                      () => _selectedCategory = isSelected ? null : cat.id);
+                  setState(
+                      () => _selectedCategory = isSelected ? null : cat.id);
                 },
                 child: Text(
                   cat.nameEn,
                   style: TextStyle(
-                    color: isSelected
-                        ? Colors.white
-                        : theme.colorScheme.onSurface,
+                    color:
+                        isSelected ? Colors.white : theme.colorScheme.onSurface,
                   ),
                 ),
               );
@@ -225,6 +225,7 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
       ],
     );
   }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -508,21 +509,48 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
       return _buildEmptyFiltersState(context);
     }
 
+    final rows = <_JobsListRow>[
+      if (sosJobs.isNotEmpty)
+        _JobsListRow.header(
+          icon: LucideIcons.zap,
+          title: l10n.urgentJobsTitle,
+          count: sosJobs.length,
+          isUrgent: true,
+        ),
+      if (sosJobs.isNotEmpty) const _JobsListRow.spacer(12),
+      ...sosJobs.map(_JobsListRow.job),
+      if (sosJobs.isNotEmpty) const _JobsListRow.spacer(24),
+      if (regularJobs.isNotEmpty)
+        _JobsListRow.header(
+          icon: LucideIcons.briefcase,
+          title: l10n.availableJobsTitle,
+          count: regularJobs.length,
+        ),
+      if (regularJobs.isNotEmpty) const _JobsListRow.spacer(12),
+      ...regularJobs.map(_JobsListRow.job),
+      const _JobsListRow.spacer(32),
+      const _JobsListRow.pullToRefreshHint(),
+      const _JobsListRow.spacer(16),
+    ];
+
     return SliverPadding(
       padding: const EdgeInsets.all(16),
       sliver: SliverList(
-        delegate: SliverChildListDelegate([
-          // SOS Jobs section
-          if (sosJobs.isNotEmpty) ...[
-            _buildSectionHeader(
-              context,
-              icon: LucideIcons.zap,
-              title: l10n.urgentJobsTitle,
-              count: sosJobs.length,
-              isUrgent: true,
-            ),
-            const SizedBox(height: 12),
-            ...sosJobs.map((job) => Padding(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final row = rows[index];
+            switch (row.type) {
+              case _JobsListRowType.header:
+                return _buildSectionHeader(
+                  context,
+                  icon: row.icon!,
+                  title: row.title!,
+                  count: row.count!,
+                  isUrgent: row.isUrgent,
+                );
+              case _JobsListRowType.job:
+                final job = row.job!;
+                return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: JobCard(
                     job: job,
@@ -533,45 +561,22 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                     onTap: () => context
                         .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
                   ),
-                )),
-            const SizedBox(height: 24),
-          ],
-
-          // Regular jobs section
-          if (regularJobs.isNotEmpty) ...[
-            _buildSectionHeader(
-              context,
-              icon: LucideIcons.briefcase,
-              title: l10n.availableJobsTitle,
-              count: regularJobs.length,
-            ),
-            const SizedBox(height: 12),
-            ...regularJobs.map((job) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: JobCard(
-                    job: job,
-                    isLoading: _claimingJobId == job.id,
-                    pendingStatus:
-                        jobsState.getPendingOperation(job.id)?.status,
-                    onClaim: () => _claimJob(job),
-                    onTap: () => context
-                        .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
+                );
+              case _JobsListRowType.pullToRefreshHint:
+                return Center(
+                  child: Text(
+                    l10n.pullToRefresh,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: context.colors.mutedText,
+                        ),
                   ),
-                )),
-          ],
-
-          // Pull to refresh hint
-          const SizedBox(height: 32),
-          Center(
-            child: Text(
-              l10n.pullToRefresh,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.colors.mutedText,
-                  ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ]),
+                );
+              case _JobsListRowType.spacer:
+                return SizedBox(height: row.height!);
+            }
+          },
+          childCount: rows.length,
+        ),
       ),
     );
   }
@@ -645,4 +650,48 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
       ),
     );
   }
+}
+
+enum _JobsListRowType { header, job, spacer, pullToRefreshHint }
+
+class _JobsListRow {
+  const _JobsListRow._({
+    required this.type,
+    this.icon,
+    this.title,
+    this.count,
+    this.isUrgent = false,
+    this.job,
+    this.height,
+  });
+
+  const _JobsListRow.header({
+    required IconData icon,
+    required String title,
+    required int count,
+    bool isUrgent = false,
+  }) : this._(
+          type: _JobsListRowType.header,
+          icon: icon,
+          title: title,
+          count: count,
+          isUrgent: isUrgent,
+        );
+
+  const _JobsListRow.job(Job job)
+      : this._(type: _JobsListRowType.job, job: job);
+
+  const _JobsListRow.spacer(double height)
+      : this._(type: _JobsListRowType.spacer, height: height);
+
+  const _JobsListRow.pullToRefreshHint()
+      : this._(type: _JobsListRowType.pullToRefreshHint);
+
+  final _JobsListRowType type;
+  final IconData? icon;
+  final String? title;
+  final int? count;
+  final bool isUrgent;
+  final Job? job;
+  final double? height;
 }

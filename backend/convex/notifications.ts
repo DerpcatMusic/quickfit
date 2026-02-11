@@ -83,9 +83,9 @@ export const dispatchJobNotifications = internalAction({
     // ========================================
     // 5. Batch push notifications
     // ========================================
-    const sosPrefix = job.sosBoostApplied ? "🚨 SOS " : "";
+    const sosPrefix = job.sosBoostApplied ? "SOS " : "";
     const title = `${sosPrefix}New ${job.category} job nearby!`;
-    const body = `₪${job.currentRate.toFixed(0)} • ${job.address}`;
+    const body = `NIS ${job.currentRate.toFixed(0)} - ${job.address}`;
     
     const BATCH_SIZE = 500;
     let dispatchFailed = false;
@@ -197,7 +197,7 @@ export const notifyClaimAccepted = internalAction({
     const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId: claim.jobId });
     if (!job) return;
     
-    const title = "Claim accepted! 🎉";
+    const title = "Claim accepted!";
     const body = `You're confirmed for "${job.title}"`;
     
     await ctx.runAction(internal.actions.sendPush.send, {
@@ -311,7 +311,7 @@ export const notifyStudioOfBackupClaim = internalAction({
       userId: backupInstructorId,
     });
     
-    const title = "🛡️ Backup instructor available!";
+    const title = "Backup instructor available!";
     const body = `${primaryInstructor?.name || "Primary"} claimed, ${backupInstructor?.name || "Backup"} as backup for "${job.title}"`;
     
     await ctx.runAction(internal.actions.sendPush.send, {
@@ -351,7 +351,7 @@ export const notifyBackupPromoted = internalAction({
     });
     if (!instructor?.fcmToken) return;
     
-    const title = "🎉 You're now the primary instructor!";
+    const title = "You are now the primary instructor!";
     const body = `The original instructor withdrew. You're now confirmed for "${job.title}"`;
     
     await ctx.runAction(internal.actions.sendPush.send, {
@@ -378,11 +378,21 @@ export const notifyBackupPromoted = internalAction({
     });
     
     if (studio?.fcmToken) {
+      const studioTitle = "Backup instructor promoted";
+      const studioBody = `${instructor.name} is now your primary instructor for "${job.title}"`;
       await ctx.runAction(internal.actions.sendPush.send, {
         fcmToken: studio.fcmToken,
-        title: "🔄 Backup instructor promoted",
-        body: `${instructor.name} is now your primary instructor for "${job.title}"`,
+        title: studioTitle,
+        body: studioBody,
         data: { type: "backup_promoted_studio", jobId, newPrimaryInstructorId },
+      });
+
+      await ctx.runMutation(internal.notifications.logNotification, {
+        userId: studio._id,
+        jobId,
+        type: "backup_promoted_studio",
+        title: studioTitle,
+        body: studioBody,
       });
     }
   },
@@ -424,3 +434,4 @@ export const logNotification = internalMutation({
     });
   },
 });
+

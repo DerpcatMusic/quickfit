@@ -80,4 +80,50 @@ class HiveService {
       await mutation.save();
     }
   }
+
+  Future<bool> acquireLock({
+    required String key,
+    required String owner,
+    Duration ttl = const Duration(seconds: 30),
+  }) async {
+    final now = DateTime.now();
+    final lock = cacheBox.get(key);
+    if (lock is Map) {
+      final lockOwner = lock['owner'] as String?;
+      final expiresAtMs = lock['expiresAt'] as int?;
+      if (lockOwner != null &&
+          expiresAtMs != null &&
+          DateTime.fromMillisecondsSinceEpoch(expiresAtMs).isAfter(now)) {
+        return false;
+      }
+    }
+
+    await cacheBox.put(key, {
+      'owner': owner,
+      'expiresAt': now.add(ttl).millisecondsSinceEpoch,
+    });
+    return true;
+  }
+
+  Future<void> refreshLock({
+    required String key,
+    required String owner,
+    Duration ttl = const Duration(seconds: 30),
+  }) async {
+    final now = DateTime.now();
+    await cacheBox.put(key, {
+      'owner': owner,
+      'expiresAt': now.add(ttl).millisecondsSinceEpoch,
+    });
+  }
+
+  Future<void> releaseLock({
+    required String key,
+    required String owner,
+  }) async {
+    final lock = cacheBox.get(key);
+    if (lock is Map && lock['owner'] == owner) {
+      await cacheBox.delete(key);
+    }
+  }
 }

@@ -35,6 +35,13 @@ export const verifyCertificate = internalAction({
       throw new Error("Verification storageId is missing");
     }
 
+    const owner = await ctx.runQuery(internal.storage.getFileOwnerByStorageIdInternal, {
+      storageId: verification.storageId,
+    });
+    if (!owner || owner.userId !== verification.userId) {
+      throw new Error("Verification file ownership mismatch");
+    }
+
     // Fetch document from Convex storage using a signed URL
     const signedUrl = await ctx.storage.getUrl(verification.storageId);
     if (!signedUrl) {

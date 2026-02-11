@@ -4,7 +4,6 @@
   "loading": "טוען...",
   "pageNotFound": "העמוד לא נמצא",
   "goHome": "לדף הבית",
-
   "loginTagline": "מצא מחליפי מדריכים מהר",
   "continueWithGoogle": "המשך עם Google",
   "continueWithApple": "המשך עם Apple",
@@ -21,6 +20,8 @@
   "emailInvalid": "הזן אימייל תקין",
   "passwordRequired": "נדרשת סיסמה",
   "passwordMinLength": "סיסמה חייבת להיות לפחות 6 תווים",
+  "confirmPasswordLabel": "אימות סיסמה",
+  "passwordsDoNotMatch": "הסיסמאות אינן תואמות",
   "alreadyHaveAccount": "כבר יש לך חשבון? התחבר",
   "dontHaveAccount": "אין לך חשבון? הירשם",
   "forgotPassword": "שכחת סיסמה?",
@@ -30,7 +31,6 @@
   "and": "ו",
   "termsOfService": "תנאי שימוש",
   "privacyPolicy": "מדיניות פרטיות",
-
   "profileInfo": "פרטי פרופיל",
   "phoneNumber": "מספר טלפון",
   "homeAddress": "כתובת בית",
@@ -43,6 +43,13 @@
   "account": "חשבון",
   "notSet": "לא הוגדר",
   "email": "אימייל",
+  "changeEmail": "שינוי אימייל",
+  "newEmailLabel": "אימייל חדש",
+  "currentPasswordLabel": "סיסמה נוכחית",
+  "currentPasswordRequired": "נדרשת סיסמה נוכחית",
+  "emailUnchanged": "יש להזין אימייל שונה",
+  "sendVerification": "שלח אימות",
+  "emailChangeVerificationSent": "נשלח מייל אימות. אשר אותו כדי להשלים את שינוי האימייל.",
   "workRadius": "רדיוס עבודה",
   "teachingCategories": "קטגוריות הוראה",
   "classTypes": "סוגי שיעורים",
@@ -62,7 +69,6 @@
   "verify": "אימות",
   "verifiedCredentials": "המסמכים שלך אומתו",
   "uploadCredentials": "העלה תעודה כדי לקבל אימות",
-
   "notificationsLabelOff": "כבוי",
   "notificationsLabelAll": "הכל",
   "notificationsLabelSosOnly": "רק SOS",
@@ -72,12 +78,43 @@
   "notificationsEnable": "אפשר התראות",
   "notificationsRegular": "עבודות רגילות",
   "notificationsSos": "עבודות SOS",
+  "sosLabel": "SOS",
   "save": "שמור",
   "languageRestartPrompt": "יש להפעיל מחדש את האפליקציה כדי להחיל את השפה.",
   "languageEnglish": "English",
   "languageHebrew": "עברית",
   "close": "סגור",
   "editProfile": "עריכת פרופיל",
+  "profileRoleStudio": "סטודיו",
+  "profileRoleInstructor": "מדריך",
+  "profileAnonymousUser": "משתמש אנונימי",
+  "profileProviderGoogle": "Google",
+  "profileProviderApple": "Apple",
+  "profileProviderEmail": "אימייל",
+  "profileProviderOauth": "OAuth",
+  "profileEmailManagedByProvider": "האימייל מנוהל על ידי {providersLabel} ולא ניתן לערוך אותו כרגע ישירות באפליקציה.",
+  "@profileEmailManagedByProvider": {
+    "placeholders": {
+      "providersLabel": {}
+    }
+  },
+  "profileEmailManagedByProviderWithFallback": "האימייל מנוהל על ידי {providersLabel} ולא ניתן לערוך אותו כרגע ישירות באפליקציה. אפשר גם להוסיף התחברות עם סיסמה כאפשרות גיבוי.",
+  "@profileEmailManagedByProviderWithFallback": {
+    "placeholders": {
+      "providersLabel": {}
+    }
+  },
+  "profileDisplayNameRequired": "שם תצוגה הוא שדה חובה",
+  "profileVerifiedInstructor": "מדריך מאומת",
+  "profileAddPasswordDescription": "הוסף סיסמה כדי לאפשר התחברות עם אימייל ({email})",
+  "@profileAddPasswordDescription": {
+    "placeholders": {
+      "email": {}
+    }
+  },
+  "profilePasswordPlaceholder": "סיסמה (6+ תווים)",
+  "profilePasswordAddedSuccess": "הסיסמה נוספה! כעת אפשר להתחבר עם אימייל.",
+  "profilePasswordAddFailed": "נכשל בהוספת סיסמה",
   "filterJobsTitle": "סינון עבודות",
   "reset": "איפוס",
   "categoryLabel": "קטגוריה",
@@ -116,14 +153,12 @@
   "supportPlaceholder": "פרטי תמיכה עדיין לא הוגדרו. הוסף אותם בהגדרות כשיהיה מוכן.",
   "termsPlaceholder": "תנאי השימוש עדיין לא הוגדרו. הוסף כאן את הטקסט כשיהיה מוכן.",
   "privacyPlaceholder": "מדיניות הפרטיות עדיין לא הוגדרה. הוסף כאן את הטקסט כשיהיה מוכן.",
-
   "versionLabel": "Quickfit v{version}",
   "@versionLabel": {
     "placeholders": {
       "version": {}
     }
   },
-
   "radiusKmLabel": "{value} ק\"מ",
   "@radiusKmLabel": {
     "placeholders": {
@@ -134,6 +169,293 @@
   "@zonesSelectedLabel": {
     "placeholders": {
       "count": {}
+    }
+  },
+  "calendarTitle": "Calendar",
+  "syncedAt": "Synced {time}",
+  "@syncedAt": {
+    "placeholders": {
+      "time": {}
+    }
+  },
+  "noJobsInThreeDayWindow": "No jobs in this 3-day window.",
+  "scheduleHoursCompact": "{hours}ש׳",
+  "@scheduleHoursCompact": {
+    "placeholders": {
+      "hours": {}
+    }
+  },
+  "scheduleGoogleCalendarDetailsHeader": "עבודת QuickFit #{jobId}",
+  "@scheduleGoogleCalendarDetailsHeader": {
+    "placeholders": {
+      "jobId": {}
+    }
+  },
+  "scheduleGoogleCalendarDetailsStudio": "סטודיו: {studioName}",
+  "@scheduleGoogleCalendarDetailsStudio": {
+    "placeholders": {
+      "studioName": {}
+    }
+  },
+  "instructorMapServiceArea": "Service Area",
+  "instructorMapLiveJobsInView": "{count} live jobs in view",
+  "@instructorMapLiveJobsInView": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "instructorMapTapToDropPin": "Tap the map once to drop your pin.",
+  "instructorMapPinUpdatedTapSave": "Pin updated. Tap Save Changes to apply.",
+  "instructorMapTypeAddressToMovePin": "Type address to move pin",
+  "instructorMapAddressNotFound": "Address not found. Try a more specific address.",
+  "instructorMapPleaseSelectLocation": "Please select a location on the map",
+  "instructorMapPleaseSelectOneZone": "Please select at least one zone",
+  "instructorMapSettingsSaved": "Settings saved successfully",
+  "instructorMapErrorSavingSettings": "Error saving settings: {error}",
+  "@instructorMapErrorSavingSettings": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "instructorMapMapSettingsTooltip": "Map settings",
+  "instructorMapDropPinTooltip": "Drop pin",
+  "instructorMapApplyAddressTooltip": "Apply address",
+  "mapSettingsTitle": "Map Settings",
+  "mapSettingsSubtitle": "Adjust how and where job matches are discovered.",
+  "mapModeRadius": "Radius",
+  "mapModeZones": "Zones",
+  "saving": "Saving...",
+  "mapSearchRadius": "Search Radius",
+  "mapSelectedZones": "Selected Zones",
+  "mapActiveCount": "{count} active",
+  "@mapActiveCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "mapZoneSelectionHint": "Zone selection is done directly on the map. Close this sheet to edit zones.",
+  "mapLoadingZones": "Loading zones...",
+  "mapNoZonesSelectedYet": "No zones selected yet.",
+  "mapMatchedCount": "{count} matched",
+  "@mapMatchedCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "mapSelectAll": "Select All",
+  "mapSelectAllInCity": "Select all in {city}",
+  "@mapSelectAllInCity": {
+    "placeholders": {
+      "city": {}
+    }
+  },
+  "mapClearAll": "Clear All",
+  "mapSearchZonesOrCitiesHint": "Search zones or cities...",
+  "mapErrorWithMessage": "Error: {error}",
+  "@mapErrorWithMessage": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "totalJobsLabel": "Total Jobs",
+  "earningsLabel": "Earnings",
+  "visibleLabel": "Visible",
+  "postJobTitle": "Post a Job",
+  "postJobClassTitle": "Class Title",
+  "postJobClassType": "Class Type",
+  "postJobDate": "Date",
+  "postJobTime": "Time",
+  "postJobRateIls": "Rate (ILS)",
+  "postJobNotesOptional": "Notes (optional)",
+  "postJobTitleHint": "e.g. Morning Vinyasa Flow",
+  "postJobStartLabel": "Start",
+  "postJobEndLabel": "End",
+  "postJobRateHint": "0",
+  "postJobNotesHint": "Any special requirements or notes for the instructor...",
+  "postJobSosTitle": "SOS Job - 15% Rate Boost Applied",
+  "postJobSosDescription": "Jobs starting within 3 hours get priority notifications and boosted rates to attract instructors faster.",
+  "postJobButtonWithRate": "Post Job ? ILS {rate}",
+  "@postJobButtonWithRate": {
+    "placeholders": {
+      "rate": {}
+    }
+  },
+  "postJobPleaseEnterClassTitle": "Please enter a class title",
+  "postJobPleaseSelectCategory": "Please select a category",
+  "postJobPleaseEnterValidRate": "Please enter a valid rate",
+  "postJobStudioAddressNotSet": "Studio address not set. Please complete onboarding first.",
+  "postJobStartTimeFuture": "Start time must be in the future",
+  "postJobEndTimeAfterStart": "End time must be after start time",
+  "postJobSuccessMessage": "Job posted! Instructors are being notified.",
+  "verifyCertificationTitle": "Verify Certification",
+  "uploadCertificateTitle": "Upload Certificate",
+  "uploadCertificateDescription": "Upload a clear photo of your fitness instructor certification (Wingate, IFA, or equivalent).",
+  "submitForVerification": "Submit for Verification",
+  "verificationWhyTitle": "Why verify?",
+  "verificationWhyDescription": "Verified instructors get priority in job matching and can charge higher rates. Studios trust verified profiles more.",
+  "tapToUploadCertificate": "Tap to upload certificate",
+  "uploadFileTypesHint": "JPG, PNG or PDF ? Max 10MB",
+  "chooseFromGallery": "Choose from Gallery",
+  "takePhoto": "Take a Photo",
+  "verificationVerifiedTitle": "Verified!",
+  "verificationVerifiedSubtitle": "Your certification has been verified successfully.",
+  "verificationFailedTitle": "Verification Failed",
+  "verificationFailedSubtitle": "We couldn't verify your certificate. Please upload a clearer image.",
+  "verificationManualReviewTitle": "Manual Review",
+  "verificationManualReviewSubtitle": "Your certificate needs manual review by the team.",
+  "verificationExpiredTitle": "Verification Expired",
+  "verificationExpiredSubtitle": "Your verification has expired. Please upload a new document.",
+  "verificationProcessingTitle": "Processing",
+  "verificationPendingTitle": "Verification Pending",
+  "verificationPendingSubtitle": "We're reviewing your certificate. This usually takes a few minutes.",
+  "verificationRequirementsTitle": "Requirements",
+  "verificationRequirementReadable": "Certificate must be clearly readable",
+  "verificationRequirementNameVisible": "Your name must be visible on the certificate",
+  "verificationRequirementRecognizedInstitution": "Certificate must be from a recognized institution",
+  "verificationRequirementExpiryVisible": "Expiry date (if applicable) must be visible",
+  "verificationUploadSuccess": "Certificate uploaded! AI verification in progress...",
+  "verificationUploadFailed": "Upload failed: {error}",
+  "@verificationUploadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "mapApply": "Apply",
+  "couldNotOpenGoogleCalendar": "Could not open Google Calendar.",
+  "previousDayWindowTooltip": "Previous day window",
+  "todayLabel": "Today",
+  "nextDayWindowTooltip": "Next day window",
+  "swipeThreeDayWindowHint": "Swipe left/right to move 3-day window",
+  "addToGoogleCalendar": "Add to Google Calendar",
+  "studioJobsClaimAccepted": "Claim accepted!",
+  "studioJobsClaimRejected": "Claim rejected.",
+  "studioJobsCancelTitle": "Cancel job?",
+  "studioJobsCancelBody": "This action cannot be undone.",
+  "studioJobsCancelNo": "No",
+  "studioJobsCancelYes": "Yes, cancel",
+  "studioJobsCancelled": "Job cancelled.",
+  "studioJobsTitle": "My Jobs",
+  "studioJobsRefresh": "Refresh",
+  "studioJobsPostJob": "Post Job",
+  "studioJobsLoadFailed": "Failed to load jobs: {error}",
+  "@studioJobsLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "retry": "Retry",
+  "studioJobsEmptyTitle": "No jobs posted yet",
+  "studioJobsEmptyBody": "Post a job to find instructors.",
+  "studioJobsPostFirstJob": "Post your first job",
+  "studioJobsUntitled": "Untitled",
+  "studioJobsNoDate": "No date",
+  "studioJobsRate": "ILS {amount}",
+  "@studioJobsRate": {
+    "placeholders": {
+      "amount": {}
+    }
+  },
+  "studioJobsInstructorFallback": "Instructor",
+  "studioJobsVerified": "Verified",
+  "studioJobsAccept": "Accept",
+  "studioJobsReject": "Reject",
+  "studioJobsStatusOpen": "Open",
+  "studioJobsStatusPending": "Pending",
+  "studioJobsStatusConfirmed": "Confirmed",
+  "studioJobsStatusCompleted": "Completed",
+  "studioJobsStatusCancelled": "Cancelled",
+  "jobDetailClaimQueued": "Claim request queued.",
+  "jobDetailWithdrawalQueued": "Withdrawal request queued.",
+  "jobDetailNoActiveClaim": "No active claim found.",
+  "jobDetailClaimRejected": "Claim rejected.",
+  "jobDetailActionFailed": "Action failed: {error}",
+  "@jobDetailActionFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "jobDetailCancelled": "Job cancelled.",
+  "jobDetailCancelFailed": "Failed to cancel: {error}",
+  "@jobDetailCancelFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "jobDetailTitle": "Job Details",
+  "jobDetailNotFound": "Job not found",
+  "jobDetailSosBoost": "SOS BOOST",
+  "jobDetailDefaultTitle": "Fitness Class",
+  "jobDetailDefaultStudio": "Studio",
+  "jobDetailDate": "Date",
+  "jobDetailTime": "Time",
+  "jobDetailLocation": "Location",
+  "jobDetailDefaultLocation": "Israel",
+  "jobDetailRate": "Rate",
+  "jobDetailRequirements": "Requirements & Notes",
+  "jobDetailNoRequirements": "No special requirements listed.",
+  "jobDetailClaimBackup": "Claim as Backup",
+  "jobDetailClaimPrimary": "Claim this Job",
+  "jobDetailBackupHint": "This job is claimed, but you can join as a backup.",
+  "jobDetailClaimedBy": "Claimed By",
+  "jobDetailRejectClaim": "Reject Claim",
+  "jobDetailAcceptClaim": "Accept Claim",
+  "jobDetailPrimaryRole": "You are the primary instructor.",
+  "jobDetailBackupRole": "You are an assigned backup.",
+  "jobDetailProcessing": "Processing...",
+  "jobDetailCancelClaim": "Cancel Claim",
+  "jobDetailUnknown": "Unknown",
+  "jobDetailVerifiedProfessional": "Verified Professional",
+  "jobDetailCancelTitle": "Cancel Job?",
+  "jobDetailCancelBody": "Are you sure you want to cancel this job? This cannot be undone.",
+  "jobDetailKeepIt": "Keep It",
+  "jobDetailCancelCta": "Cancel Job",
+  "onboardingLocationUnavailable": "Could not get your location. Try entering your address.",
+  "onboardingLocationNotFound": "Could not find location. Please select from the list or use GPS.",
+  "onboardingStudioLocationRequired": "Studio location required. Please enter a valid address.",
+  "onboardingSetupFailed": "Failed to complete setup. Please try again.",
+  "onboardingWelcomeTitle": "Welcome.",
+  "onboardingWelcomeBody": "Choose your role to continue.",
+  "onboardingRoleInstructor": "Instructor",
+  "onboardingRoleInstructorBody": "Find sub jobs at studios near you and grow your network.",
+  "onboardingRoleStudio": "Studio",
+  "onboardingRoleStudioBody": "Post classes and find reliable instructors in minutes.",
+  "onboardingBuildProfile": "Build your profile.",
+  "onboardingFullName": "Full Name",
+  "onboardingStudioName": "Studio Name",
+  "onboardingAddress": "Address",
+  "onboardingAddressHint": "e.g., Rothschild 1, Tel Aviv",
+  "onboardingUseCurrentLocation": "Use Current Location",
+  "onboardingYourExpertise": "Your Expertise",
+  "onboardingCoverageZones": "Coverage Zones",
+  "onboardingSearchRadius": "Search Radius",
+  "onboardingZoneHint": "Tap zones on the map to select your coverage areas.",
+  "onboardingGetStarted": "Get Started",
+  "onboardingNextStep": "Next Step",
+  "onboardingTipFastMatchingTitle": "Fast Matching",
+  "onboardingTipFastMatchingBody": "Connect with studios in real-time.",
+  "onboardingTipVerifiedTitle": "Verified Pros",
+  "onboardingTipVerifiedBody": "Join a community of certified instructors.",
+  "onboardingTipLocalTitle": "Local Focus",
+  "onboardingTipLocalBody": "Work exactly where you want to.",
+  "onboardingPreview": "PREVIEW",
+  "onboardingYourName": "Your Name",
+  "onboardingUnselected": "UNSELECTED",
+  "onboardingSelectCategoriesHint": "Select categories to see them here.",
+  "onboardingRadiusLabel": "{value} km radius",
+  "@onboardingRadiusLabel": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "onboardingFindMyLocation": "Find My Location",
+  "onboardingCouldNotLoadZones": "Could not load zones",
+  "onboardingTryRadiusMode": "Try radius mode instead",
+  "onboardingSetYourLocation": "Set Your Location",
+  "onboardingSetYourLocationBody": "Enter your address in the form, or use GPS:",
+  "mapRadiusKm": "{value} km",
+  "@mapRadiusKm": {
+    "placeholders": {
+      "value": {}
     }
   }
 }

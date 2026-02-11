@@ -218,6 +218,18 @@ abstract class AppLocalizations {
   /// **'Password must be at least 6 characters'**
   String get passwordMinLength;
 
+  /// No description provided for @confirmPasswordLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm Password'**
+  String get confirmPasswordLabel;
+
+  /// No description provided for @passwordsDoNotMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match'**
+  String get passwordsDoNotMatch;
+
   /// No description provided for @alreadyHaveAccount.
   ///
   /// In en, this message translates to:
@@ -343,6 +355,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Email'**
   String get email;
+
+  /// No description provided for @changeEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Change Email'**
+  String get changeEmail;
+
+  /// No description provided for @newEmailLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'New Email'**
+  String get newEmailLabel;
+
+  /// No description provided for @currentPasswordLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Current Password'**
+  String get currentPasswordLabel;
+
+  /// No description provided for @currentPasswordRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Current password is required'**
+  String get currentPasswordRequired;
+
+  /// No description provided for @emailUnchanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a different email'**
+  String get emailUnchanged;
+
+  /// No description provided for @sendVerification.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Verification'**
+  String get sendVerification;
+
+  /// No description provided for @emailChangeVerificationSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification email sent. Confirm it to complete your email change.'**
+  String get emailChangeVerificationSent;
 
   /// No description provided for @workRadius.
   ///
@@ -512,6 +566,12 @@ abstract class AppLocalizations {
   /// **'SOS Jobs'**
   String get notificationsSos;
 
+  /// No description provided for @sosLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS'**
+  String get sosLabel;
+
   /// No description provided for @save.
   ///
   /// In en, this message translates to:
@@ -547,6 +607,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Edit Profile'**
   String get editProfile;
+
+  /// No description provided for @profileRoleStudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio'**
+  String get profileRoleStudio;
+
+  /// No description provided for @profileRoleInstructor.
+  ///
+  /// In en, this message translates to:
+  /// **'Instructor'**
+  String get profileRoleInstructor;
+
+  /// No description provided for @profileAnonymousUser.
+  ///
+  /// In en, this message translates to:
+  /// **'Anonymous User'**
+  String get profileAnonymousUser;
+
+  /// No description provided for @profileProviderGoogle.
+  ///
+  /// In en, this message translates to:
+  /// **'Google'**
+  String get profileProviderGoogle;
+
+  /// No description provided for @profileProviderApple.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple'**
+  String get profileProviderApple;
+
+  /// No description provided for @profileProviderEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get profileProviderEmail;
+
+  /// No description provided for @profileProviderOauth.
+  ///
+  /// In en, this message translates to:
+  /// **'OAuth'**
+  String get profileProviderOauth;
+
+  /// No description provided for @profileEmailManagedByProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Email is managed by {providersLabel} and cannot be edited directly in the app yet.'**
+  String profileEmailManagedByProvider(Object providersLabel);
+
+  /// No description provided for @profileEmailManagedByProviderWithFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Email is managed by {providersLabel} and cannot be edited directly in the app yet. You can also add password login as a fallback.'**
+  String profileEmailManagedByProviderWithFallback(Object providersLabel);
+
+  /// No description provided for @profileDisplayNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Display name is required'**
+  String get profileDisplayNameRequired;
+
+  /// No description provided for @profileVerifiedInstructor.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified Instructor'**
+  String get profileVerifiedInstructor;
+
+  /// No description provided for @profileAddPasswordDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a password to allow signing in with email ({email})'**
+  String profileAddPasswordDescription(Object email);
+
+  /// No description provided for @profilePasswordPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Password (6+ chars)'**
+  String get profilePasswordPlaceholder;
+
+  /// No description provided for @profilePasswordAddedSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Password added! You can now sign in with email.'**
+  String get profilePasswordAddedSuccess;
+
+  /// No description provided for @profilePasswordAddFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to add password'**
+  String get profilePasswordAddFailed;
 
   /// No description provided for @filterJobsTitle.
   ///
@@ -691,6 +841,1188 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count} zones selected'**
   String zonesSelectedLabel(Object count);
+
+  /// No description provided for @calendarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get calendarTitle;
+
+  /// No description provided for @syncedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced {time}'**
+  String syncedAt(Object time);
+
+  /// No description provided for @noJobsInThreeDayWindow.
+  ///
+  /// In en, this message translates to:
+  /// **'No jobs in this 3-day window.'**
+  String get noJobsInThreeDayWindow;
+
+  /// No description provided for @scheduleHoursCompact.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h'**
+  String scheduleHoursCompact(Object hours);
+
+  /// No description provided for @scheduleGoogleCalendarDetailsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'QuickFit job #{jobId}'**
+  String scheduleGoogleCalendarDetailsHeader(Object jobId);
+
+  /// No description provided for @scheduleGoogleCalendarDetailsStudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio: {studioName}'**
+  String scheduleGoogleCalendarDetailsStudio(Object studioName);
+
+  /// No description provided for @instructorMapServiceArea.
+  ///
+  /// In en, this message translates to:
+  /// **'Service Area'**
+  String get instructorMapServiceArea;
+
+  /// No description provided for @instructorMapLiveJobsInView.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} live jobs in view'**
+  String instructorMapLiveJobsInView(Object count);
+
+  /// No description provided for @instructorMapTapToDropPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the map once to drop your pin.'**
+  String get instructorMapTapToDropPin;
+
+  /// No description provided for @instructorMapPinUpdatedTapSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin updated. Tap Save Changes to apply.'**
+  String get instructorMapPinUpdatedTapSave;
+
+  /// No description provided for @instructorMapTypeAddressToMovePin.
+  ///
+  /// In en, this message translates to:
+  /// **'Type address to move pin'**
+  String get instructorMapTypeAddressToMovePin;
+
+  /// No description provided for @instructorMapAddressNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Address not found. Try a more specific address.'**
+  String get instructorMapAddressNotFound;
+
+  /// No description provided for @instructorMapPleaseSelectLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Please select a location on the map'**
+  String get instructorMapPleaseSelectLocation;
+
+  /// No description provided for @instructorMapPleaseSelectOneZone.
+  ///
+  /// In en, this message translates to:
+  /// **'Please select at least one zone'**
+  String get instructorMapPleaseSelectOneZone;
+
+  /// No description provided for @instructorMapSettingsSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings saved successfully'**
+  String get instructorMapSettingsSaved;
+
+  /// No description provided for @instructorMapErrorSavingSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Error saving settings: {error}'**
+  String instructorMapErrorSavingSettings(Object error);
+
+  /// No description provided for @instructorMapMapSettingsTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Map settings'**
+  String get instructorMapMapSettingsTooltip;
+
+  /// No description provided for @instructorMapDropPinTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Drop pin'**
+  String get instructorMapDropPinTooltip;
+
+  /// No description provided for @instructorMapApplyAddressTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply address'**
+  String get instructorMapApplyAddressTooltip;
+
+  /// No description provided for @mapSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Map Settings'**
+  String get mapSettingsTitle;
+
+  /// No description provided for @mapSettingsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust how and where job matches are discovered.'**
+  String get mapSettingsSubtitle;
+
+  /// No description provided for @mapModeRadius.
+  ///
+  /// In en, this message translates to:
+  /// **'Radius'**
+  String get mapModeRadius;
+
+  /// No description provided for @mapModeZones.
+  ///
+  /// In en, this message translates to:
+  /// **'Zones'**
+  String get mapModeZones;
+
+  /// No description provided for @saving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving...'**
+  String get saving;
+
+  /// No description provided for @mapSearchRadius.
+  ///
+  /// In en, this message translates to:
+  /// **'Search Radius'**
+  String get mapSearchRadius;
+
+  /// No description provided for @mapSelectedZones.
+  ///
+  /// In en, this message translates to:
+  /// **'Selected Zones'**
+  String get mapSelectedZones;
+
+  /// No description provided for @mapActiveCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} active'**
+  String mapActiveCount(Object count);
+
+  /// No description provided for @mapZoneSelectionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Zone selection is done directly on the map. Close this sheet to edit zones.'**
+  String get mapZoneSelectionHint;
+
+  /// No description provided for @mapLoadingZones.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading zones...'**
+  String get mapLoadingZones;
+
+  /// No description provided for @mapNoZonesSelectedYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No zones selected yet.'**
+  String get mapNoZonesSelectedYet;
+
+  /// No description provided for @mapMatchedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} matched'**
+  String mapMatchedCount(Object count);
+
+  /// No description provided for @mapSelectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select All'**
+  String get mapSelectAll;
+
+  /// No description provided for @mapSelectAllInCity.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all in {city}'**
+  String mapSelectAllInCity(Object city);
+
+  /// No description provided for @mapClearAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear All'**
+  String get mapClearAll;
+
+  /// No description provided for @mapSearchZonesOrCitiesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search zones or cities...'**
+  String get mapSearchZonesOrCitiesHint;
+
+  /// No description provided for @mapErrorWithMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Error: {error}'**
+  String mapErrorWithMessage(Object error);
+
+  /// No description provided for @totalJobsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Total Jobs'**
+  String get totalJobsLabel;
+
+  /// No description provided for @earningsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Earnings'**
+  String get earningsLabel;
+
+  /// No description provided for @visibleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Visible'**
+  String get visibleLabel;
+
+  /// No description provided for @postJobTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Post a Job'**
+  String get postJobTitle;
+
+  /// No description provided for @postJobClassTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Class Title'**
+  String get postJobClassTitle;
+
+  /// No description provided for @postJobClassType.
+  ///
+  /// In en, this message translates to:
+  /// **'Class Type'**
+  String get postJobClassType;
+
+  /// No description provided for @postJobDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get postJobDate;
+
+  /// No description provided for @postJobTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Time'**
+  String get postJobTime;
+
+  /// No description provided for @postJobRateIls.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate (ILS)'**
+  String get postJobRateIls;
+
+  /// No description provided for @postJobNotesOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes (optional)'**
+  String get postJobNotesOptional;
+
+  /// No description provided for @postJobTitleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Morning Vinyasa Flow'**
+  String get postJobTitleHint;
+
+  /// No description provided for @postJobStartLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get postJobStartLabel;
+
+  /// No description provided for @postJobEndLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'End'**
+  String get postJobEndLabel;
+
+  /// No description provided for @postJobRateHint.
+  ///
+  /// In en, this message translates to:
+  /// **'0'**
+  String get postJobRateHint;
+
+  /// No description provided for @postJobNotesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Any special requirements or notes for the instructor...'**
+  String get postJobNotesHint;
+
+  /// No description provided for @postJobSosTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS Job - 15% Rate Boost Applied'**
+  String get postJobSosTitle;
+
+  /// No description provided for @postJobSosDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Jobs starting within 3 hours get priority notifications and boosted rates to attract instructors faster.'**
+  String get postJobSosDescription;
+
+  /// No description provided for @postJobButtonWithRate.
+  ///
+  /// In en, this message translates to:
+  /// **'Post Job ? ILS {rate}'**
+  String postJobButtonWithRate(Object rate);
+
+  /// No description provided for @postJobPleaseEnterClassTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a class title'**
+  String get postJobPleaseEnterClassTitle;
+
+  /// No description provided for @postJobPleaseSelectCategory.
+  ///
+  /// In en, this message translates to:
+  /// **'Please select a category'**
+  String get postJobPleaseSelectCategory;
+
+  /// No description provided for @postJobPleaseEnterValidRate.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a valid rate'**
+  String get postJobPleaseEnterValidRate;
+
+  /// No description provided for @postJobStudioAddressNotSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio address not set. Please complete onboarding first.'**
+  String get postJobStudioAddressNotSet;
+
+  /// No description provided for @postJobStartTimeFuture.
+  ///
+  /// In en, this message translates to:
+  /// **'Start time must be in the future'**
+  String get postJobStartTimeFuture;
+
+  /// No description provided for @postJobEndTimeAfterStart.
+  ///
+  /// In en, this message translates to:
+  /// **'End time must be after start time'**
+  String get postJobEndTimeAfterStart;
+
+  /// No description provided for @postJobSuccessMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Job posted! Instructors are being notified.'**
+  String get postJobSuccessMessage;
+
+  /// No description provided for @verifyCertificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify Certification'**
+  String get verifyCertificationTitle;
+
+  /// No description provided for @uploadCertificateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload Certificate'**
+  String get uploadCertificateTitle;
+
+  /// No description provided for @uploadCertificateDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload a clear photo of your fitness instructor certification (Wingate, IFA, or equivalent).'**
+  String get uploadCertificateDescription;
+
+  /// No description provided for @submitForVerification.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit for Verification'**
+  String get submitForVerification;
+
+  /// No description provided for @verificationWhyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Why verify?'**
+  String get verificationWhyTitle;
+
+  /// No description provided for @verificationWhyDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified instructors get priority in job matching and can charge higher rates. Studios trust verified profiles more.'**
+  String get verificationWhyDescription;
+
+  /// No description provided for @tapToUploadCertificate.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to upload certificate'**
+  String get tapToUploadCertificate;
+
+  /// No description provided for @uploadFileTypesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'JPG, PNG or PDF ? Max 10MB'**
+  String get uploadFileTypesHint;
+
+  /// No description provided for @chooseFromGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose from Gallery'**
+  String get chooseFromGallery;
+
+  /// No description provided for @takePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a Photo'**
+  String get takePhoto;
+
+  /// No description provided for @verificationVerifiedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified!'**
+  String get verificationVerifiedTitle;
+
+  /// No description provided for @verificationVerifiedSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your certification has been verified successfully.'**
+  String get verificationVerifiedSubtitle;
+
+  /// No description provided for @verificationFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification Failed'**
+  String get verificationFailedTitle;
+
+  /// No description provided for @verificationFailedSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'We couldn\'t verify your certificate. Please upload a clearer image.'**
+  String get verificationFailedSubtitle;
+
+  /// No description provided for @verificationManualReviewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual Review'**
+  String get verificationManualReviewTitle;
+
+  /// No description provided for @verificationManualReviewSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your certificate needs manual review by the team.'**
+  String get verificationManualReviewSubtitle;
+
+  /// No description provided for @verificationExpiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification Expired'**
+  String get verificationExpiredTitle;
+
+  /// No description provided for @verificationExpiredSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your verification has expired. Please upload a new document.'**
+  String get verificationExpiredSubtitle;
+
+  /// No description provided for @verificationProcessingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Processing'**
+  String get verificationProcessingTitle;
+
+  /// No description provided for @verificationPendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification Pending'**
+  String get verificationPendingTitle;
+
+  /// No description provided for @verificationPendingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'We\'re reviewing your certificate. This usually takes a few minutes.'**
+  String get verificationPendingSubtitle;
+
+  /// No description provided for @verificationRequirementsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Requirements'**
+  String get verificationRequirementsTitle;
+
+  /// No description provided for @verificationRequirementReadable.
+  ///
+  /// In en, this message translates to:
+  /// **'Certificate must be clearly readable'**
+  String get verificationRequirementReadable;
+
+  /// No description provided for @verificationRequirementNameVisible.
+  ///
+  /// In en, this message translates to:
+  /// **'Your name must be visible on the certificate'**
+  String get verificationRequirementNameVisible;
+
+  /// No description provided for @verificationRequirementRecognizedInstitution.
+  ///
+  /// In en, this message translates to:
+  /// **'Certificate must be from a recognized institution'**
+  String get verificationRequirementRecognizedInstitution;
+
+  /// No description provided for @verificationRequirementExpiryVisible.
+  ///
+  /// In en, this message translates to:
+  /// **'Expiry date (if applicable) must be visible'**
+  String get verificationRequirementExpiryVisible;
+
+  /// No description provided for @verificationUploadSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Certificate uploaded! AI verification in progress...'**
+  String get verificationUploadSuccess;
+
+  /// No description provided for @verificationUploadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload failed: {error}'**
+  String verificationUploadFailed(Object error);
+
+  /// No description provided for @mapApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get mapApply;
+
+  /// No description provided for @couldNotOpenGoogleCalendar.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open Google Calendar.'**
+  String get couldNotOpenGoogleCalendar;
+
+  /// No description provided for @previousDayWindowTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous day window'**
+  String get previousDayWindowTooltip;
+
+  /// No description provided for @todayLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get todayLabel;
+
+  /// No description provided for @nextDayWindowTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Next day window'**
+  String get nextDayWindowTooltip;
+
+  /// No description provided for @swipeThreeDayWindowHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Swipe left/right to move 3-day window'**
+  String get swipeThreeDayWindowHint;
+
+  /// No description provided for @addToGoogleCalendar.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to Google Calendar'**
+  String get addToGoogleCalendar;
+
+  /// No description provided for @studioJobsClaimAccepted.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim accepted!'**
+  String get studioJobsClaimAccepted;
+
+  /// No description provided for @studioJobsClaimRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim rejected.'**
+  String get studioJobsClaimRejected;
+
+  /// No description provided for @studioJobsCancelTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel job?'**
+  String get studioJobsCancelTitle;
+
+  /// No description provided for @studioJobsCancelBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This action cannot be undone.'**
+  String get studioJobsCancelBody;
+
+  /// No description provided for @studioJobsCancelNo.
+  ///
+  /// In en, this message translates to:
+  /// **'No'**
+  String get studioJobsCancelNo;
+
+  /// No description provided for @studioJobsCancelYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, cancel'**
+  String get studioJobsCancelYes;
+
+  /// No description provided for @studioJobsCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Job cancelled.'**
+  String get studioJobsCancelled;
+
+  /// No description provided for @studioJobsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My Jobs'**
+  String get studioJobsTitle;
+
+  /// No description provided for @studioJobsRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get studioJobsRefresh;
+
+  /// No description provided for @studioJobsPostJob.
+  ///
+  /// In en, this message translates to:
+  /// **'Post Job'**
+  String get studioJobsPostJob;
+
+  /// No description provided for @studioJobsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load jobs: {error}'**
+  String studioJobsLoadFailed(Object error);
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @studioJobsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No jobs posted yet'**
+  String get studioJobsEmptyTitle;
+
+  /// No description provided for @studioJobsEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Post a job to find instructors.'**
+  String get studioJobsEmptyBody;
+
+  /// No description provided for @studioJobsPostFirstJob.
+  ///
+  /// In en, this message translates to:
+  /// **'Post your first job'**
+  String get studioJobsPostFirstJob;
+
+  /// No description provided for @studioJobsUntitled.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled'**
+  String get studioJobsUntitled;
+
+  /// No description provided for @studioJobsNoDate.
+  ///
+  /// In en, this message translates to:
+  /// **'No date'**
+  String get studioJobsNoDate;
+
+  /// No description provided for @studioJobsRate.
+  ///
+  /// In en, this message translates to:
+  /// **'ILS {amount}'**
+  String studioJobsRate(Object amount);
+
+  /// No description provided for @studioJobsInstructorFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Instructor'**
+  String get studioJobsInstructorFallback;
+
+  /// No description provided for @studioJobsVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified'**
+  String get studioJobsVerified;
+
+  /// No description provided for @studioJobsAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get studioJobsAccept;
+
+  /// No description provided for @studioJobsReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get studioJobsReject;
+
+  /// No description provided for @studioJobsStatusOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get studioJobsStatusOpen;
+
+  /// No description provided for @studioJobsStatusPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get studioJobsStatusPending;
+
+  /// No description provided for @studioJobsStatusConfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed'**
+  String get studioJobsStatusConfirmed;
+
+  /// No description provided for @studioJobsStatusCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get studioJobsStatusCompleted;
+
+  /// No description provided for @studioJobsStatusCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get studioJobsStatusCancelled;
+
+  /// No description provided for @jobDetailClaimQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim request queued.'**
+  String get jobDetailClaimQueued;
+
+  /// No description provided for @jobDetailWithdrawalQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdrawal request queued.'**
+  String get jobDetailWithdrawalQueued;
+
+  /// No description provided for @jobDetailNoActiveClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'No active claim found.'**
+  String get jobDetailNoActiveClaim;
+
+  /// No description provided for @jobDetailClaimRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim rejected.'**
+  String get jobDetailClaimRejected;
+
+  /// No description provided for @jobDetailActionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Action failed: {error}'**
+  String jobDetailActionFailed(Object error);
+
+  /// No description provided for @jobDetailCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Job cancelled.'**
+  String get jobDetailCancelled;
+
+  /// No description provided for @jobDetailCancelFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to cancel: {error}'**
+  String jobDetailCancelFailed(Object error);
+
+  /// No description provided for @jobDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Job Details'**
+  String get jobDetailTitle;
+
+  /// No description provided for @jobDetailNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Job not found'**
+  String get jobDetailNotFound;
+
+  /// No description provided for @jobDetailSosBoost.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS BOOST'**
+  String get jobDetailSosBoost;
+
+  /// No description provided for @jobDetailDefaultTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Fitness Class'**
+  String get jobDetailDefaultTitle;
+
+  /// No description provided for @jobDetailDefaultStudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio'**
+  String get jobDetailDefaultStudio;
+
+  /// No description provided for @jobDetailDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get jobDetailDate;
+
+  /// No description provided for @jobDetailTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Time'**
+  String get jobDetailTime;
+
+  /// No description provided for @jobDetailLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get jobDetailLocation;
+
+  /// No description provided for @jobDetailDefaultLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Israel'**
+  String get jobDetailDefaultLocation;
+
+  /// No description provided for @jobDetailRate.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate'**
+  String get jobDetailRate;
+
+  /// No description provided for @jobDetailRequirements.
+  ///
+  /// In en, this message translates to:
+  /// **'Requirements & Notes'**
+  String get jobDetailRequirements;
+
+  /// No description provided for @jobDetailNoRequirements.
+  ///
+  /// In en, this message translates to:
+  /// **'No special requirements listed.'**
+  String get jobDetailNoRequirements;
+
+  /// No description provided for @jobDetailClaimBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim as Backup'**
+  String get jobDetailClaimBackup;
+
+  /// No description provided for @jobDetailClaimPrimary.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim this Job'**
+  String get jobDetailClaimPrimary;
+
+  /// No description provided for @jobDetailBackupHint.
+  ///
+  /// In en, this message translates to:
+  /// **'This job is claimed, but you can join as a backup.'**
+  String get jobDetailBackupHint;
+
+  /// No description provided for @jobDetailClaimedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Claimed By'**
+  String get jobDetailClaimedBy;
+
+  /// No description provided for @jobDetailRejectClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject Claim'**
+  String get jobDetailRejectClaim;
+
+  /// No description provided for @jobDetailAcceptClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept Claim'**
+  String get jobDetailAcceptClaim;
+
+  /// No description provided for @jobDetailPrimaryRole.
+  ///
+  /// In en, this message translates to:
+  /// **'You are the primary instructor.'**
+  String get jobDetailPrimaryRole;
+
+  /// No description provided for @jobDetailBackupRole.
+  ///
+  /// In en, this message translates to:
+  /// **'You are an assigned backup.'**
+  String get jobDetailBackupRole;
+
+  /// No description provided for @jobDetailProcessing.
+  ///
+  /// In en, this message translates to:
+  /// **'Processing...'**
+  String get jobDetailProcessing;
+
+  /// No description provided for @jobDetailCancelClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Claim'**
+  String get jobDetailCancelClaim;
+
+  /// No description provided for @jobDetailUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get jobDetailUnknown;
+
+  /// No description provided for @jobDetailVerifiedProfessional.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified Professional'**
+  String get jobDetailVerifiedProfessional;
+
+  /// No description provided for @jobDetailCancelTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Job?'**
+  String get jobDetailCancelTitle;
+
+  /// No description provided for @jobDetailCancelBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to cancel this job? This cannot be undone.'**
+  String get jobDetailCancelBody;
+
+  /// No description provided for @jobDetailKeepIt.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep It'**
+  String get jobDetailKeepIt;
+
+  /// No description provided for @jobDetailCancelCta.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Job'**
+  String get jobDetailCancelCta;
+
+  /// No description provided for @onboardingLocationUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not get your location. Try entering your address.'**
+  String get onboardingLocationUnavailable;
+
+  /// No description provided for @onboardingLocationNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not find location. Please select from the list or use GPS.'**
+  String get onboardingLocationNotFound;
+
+  /// No description provided for @onboardingStudioLocationRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio location required. Please enter a valid address.'**
+  String get onboardingStudioLocationRequired;
+
+  /// No description provided for @onboardingSetupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to complete setup. Please try again.'**
+  String get onboardingSetupFailed;
+
+  /// No description provided for @onboardingWelcomeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome.'**
+  String get onboardingWelcomeTitle;
+
+  /// No description provided for @onboardingWelcomeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose your role to continue.'**
+  String get onboardingWelcomeBody;
+
+  /// No description provided for @onboardingRoleInstructor.
+  ///
+  /// In en, this message translates to:
+  /// **'Instructor'**
+  String get onboardingRoleInstructor;
+
+  /// No description provided for @onboardingRoleInstructorBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Find sub jobs at studios near you and grow your network.'**
+  String get onboardingRoleInstructorBody;
+
+  /// No description provided for @onboardingRoleStudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio'**
+  String get onboardingRoleStudio;
+
+  /// No description provided for @onboardingRoleStudioBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Post classes and find reliable instructors in minutes.'**
+  String get onboardingRoleStudioBody;
+
+  /// No description provided for @onboardingBuildProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Build your profile.'**
+  String get onboardingBuildProfile;
+
+  /// No description provided for @onboardingFullName.
+  ///
+  /// In en, this message translates to:
+  /// **'Full Name'**
+  String get onboardingFullName;
+
+  /// No description provided for @onboardingStudioName.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio Name'**
+  String get onboardingStudioName;
+
+  /// No description provided for @onboardingAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Address'**
+  String get onboardingAddress;
+
+  /// No description provided for @onboardingAddressHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g., Rothschild 1, Tel Aviv'**
+  String get onboardingAddressHint;
+
+  /// No description provided for @onboardingUseCurrentLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Use Current Location'**
+  String get onboardingUseCurrentLocation;
+
+  /// No description provided for @onboardingYourExpertise.
+  ///
+  /// In en, this message translates to:
+  /// **'Your Expertise'**
+  String get onboardingYourExpertise;
+
+  /// No description provided for @onboardingCoverageZones.
+  ///
+  /// In en, this message translates to:
+  /// **'Coverage Zones'**
+  String get onboardingCoverageZones;
+
+  /// No description provided for @onboardingSearchRadius.
+  ///
+  /// In en, this message translates to:
+  /// **'Search Radius'**
+  String get onboardingSearchRadius;
+
+  /// No description provided for @onboardingZoneHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap zones on the map to select your coverage areas.'**
+  String get onboardingZoneHint;
+
+  /// No description provided for @onboardingGetStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Get Started'**
+  String get onboardingGetStarted;
+
+  /// No description provided for @onboardingNextStep.
+  ///
+  /// In en, this message translates to:
+  /// **'Next Step'**
+  String get onboardingNextStep;
+
+  /// No description provided for @onboardingTipFastMatchingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Fast Matching'**
+  String get onboardingTipFastMatchingTitle;
+
+  /// No description provided for @onboardingTipFastMatchingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect with studios in real-time.'**
+  String get onboardingTipFastMatchingBody;
+
+  /// No description provided for @onboardingTipVerifiedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified Pros'**
+  String get onboardingTipVerifiedTitle;
+
+  /// No description provided for @onboardingTipVerifiedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Join a community of certified instructors.'**
+  String get onboardingTipVerifiedBody;
+
+  /// No description provided for @onboardingTipLocalTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Local Focus'**
+  String get onboardingTipLocalTitle;
+
+  /// No description provided for @onboardingTipLocalBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Work exactly where you want to.'**
+  String get onboardingTipLocalBody;
+
+  /// No description provided for @onboardingPreview.
+  ///
+  /// In en, this message translates to:
+  /// **'PREVIEW'**
+  String get onboardingPreview;
+
+  /// No description provided for @onboardingYourName.
+  ///
+  /// In en, this message translates to:
+  /// **'Your Name'**
+  String get onboardingYourName;
+
+  /// No description provided for @onboardingUnselected.
+  ///
+  /// In en, this message translates to:
+  /// **'UNSELECTED'**
+  String get onboardingUnselected;
+
+  /// No description provided for @onboardingSelectCategoriesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Select categories to see them here.'**
+  String get onboardingSelectCategoriesHint;
+
+  /// No description provided for @onboardingRadiusLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} km radius'**
+  String onboardingRadiusLabel(Object value);
+
+  /// No description provided for @onboardingFindMyLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Find My Location'**
+  String get onboardingFindMyLocation;
+
+  /// No description provided for @onboardingCouldNotLoadZones.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load zones'**
+  String get onboardingCouldNotLoadZones;
+
+  /// No description provided for @onboardingTryRadiusMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Try radius mode instead'**
+  String get onboardingTryRadiusMode;
+
+  /// No description provided for @onboardingSetYourLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Set Your Location'**
+  String get onboardingSetYourLocation;
+
+  /// No description provided for @onboardingSetYourLocationBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your address in the form, or use GPS:'**
+  String get onboardingSetYourLocationBody;
+
+  /// No description provided for @mapRadiusKm.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} km'**
+  String mapRadiusKm(Object value);
 }
 
 class _AppLocalizationsDelegate

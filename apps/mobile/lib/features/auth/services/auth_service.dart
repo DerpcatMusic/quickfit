@@ -26,6 +26,12 @@ class AuthService {
   Stream<firebase_auth.User?> get authStateChanges => _auth.authStateChanges();
   firebase_auth.User? get currentUser => _auth.currentUser;
 
+  bool _isSupportedAuthActionMode(String mode) {
+    return mode == 'verifyEmail' ||
+        mode == 'verifyAndChangeEmail' ||
+        mode == 'recoverEmail';
+  }
+
   Future<void> initialize() async {
     try {
       await _googleSignIn.initialize();
@@ -175,5 +181,75 @@ class AuthService {
     );
 
     return await user.linkWithCredential(credential);
+  }
+
+  Future<void> requestEmailChangeVerification({
+    required String newEmail,
+    String? currentPassword,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('Not signed in');
+
+    final trimmedEmail = newEmail.trim();
+    if (trimmedEmail.isEmpty) {
+      throw firebase_auth.FirebaseAuthException(
+        code: 'invalid-email',
+        message: 'Email cannot be empty.',
+      );
+    }
+
+    final linkedProviders =
+        user.providerData.map((p) => p.providerId).whereType<String>().toSet();
+
+    if (linkedProviders.contains('password') &&
+        currentPassword != null &&
+        currentPassword.trim().isNotEmpty) {
+      final currentEmail = user.email;
+      if (currentEmail == null || currentEmail.trim().isEmpty) {
+        throw Exception('Current email is unavailable.');
+      }
+      final credential = firebase_auth.EmailAuthProvider.credential(
+        email: currentEmail.trim(),
+        password: currentPassword.trim(),
+      );
+      await user.reauthenticateWithCredential(credential);
+    } else if (linkedProviders.contains('google.com')) {
+      await _googleSignIn.initialize();
+      final googleUser = await _googleSignIn.authenticate();
+      final googleAuth = googleUser.authentication;
+      final authorization =
+          await googleUser.authorizationClient.authorizeScopes([
+        'openid',
+        'email',
+        'profile',
+      ]);
+      final credential = firebase_auth.GoogleAuthProvider.credential(
+        accessToken: authorization.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      await user.reauthenticateWithCredential(credential);
+    }
+
+    await user.verifyBeforeUpdateEmail(trimmedEmail);
+  }
+
+  Future<bool> applyAuthActionFromUri(Uri uri) async {
+    final mode = uri.queryParameters['mode']?.trim() ?? '';
+    final oobCode = uri.queryParameters['oobCode']?.trim() ?? '';
+    if (mode.isEmpty || oobCode.isEmpty) {
+      return false;
+    }
+    if (!_isSupportedAuthActionMode(mode)) {
+      return false;
+    }
+
+    await _auth.applyActionCode(oobCode);
+
+    final user = _auth.currentUser;
+    if (user != null) {
+      await user.reload();
+      await user.getIdToken(true);
+    }
+    return true;
   }
 }

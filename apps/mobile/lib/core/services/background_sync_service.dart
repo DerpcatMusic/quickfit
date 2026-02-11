@@ -7,7 +7,6 @@
 // 3. Minimal battery usage - no location tracking
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -17,8 +16,8 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:quickfit/firebase_options.dart';
 import '../constants/app_constants.dart';
-import '../models/pending_mutation.dart';
 import 'hive_service.dart';
+import 'offline_mutation_runner.dart';
 
 /// Ultra-lightweight background service
 /// Focused on receiving urgent notifications for last-minute replacements
@@ -131,9 +130,6 @@ Future<void> _syncPendingMutations() async {
       },
     );
 
-    final pending = HiveService().getPendingMutations();
-    if (pending.isEmpty) return;
-
     // Check connectivity
     final connectivity = Connectivity();
     final results = await connectivity.checkConnectivity();
@@ -141,24 +137,7 @@ Future<void> _syncPendingMutations() async {
       return; // No connection, skip
     }
 
-    // Process each pending mutation
-    for (final mutation in pending) {
-      if (mutation.status == 'syncing' || mutation.status == 'completed') {
-        continue;
-      }
-
-      mutation.status = 'syncing';
-      await mutation.save();
-
-      try {
-        await _executeMutation(mutation);
-        mutation.status = 'completed';
-        await mutation.save();
-      } catch (e) {
-        mutation.status = 'pending';
-        await mutation.save();
-      }
-    }
+    await OfflineMutationRunner.runPending();
   } catch (e, stack) {
     developer.log(
       'Background sync error',
@@ -166,33 +145,6 @@ Future<void> _syncPendingMutations() async {
       error: e,
       stackTrace: stack,
     );
-  }
-}
-
-Future<void> _executeMutation(PendingMutation mutation) async {
-  final decoded = mutation.payload;
-  final args = decoded.isNotEmpty
-      ? Map<String, dynamic>.from(jsonDecode(decoded) as Map)
-      : <String, dynamic>{};
-
-  switch (mutation.operation) {
-    case 'claimJob':
-      await ConvexClient.instance.mutation(
-        name: 'jobs:claimJob',
-        args: {
-          'jobId': args['jobId'],
-          if (args['message'] != null) 'message': args['message'],
-        },
-      );
-      break;
-    case 'withdrawClaim':
-      await ConvexClient.instance.mutation(
-        name: 'jobs:withdrawClaim',
-        args: {'jobId': args['jobId']},
-      );
-      break;
-    default:
-      throw Exception('Unknown operation: ${mutation.operation}');
   }
 }
 

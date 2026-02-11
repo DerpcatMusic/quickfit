@@ -287,15 +287,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ],
                   ),
                 )
-              : OutlinedButton.icon(
+              : OutlinedButton(
                   onPressed: _toggleEmailForm,
-                  icon: const Icon(LucideIcons.mail, size: 20),
-                  label: Text(
-                    l10n.continueWithEmail,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.mail, size: 20),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          l10n.continueWithEmail,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
         ),

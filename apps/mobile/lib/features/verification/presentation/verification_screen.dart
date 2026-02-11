@@ -3,6 +3,7 @@
 
 // Note: Using XFile instead of dart:io File for cross-platform compatibility
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,8 +12,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:convex_flutter/convex_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:quickfit/features/verification/providers/verification_provider.dart';
 import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
 import 'package:quickfit/core/utils/platform.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 
 class VerificationScreen extends ConsumerStatefulWidget {
   const VerificationScreen({super.key});
@@ -24,8 +27,9 @@ class VerificationScreen extends ConsumerStatefulWidget {
 class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   final _picker = ImagePicker();
   XFile? _selectedFile;
+  Uint8List? _selectedBytes;
+  String? _selectedMimeType;
   bool _isUploading = false;
-  String? _verificationStatus; // 'pending', 'verified', 'rejected'
 
   Future<void> _pickImage() async {
     final XFile? image = await _picker.pickImage(
@@ -36,8 +40,11 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
     );
 
     if (image != null) {
+      final bytes = await image.readAsBytes();
       setState(() {
         _selectedFile = image;
+        _selectedBytes = bytes;
+        _selectedMimeType = image.mimeType;
       });
     }
   }
@@ -51,13 +58,17 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
     );
 
     if (image != null) {
+      final bytes = await image.readAsBytes();
       setState(() {
         _selectedFile = image;
+        _selectedBytes = bytes;
+        _selectedMimeType = image.mimeType;
       });
     }
   }
 
   Future<void> _uploadCertificate() async {
+    final l10n = AppLocalizations.of(context)!;
     if (_selectedFile == null) return;
 
     setState(() => _isUploading = true);
@@ -66,11 +77,17 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
       // 1. Get an upload URL from Convex
       final uploadUrlResult = await ConvexClient.instance.mutation(
         name: 'storage:generateUploadUrl',
-        args: {},
+        args: {'purpose': 'verification_certificate'},
       );
 
-      final uploadUrl = uploadUrlResult.replaceAll('"', '');
-      if (uploadUrl.isEmpty || uploadUrl == 'null') {
+      final uploadPayload =
+          json.decode(uploadUrlResult) as Map<String, dynamic>;
+      final uploadUrl = uploadPayload['uploadUrl'] as String?;
+      final uploadToken = uploadPayload['uploadToken'] as String?;
+      if (uploadUrl == null ||
+          uploadUrl.isEmpty ||
+          uploadToken == null ||
+          uploadToken.isEmpty) {
         throw Exception('Failed to get upload URL');
       }
 
@@ -97,6 +114,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
         name: 'storage:registerUploadedFile',
         args: {
           'storageId': storageId,
+          'uploadToken': uploadToken,
           'purpose': 'verification_certificate',
         },
       );
@@ -114,16 +132,18 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
       if (mounted) {
         setState(() {
           _isUploading = false;
-          _verificationStatus = 'pending';
+          _selectedFile = null;
+          _selectedBytes = null;
+          _selectedMimeType = null;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Row(
               children: [
                 Icon(LucideIcons.checkCircle2, color: Colors.white),
                 SizedBox(width: 8),
-                Text('Certificate uploaded! AI verification in progress...'),
+                Text(l10n.verificationUploadSuccess),
               ],
             ),
             backgroundColor: Colors.green,
@@ -136,7 +156,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
         setState(() => _isUploading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Upload failed: $e'),
+            content: Text(l10n.verificationUploadFailed(e.toString())),
             backgroundColor: Colors.red,
           ),
         );
@@ -146,11 +166,19 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final latestVerificationAsync = ref.watch(latestVerificationProvider);
+    final latestVerification = latestVerificationAsync.maybeWhen(
+      data: (value) => value,
+      orElse: () => null,
+    );
+    final verificationStatus = latestVerification?['status'] as String?;
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: adaptiveAppBar(
         context,
-        title: 'Verify Certification',
+        title: l10n.verifyCertificationTitle,
         leading: IconButton(
           icon: const Icon(LucideIcons.arrowLeft),
           onPressed: () => context.pop(),
@@ -166,8 +194,8 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
             const SizedBox(height: 24),
 
             // Upload section
-            const Text(
-              'Upload Certificate',
+            Text(
+              l10n.uploadCertificateTitle,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -175,7 +203,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Upload a clear photo of your fitness instructor certification (Wingate, IFA, or equivalent).',
+              l10n.uploadCertificateDescription,
               style: TextStyle(
                 color: Colors.grey[600],
                 fontSize: 14,
@@ -189,10 +217,11 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
             const SizedBox(height: 24),
 
             // Verification status
-            if (_verificationStatus != null) _buildStatusCard(),
+            if (verificationStatus != null)
+              _buildStatusCard(verificationStatus),
 
             // Upload button
-            if (_selectedFile != null && _verificationStatus == null) ...[
+            if (_selectedFile != null) ...[
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -209,13 +238,13 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Row(
+                            : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(LucideIcons.upload, size: 18),
                                   SizedBox(width: 8),
                                   Text(
-                                    'Submit for Verification',
+                                    l10n.submitForVerification,
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
@@ -235,13 +264,13 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Row(
+                            : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(LucideIcons.upload, size: 18),
                                   SizedBox(width: 8),
                                   Text(
-                                    'Submit for Verification',
+                                    l10n.submitForVerification,
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
@@ -264,6 +293,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   }
 
   Widget _buildInfoCard() {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -281,7 +311,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Why verify?',
+                  l10n.verificationWhyTitle,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: Colors.blue[800],
@@ -289,7 +319,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Verified instructors get priority in job matching and can charge higher rates. Studios trust verified profiles more.',
+                  l10n.verificationWhyDescription,
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.blue[700],
@@ -304,6 +334,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   }
 
   Widget _buildUploadArea() {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       height: 200,
       decoration: BoxDecoration(
@@ -334,7 +365,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Tap to upload certificate',
+              l10n.tapToUploadCertificate,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
@@ -343,7 +374,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'JPG, PNG or PDF • Max 10MB',
+              l10n.uploadFileTypesHint,
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.grey[500],
@@ -356,6 +387,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   }
 
   void _showPickerOptions() {
+    final l10n = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -385,7 +417,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                   ),
                   child: Icon(LucideIcons.image, color: Colors.blue[600]),
                 ),
-                title: const Text('Choose from Gallery'),
+                title: Text(l10n.chooseFromGallery),
                 onTap: () {
                   Navigator.pop(context);
                   _pickImage();
@@ -400,7 +432,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                   ),
                   child: Icon(LucideIcons.camera, color: Colors.green[600]),
                 ),
-                title: const Text('Take a Photo'),
+                title: Text(l10n.takePhoto),
                 onTap: () {
                   Navigator.pop(context);
                   _takePhoto();
@@ -414,6 +446,9 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   }
 
   Widget _buildPreview() {
+    final isPdf = (_selectedMimeType ?? '').toLowerCase().contains('pdf') ||
+        (_selectedFile?.name.toLowerCase().endsWith('.pdf') ?? false);
+
     return Stack(
       children: [
         Container(
@@ -425,30 +460,48 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: Image.network(
-              _selectedFile!.path,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(LucideIcons.file, size: 48, color: Colors.grey[400]),
-                    const SizedBox(height: 8),
-                    Text(
-                      _selectedFile!.name,
-                      style: TextStyle(color: Colors.grey[600]),
+            child: isPdf || _selectedBytes == null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(LucideIcons.file, size: 48, color: Colors.grey[400]),
+                        const SizedBox(height: 8),
+                        Text(
+                          _selectedFile!.name,
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  )
+                : Image.memory(
+                    _selectedBytes!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(LucideIcons.file, size: 48, color: Colors.grey[400]),
+                          const SizedBox(height: 8),
+                          Text(
+                            _selectedFile!.name,
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
           ),
         ),
         Positioned(
           top: 8,
           right: 8,
           child: GestureDetector(
-            onTap: () => setState(() => _selectedFile = null),
+            onTap: () => setState(() {
+              _selectedFile = null;
+              _selectedBytes = null;
+              _selectedMimeType = null;
+            }),
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: const BoxDecoration(
@@ -467,7 +520,8 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
     );
   }
 
-  Widget _buildStatusCard() {
+  Widget _buildStatusCard(String verificationStatus) {
+    final l10n = AppLocalizations.of(context)!;
     Color bgColor;
     Color borderColor;
     Color iconColor;
@@ -475,32 +529,50 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
     String title;
     String subtitle;
 
-    switch (_verificationStatus) {
+    switch (verificationStatus) {
       case 'verified':
         bgColor = Colors.green[50]!;
         borderColor = Colors.green[200]!;
         iconColor = Colors.green[600]!;
         icon = LucideIcons.badgeCheck;
-        title = 'Verified!';
-        subtitle = 'Your certification has been verified successfully.';
+        title = l10n.verificationVerifiedTitle;
+        subtitle = l10n.verificationVerifiedSubtitle;
         break;
       case 'rejected':
         bgColor = Colors.red[50]!;
         borderColor = Colors.red[200]!;
         iconColor = Colors.red[600]!;
         icon = LucideIcons.xCircle;
-        title = 'Verification Failed';
+        title = l10n.verificationFailedTitle;
         subtitle =
-            'We couldn\'t verify your certificate. Please upload a clearer image.';
+            l10n.verificationFailedSubtitle;
+        break;
+      case 'manual_review':
+        bgColor = Colors.orange[50]!;
+        borderColor = Colors.orange[200]!;
+        iconColor = Colors.orange[600]!;
+        icon = LucideIcons.shieldAlert;
+        title = l10n.verificationManualReviewTitle;
+        subtitle = l10n.verificationManualReviewSubtitle;
+        break;
+      case 'expired':
+        bgColor = Colors.red[50]!;
+        borderColor = Colors.red[200]!;
+        iconColor = Colors.red[600]!;
+        icon = LucideIcons.clock3;
+        title = l10n.verificationExpiredTitle;
+        subtitle = l10n.verificationExpiredSubtitle;
         break;
       default:
         bgColor = Colors.orange[50]!;
         borderColor = Colors.orange[200]!;
         iconColor = Colors.orange[600]!;
         icon = LucideIcons.clock;
-        title = 'Verification Pending';
+        title = verificationStatus == 'processing'
+            ? l10n.verificationProcessingTitle
+            : l10n.verificationPendingTitle;
         subtitle =
-            'We\'re reviewing your certificate. This usually takes a few minutes.';
+            l10n.verificationPendingSubtitle;
     }
 
     return Container(
@@ -542,18 +614,19 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   }
 
   Widget _buildRequirements() {
+    final l10n = AppLocalizations.of(context)!;
     final requirements = [
-      'Certificate must be clearly readable',
-      'Your name must be visible on the certificate',
-      'Certificate must be from a recognized institution',
-      'Expiry date (if applicable) must be visible',
+      l10n.verificationRequirementReadable,
+      l10n.verificationRequirementNameVisible,
+      l10n.verificationRequirementRecognizedInstitution,
+      l10n.verificationRequirementExpiryVisible,
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Requirements',
+          l10n.verificationRequirementsTitle,
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,

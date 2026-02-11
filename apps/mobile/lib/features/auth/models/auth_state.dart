@@ -20,6 +20,9 @@ class AuthState {
   /// User phone number (optional).
   final String? phone;
 
+  /// Backend profile name (source of truth for editable profile name).
+  final String? name;
+
   /// User home address (optional).
   final String? homeAddress;
 
@@ -44,6 +47,18 @@ class AuthState {
   /// Whether the user is verified (instructors only).
   final bool isVerified;
 
+  /// Persisted notification preference (if fetched from backend).
+  final bool? notificationsEnabled;
+
+  /// Persisted regular-job alert preference (if fetched from backend).
+  final bool? regularJobAlerts;
+
+  /// Persisted SOS alert preference (if fetched from backend).
+  final bool? sosJobAlerts;
+
+  /// Persisted language preference (if fetched from backend).
+  final String? languageCode;
+
   /// Whether the app is loading auth state.
   final bool isLoading;
 
@@ -56,6 +71,7 @@ class AuthState {
     this.role,
     this.hasCompletedOnboarding = false,
     this.phone,
+    this.name,
     this.homeAddress,
     this.latitude,
     this.longitude,
@@ -64,6 +80,10 @@ class AuthState {
     this.zoneIds,
     this.radiusKm,
     this.isVerified = false,
+    this.notificationsEnabled,
+    this.regularJobAlerts,
+    this.sosJobAlerts,
+    this.languageCode,
     this.isLoading = false,
     this.error,
   });
@@ -75,6 +95,7 @@ class AuthState {
     String? role,
     bool? hasCompletedOnboarding,
     String? phone,
+    String? name,
     String? homeAddress,
     double? latitude,
     double? longitude,
@@ -83,6 +104,10 @@ class AuthState {
     List<String>? zoneIds,
     double? radiusKm,
     bool? isVerified,
+    bool? notificationsEnabled,
+    bool? regularJobAlerts,
+    bool? sosJobAlerts,
+    String? languageCode,
     bool? isLoading,
     String? error,
   }) {
@@ -93,6 +118,7 @@ class AuthState {
       hasCompletedOnboarding:
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       phone: phone ?? this.phone,
+      name: name ?? this.name,
       homeAddress: homeAddress ?? this.homeAddress,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
@@ -101,6 +127,10 @@ class AuthState {
       zoneIds: zoneIds ?? this.zoneIds,
       radiusKm: radiusKm ?? this.radiusKm,
       isVerified: isVerified ?? this.isVerified,
+      notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+      regularJobAlerts: regularJobAlerts ?? this.regularJobAlerts,
+      sosJobAlerts: sosJobAlerts ?? this.sosJobAlerts,
+      languageCode: languageCode ?? this.languageCode,
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );

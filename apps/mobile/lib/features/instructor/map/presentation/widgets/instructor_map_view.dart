@@ -7,6 +7,7 @@ import 'package:quickfit/core/config/map_config.dart';
 import 'package:quickfit/shared/widgets/quickfit_map.dart';
 import 'package:quickfit/shared/widgets/zone_selection_map.dart';
 import 'package:quickfit/features/instructor/map/presentation/widgets/map_settings_sheet.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 
 /// A component that renders the instructor map based on the selection mode.
 class InstructorMapView extends ConsumerWidget {
@@ -21,6 +22,7 @@ class InstructorMapView extends ConsumerWidget {
     required this.zonesAsync,
     required this.onZoneSelectionChanged,
     required this.onMapTap,
+    required this.interactionEnabled,
     this.onStyleLoaded,
   });
 
@@ -51,11 +53,15 @@ class InstructorMapView extends ConsumerWidget {
   /// Callback triggered when the map is tapped (e.g., to drop a pin).
   final ValueChanged<LatLng> onMapTap;
 
+  /// Whether base map gestures are enabled.
+  final bool interactionEnabled;
+
   /// Callback triggered when the map style has finished loading.
   final VoidCallback? onStyleLoaded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
     if (mode == SelectionMode.radius) {
       return QuickFitMap(
         key: mapKey,
@@ -66,23 +72,24 @@ class InstructorMapView extends ConsumerWidget {
         showUserLocation: true,
         showRadius: true,
         showHomePin: true,
-        interactionEnabled: true,
+        interactionEnabled: interactionEnabled,
         jobs: jobs,
         onStyleLoaded: onStyleLoaded,
         onMapTap: onMapTap,
       );
-    } else {
-      return zonesAsync.when(
-        data: (zones) => ZoneSelectionMap(
-          zones: zones,
-          initialSelectedZones: selectedZoneIds,
-          onSelectionChanged: onZoneSelectionChanged,
-          jobs: jobs,
-          topPadding: 80,
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err')),
-      );
     }
+
+    return zonesAsync.when(
+      data: (zones) => ZoneSelectionMap(
+        zones: zones,
+        initialSelectedZones: selectedZoneIds,
+        onSelectionChanged: onZoneSelectionChanged,
+        jobs: jobs,
+        topPadding: 0,
+        interactionEnabled: interactionEnabled,
+      ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (err, stack) => Center(child: Text(l10n.mapErrorWithMessage(err.toString()))),
+    );
   }
 }
