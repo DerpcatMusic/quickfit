@@ -24,6 +24,7 @@ import type * as lib_urlSecurity from "../lib/urlSecurity.js";
 import type * as notifications from "../notifications.js";
 import type * as payments from "../payments.js";
 import type * as paymentsDiagnostics from "../paymentsDiagnostics.js";
+import type * as payouts from "../payouts.js";
 import type * as rapyd from "../rapyd.js";
 import type * as seed from "../seed.js";
 import type * as seedZones from "../seedZones.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   notifications: typeof notifications;
   payments: typeof payments;
   paymentsDiagnostics: typeof paymentsDiagnostics;
+  payouts: typeof payouts;
   rapyd: typeof rapyd;
   seed: typeof seed;
   seedZones: typeof seedZones;

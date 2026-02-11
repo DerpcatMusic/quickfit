@@ -9,6 +9,75 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 const RAPYD_PROVIDER = "rapyd" as const;
 type AppRole = "studio" | "instructor";
+export type PaymentStatus =
+  | "created"
+  | "pending"
+  | "authorized"
+  | "captured"
+  | "failed"
+  | "cancelled"
+  | "refunded";
+type MappedPaymentStatus = Exclude<PaymentStatus, "created">;
+type InvoiceStatus = "pending" | "issued" | "failed" | "voided";
+
+type TimelineEventInput = {
+  _id: Id<"paymentEvents">;
+  provider: "rapyd" | "bitpay";
+  createdAt: number;
+  eventType?: string;
+  statusRaw?: string;
+  signatureValid: boolean;
+  processed: boolean;
+};
+
+type InvoiceInput = {
+  _id: Id<"invoices">;
+  status: InvoiceStatus;
+  externalInvoiceId?: string;
+  issuedAt?: number;
+};
+
+export const derivePayoutStatus = (
+  paymentStatus: PaymentStatus,
+): PaymentStatus =>
+  paymentStatus === "captured" ? "pending" : paymentStatus;
+
+export const computeNextWebhookPaymentStatus = (
+  currentStatus: PaymentStatus,
+  mappedStatus: MappedPaymentStatus,
+): MappedPaymentStatus => {
+  if (currentStatus === "captured" && mappedStatus !== "refunded") {
+    return "captured";
+  }
+  return mappedStatus;
+};
+
+export const shouldScheduleInvoiceForTransition = (
+  previousStatus: PaymentStatus,
+  nextStatus: MappedPaymentStatus,
+): boolean => previousStatus !== "captured" && nextStatus === "captured";
+
+export const toPaymentTimeline = (events: TimelineEventInput[]) =>
+  events.map((event) => ({
+    _id: event._id,
+    provider: event.provider,
+    createdAt: event.createdAt,
+    title: event.eventType ?? "provider_event",
+    description: event.statusRaw ?? "status_update",
+    signatureValid: event.signatureValid,
+    processed: event.processed,
+  }));
+
+export const toInvoiceSummary = (invoice: InvoiceInput | null) =>
+  invoice
+    ? {
+        _id: invoice._id,
+        status: invoice.status,
+        externalInvoiceId: invoice.externalInvoiceId,
+        externalInvoiceUrl: invoice.externalInvoiceId,
+        issuedAt: invoice.issuedAt,
+      }
+    : null;
 
 const requireAuthedUser = async (ctx: any) => {
   const identity = await ctx.auth.getUserIdentity();
@@ -23,7 +92,7 @@ const requireAuthedUser = async (ctx: any) => {
   return user as { _id: Id<"users">; role: AppRole };
 };
 
-const toPaymentStatus = (
+export const toRapydPaymentStatus = (
   rawStatus: string | undefined,
 ):
   | "pending"
@@ -271,7 +340,7 @@ export const processRapydWebhookEvent = internalMutation({
         .unique();
     }
 
-    const mappedStatus = toPaymentStatus(args.statusRaw);
+    const mappedStatus = toRapydPaymentStatus(args.statusRaw);
 
     const eventId = await ctx.db.insert("paymentEvents", {
       provider: RAPYD_PROVIDER,
@@ -298,10 +367,10 @@ export const processRapydWebhookEvent = internalMutation({
       };
     }
 
-    const nextStatus =
-      payment.status === "captured" && mappedStatus !== "refunded"
-        ? payment.status
-        : mappedStatus;
+    const nextStatus = computeNextWebhookPaymentStatus(
+      payment.status,
+      mappedStatus,
+    );
     await ctx.db.patch(payment._id, {
       status: nextStatus,
       providerPaymentId: args.providerPaymentId,
@@ -310,8 +379,10 @@ export const processRapydWebhookEvent = internalMutation({
       updatedAt: now,
     });
 
-    const transitionedToCaptured =
-      payment.status !== "captured" && nextStatus === "captured";
+    const transitionedToCaptured = shouldScheduleInvoiceForTransition(
+      payment.status,
+      nextStatus,
+    );
     if (transitionedToCaptured) {
       await ctx.scheduler.runAfter(
         0,
@@ -320,13 +391,21 @@ export const processRapydWebhookEvent = internalMutation({
           paymentId: payment._id,
         },
       );
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payouts.schedulePayoutForCapturedPayment,
+        {
+          paymentId: payment._id,
+          reason: "captured_via_rapyd_webhook",
+        },
+      );
     }
 
     return { ignored: false, processed: true, eventId, paymentId: payment._id };
   },
 });
 
-const toBitpayPaymentStatus = (
+export const toBitpayPaymentStatus = (
   rawStatus: string | undefined,
 ):
   | "pending"
@@ -457,10 +536,10 @@ export const processBitpayWebhookEvent = internalMutation({
       };
     }
 
-    const nextStatus =
-      payment.status === "captured" && mappedStatus !== "refunded"
-        ? payment.status
-        : mappedStatus;
+    const nextStatus = computeNextWebhookPaymentStatus(
+      payment.status,
+      mappedStatus,
+    );
     await ctx.db.patch(payment._id, {
       status: nextStatus,
       providerPaymentId: args.providerPaymentId,
@@ -469,14 +548,24 @@ export const processBitpayWebhookEvent = internalMutation({
       updatedAt: now,
     });
 
-    const transitionedToCaptured =
-      payment.status !== "captured" && nextStatus === "captured";
+    const transitionedToCaptured = shouldScheduleInvoiceForTransition(
+      payment.status,
+      nextStatus,
+    );
     if (transitionedToCaptured) {
       await ctx.scheduler.runAfter(
         0,
         internal.invoicing.issueInvoiceForPayment,
         {
           paymentId: payment._id,
+        },
+      );
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payouts.schedulePayoutForCapturedPayment,
+        {
+          paymentId: payment._id,
+          reason: "captured_via_bitpay_webhook",
         },
       );
     }
@@ -607,17 +696,20 @@ export const listMyPayments = query({
 
     const enriched = await Promise.all(
       rows.map(async (payment) => {
-        const [job, invoice] = await Promise.all([
+        const [job, invoice, payout] = await Promise.all([
           ctx.db.get(payment.jobId),
           ctx.db
             .query("invoices")
             .withIndex("by_payment", (q) => q.eq("paymentId", payment._id))
             .order("desc")
             .first(),
+          ctx.db
+            .query("payouts")
+            .withIndex("by_payment", (q) => q.eq("paymentId", payment._id))
+            .order("desc")
+            .first(),
         ]);
 
-        const payoutStatus =
-          payment.status === "captured" ? "pending" : payment.status;
         return {
           ...payment,
           job: job
@@ -629,18 +721,10 @@ export const listMyPayments = query({
               }
             : null,
           payout: {
-            status: payoutStatus,
-            settledAt: undefined,
+            status: payout?.status ?? derivePayoutStatus(payment.status),
+            settledAt: payout?.terminalAt,
           },
-          invoice: invoice
-            ? {
-                _id: invoice._id,
-                status: invoice.status,
-                externalInvoiceId: invoice.externalInvoiceId,
-                externalInvoiceUrl: invoice.externalInvoiceId,
-                issuedAt: invoice.issuedAt,
-              }
-            : null,
+          invoice: toInvoiceSummary(invoice),
         };
       }),
     );
@@ -662,10 +746,15 @@ export const getMyPaymentForJob = query({
     if (payment.studioId !== user._id && payment.instructorId !== user._id) {
       throw new Error("Unauthorized");
     }
-    const [job, invoice] = await Promise.all([
+    const [job, invoice, payout] = await Promise.all([
       ctx.db.get(payment.jobId),
       ctx.db
         .query("invoices")
+        .withIndex("by_payment", (q) => q.eq("paymentId", payment._id))
+        .order("desc")
+        .first(),
+      ctx.db
+        .query("payouts")
         .withIndex("by_payment", (q) => q.eq("paymentId", payment._id))
         .order("desc")
         .first(),
@@ -674,17 +763,10 @@ export const getMyPaymentForJob = query({
       ...payment,
       job,
       payout: {
-        status: payment.status === "captured" ? "pending" : payment.status,
+        status: payout?.status ?? derivePayoutStatus(payment.status),
+        settledAt: payout?.terminalAt,
       },
-      invoice: invoice
-        ? {
-            _id: invoice._id,
-            status: invoice.status,
-            externalInvoiceId: invoice.externalInvoiceId,
-            externalInvoiceUrl: invoice.externalInvoiceId,
-            issuedAt: invoice.issuedAt,
-          }
-        : null,
+      invoice: toInvoiceSummary(invoice),
     };
   },
 });
@@ -699,7 +781,7 @@ export const getMyPaymentDetail = query({
       throw new Error("Unauthorized");
     }
 
-    const [job, invoice, events] = await Promise.all([
+    const [job, invoice, events, payout] = await Promise.all([
       ctx.db.get(payment.jobId),
       ctx.db
         .query("invoices")
@@ -711,34 +793,23 @@ export const getMyPaymentDetail = query({
         .withIndex("by_payment", (q) => q.eq("paymentId", payment._id))
         .order("desc")
         .take(50),
+      ctx.db
+        .query("payouts")
+        .withIndex("by_payment", (q) => q.eq("paymentId", payment._id))
+        .order("desc")
+        .first(),
     ]);
 
-    const timeline = events.map((event) => ({
-      _id: event._id,
-      provider: event.provider,
-      createdAt: event.createdAt,
-      title: event.eventType ?? "provider_event",
-      description: event.statusRaw ?? "status_update",
-      signatureValid: event.signatureValid,
-      processed: event.processed,
-    }));
+    const timeline = toPaymentTimeline(events);
 
     return {
       payment,
       job,
       payout: {
-        status: payment.status === "captured" ? "pending" : payment.status,
-        settledAt: undefined,
+        status: payout?.status ?? derivePayoutStatus(payment.status),
+        settledAt: payout?.terminalAt,
       },
-      invoice: invoice
-        ? {
-            _id: invoice._id,
-            status: invoice.status,
-            externalInvoiceId: invoice.externalInvoiceId,
-            externalInvoiceUrl: invoice.externalInvoiceId,
-            issuedAt: invoice.issuedAt,
-          }
-        : null,
+      invoice: toInvoiceSummary(invoice),
       timeline,
     };
   },

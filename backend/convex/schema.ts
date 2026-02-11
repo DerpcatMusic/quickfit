@@ -339,6 +339,90 @@ export default defineSchema({
     .index("by_payment", ["paymentId", "createdAt"]),
 
   // ==========================================
+  // PAYOUTS - provider payout orchestration state
+  // ==========================================
+  payouts: defineTable({
+    paymentId: v.id("payments"),
+    jobId: v.id("jobs"),
+    studioId: v.id("users"),
+    instructorId: v.id("users"),
+    destinationId: v.optional(v.id("payoutDestinations")),
+    provider: v.union(v.literal("rapyd"), v.literal("bitpay")),
+    idempotencyKey: v.string(),
+
+    amountAgorot: v.number(),
+    currency: v.string(),
+
+    status: v.union(
+      v.literal("queued"),
+      v.literal("processing"),
+      v.literal("pending_provider"),
+      v.literal("paid"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+      v.literal("needs_attention"),
+    ),
+    providerPayoutId: v.optional(v.string()),
+    providerStatusRaw: v.optional(v.string()),
+
+    attemptCount: v.number(),
+    maxAttempts: v.number(),
+    lastError: v.optional(v.string()),
+    lastAttemptAt: v.optional(v.number()),
+    nextRetryAt: v.optional(v.number()),
+    terminalAt: v.optional(v.number()),
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_payment", ["paymentId", "createdAt"])
+    .index("by_instructor", ["instructorId", "createdAt"])
+    .index("by_destination", ["destinationId", "createdAt"])
+    .index("by_status_retryAt", ["status", "nextRetryAt"])
+    .index("by_provider_payoutId", ["provider", "providerPayoutId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  // ==========================================
+  // PAYOUT EVENTS - payout attempt/event audit log
+  // ==========================================
+  payoutEvents: defineTable({
+    payoutId: v.id("payouts"),
+    paymentId: v.id("payments"),
+    provider: v.union(v.literal("rapyd"), v.literal("bitpay")),
+    eventType: v.union(
+      v.literal("attempt_started"),
+      v.literal("provider_response"),
+      v.literal("retry_scheduled"),
+      v.literal("terminal_failure"),
+      v.literal("status_update"),
+    ),
+    attempt: v.optional(v.number()),
+    providerEventId: v.optional(v.string()),
+    providerPayoutId: v.optional(v.string()),
+    statusRaw: v.optional(v.string()),
+    mappedStatus: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("processing"),
+        v.literal("pending_provider"),
+        v.literal("paid"),
+        v.literal("failed"),
+        v.literal("cancelled"),
+        v.literal("needs_attention"),
+      ),
+    ),
+    retryable: v.optional(v.boolean()),
+    httpStatus: v.optional(v.number()),
+    errorCode: v.optional(v.string()),
+    message: v.optional(v.string()),
+    payload: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_payout", ["payoutId", "createdAt"])
+    .index("by_payment", ["paymentId", "createdAt"])
+    .index("by_provider_eventId", ["provider", "providerEventId"]),
+
+  // ==========================================
   // PAYOUT DESTINATIONS - instructor payout rails
   // ==========================================
   payoutDestinations: defineTable({
