@@ -183,10 +183,10 @@ class _InstructorPayoutDestinationsScreenState
                       ? row['label'].toString()
                       : (row['externalRecipientId']?.toString() ?? 'Destination')),
                   subtitle: Text(
-                    '${row['provider'] ?? 'unknown'} • '
-                    '${row['type'] ?? 'unknown'} • '
+                    '${row['provider'] ?? 'unknown'} - '
+                    '${row['type'] ?? 'unknown'} - '
                     '${row['status'] ?? 'unknown'}'
-                    '${row['isDefault'] == true ? ' • DEFAULT' : ''}',
+                    '${row['isDefault'] == true ? ' - DEFAULT' : ''}',
                   ),
                 ),
               ),
@@ -196,3 +196,4 @@ class _InstructorPayoutDestinationsScreenState
     );
   }
 }
+

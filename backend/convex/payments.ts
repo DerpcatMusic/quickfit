@@ -92,6 +92,21 @@ const requireAuthedUser = async (ctx: any) => {
   return user as { _id: Id<"users">; role: AppRole };
 };
 
+const resolveNextPaymentState = (
+  payment: {
+    status: PaymentStatus;
+    capturedAt?: number;
+  },
+  mappedStatus: MappedPaymentStatus,
+) => {
+  const nextStatus = computeNextWebhookPaymentStatus(payment.status, mappedStatus);
+  const transitionedToCaptured = shouldScheduleInvoiceForTransition(
+    payment.status,
+    nextStatus,
+  );
+  return { nextStatus, transitionedToCaptured };
+};
+
 export const toRapydPaymentStatus = (
   rawStatus: string | undefined,
 ):
@@ -244,6 +259,7 @@ export const markCheckoutCreated = internalMutation({
   handler: async (ctx, args) => {
     const payment = await ctx.db.get(args.paymentId);
     if (!payment) throw new Error("Payment not found");
+    const now = Date.now();
 
     await ctx.db.patch(args.paymentId, {
       providerCheckoutId: args.providerCheckoutId ?? payment.providerCheckoutId,
@@ -253,8 +269,118 @@ export const markCheckoutCreated = internalMutation({
         ...(args.metadata ?? {}),
       },
       status: payment.status === "created" ? "pending" : payment.status,
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+
+    await ctx.runMutation(internal.payments.reprocessUnmatchedEventsForPayment, {
+      paymentId: args.paymentId,
+      provider: payment.provider,
+      providerPaymentId: args.providerPaymentId ?? payment.providerPaymentId,
+      providerCheckoutId: args.providerCheckoutId ?? payment.providerCheckoutId,
+    });
+  },
+});
+
+export const reprocessUnmatchedEventsForPayment = internalMutation({
+  args: {
+    paymentId: v.id("payments"),
+    provider: v.union(v.literal("rapyd"), v.literal("bitpay")),
+    providerPaymentId: v.optional(v.string()),
+    providerCheckoutId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const payment = await ctx.db.get(args.paymentId);
+    if (!payment) return { processed: 0 };
+    const now = Date.now();
+    const toProcess = new Map<string, any>();
+
+    if (args.providerPaymentId) {
+      const byPaymentId = await ctx.db
+        .query("paymentEvents")
+        .withIndex("by_provider_payment_processed", (q) =>
+          q
+            .eq("provider", args.provider)
+            .eq("providerPaymentId", args.providerPaymentId)
+            .eq("processed", false),
+        )
+        .take(20);
+      for (const row of byPaymentId) {
+        toProcess.set(row._id, row);
+      }
+    }
+
+    if (args.providerCheckoutId) {
+      const byCheckoutId = await ctx.db
+        .query("paymentEvents")
+        .withIndex("by_provider_checkout_processed", (q) =>
+          q
+            .eq("provider", args.provider)
+            .eq("providerCheckoutId", args.providerCheckoutId)
+            .eq("processed", false),
+        )
+        .take(20);
+      for (const row of byCheckoutId) {
+        toProcess.set(row._id, row);
+      }
+    }
+
+    let current = payment;
+    let processed = 0;
+    const sorted = Array.from(toProcess.values()).sort(
+      (a, b) => a.createdAt - b.createdAt,
+    );
+
+    for (const event of sorted) {
+      if (!event.signatureValid) continue;
+      const mappedStatus =
+        args.provider === RAPYD_PROVIDER
+          ? toRapydPaymentStatus(event.statusRaw)
+          : toBitpayPaymentStatus(event.statusRaw);
+      const { nextStatus, transitionedToCaptured } = resolveNextPaymentState(
+        current,
+        mappedStatus,
+      );
+
+      await ctx.db.patch(args.paymentId, {
+        status: nextStatus,
+        providerPaymentId: event.providerPaymentId ?? current.providerPaymentId,
+        providerCheckoutId: event.providerCheckoutId ?? current.providerCheckoutId,
+        capturedAt:
+          nextStatus === "captured" ? (current.capturedAt ?? now) : current.capturedAt,
+        updatedAt: now,
+      });
+      await ctx.db.patch(event._id, {
+        paymentId: args.paymentId,
+        processed: true,
+        updatedAt: now,
+      });
+      processed += 1;
+
+      if (transitionedToCaptured) {
+        await ctx.scheduler.runAfter(0, internal.invoicing.issueInvoiceForPayment, {
+          paymentId: args.paymentId,
+        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.payouts.schedulePayoutForCapturedPayment,
+          {
+            paymentId: args.paymentId,
+            reason: "captured_via_reprocessed_webhook",
+          },
+        );
+      }
+
+      current = {
+        ...current,
+        status: nextStatus,
+        providerPaymentId: event.providerPaymentId ?? current.providerPaymentId,
+        providerCheckoutId: event.providerCheckoutId ?? current.providerCheckoutId,
+        capturedAt:
+          nextStatus === "captured" ? (current.capturedAt ?? now) : current.capturedAt,
+      };
+    }
+
+    return { processed };
   },
 });
 
@@ -283,6 +409,15 @@ export const processRapydWebhookEvent = internalMutation({
 
     if (existingEvent) {
       return { ignored: true, reason: "duplicate_event" as const };
+    }
+    const existingPayload = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_provider_payloadHash", (q) =>
+        q.eq("provider", RAPYD_PROVIDER).eq("payloadHash", args.payloadHash),
+      )
+      .first();
+    if (existingPayload) {
+      return { ignored: true, reason: "duplicate_payload" as const };
     }
 
     if (!args.signatureValid) {
@@ -367,8 +502,8 @@ export const processRapydWebhookEvent = internalMutation({
       };
     }
 
-    const nextStatus = computeNextWebhookPaymentStatus(
-      payment.status,
+    const { nextStatus, transitionedToCaptured } = resolveNextPaymentState(
+      payment,
       mappedStatus,
     );
     await ctx.db.patch(payment._id, {
@@ -379,10 +514,6 @@ export const processRapydWebhookEvent = internalMutation({
       updatedAt: now,
     });
 
-    const transitionedToCaptured = shouldScheduleInvoiceForTransition(
-      payment.status,
-      nextStatus,
-    );
     if (transitionedToCaptured) {
       await ctx.scheduler.runAfter(
         0,
@@ -454,6 +585,15 @@ export const processBitpayWebhookEvent = internalMutation({
       .unique();
     if (existingEvent) {
       return { ignored: true, reason: "duplicate_event" as const };
+    }
+    const existingPayload = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_provider_payloadHash", (q) =>
+        q.eq("provider", "bitpay").eq("payloadHash", args.payloadHash),
+      )
+      .first();
+    if (existingPayload) {
+      return { ignored: true, reason: "duplicate_payload" as const };
     }
 
     if (!args.signatureValid) {
@@ -536,8 +676,8 @@ export const processBitpayWebhookEvent = internalMutation({
       };
     }
 
-    const nextStatus = computeNextWebhookPaymentStatus(
-      payment.status,
+    const { nextStatus, transitionedToCaptured } = resolveNextPaymentState(
+      payment,
       mappedStatus,
     );
     await ctx.db.patch(payment._id, {
@@ -548,10 +688,6 @@ export const processBitpayWebhookEvent = internalMutation({
       updatedAt: now,
     });
 
-    const transitionedToCaptured = shouldScheduleInvoiceForTransition(
-      payment.status,
-      nextStatus,
-    );
     if (transitionedToCaptured) {
       await ctx.scheduler.runAfter(
         0,

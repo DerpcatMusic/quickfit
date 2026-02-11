@@ -9,13 +9,6 @@ import { v } from "convex/values";
 import { sealSecret } from "./lib/secrets";
 import { validateAndNormalizeProviderBaseUrl } from "./lib/urlSecurity";
 
-const toMasked = (value: string | undefined): string | undefined => {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  if (trimmed.length <= 4) return "****";
-  return `${"*".repeat(Math.max(4, trimmed.length - 4))}${trimmed.slice(-4)}`;
-};
-
 const requireStudioUser = async (ctx: QueryCtx | MutationCtx) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error("Not authenticated");
@@ -53,8 +46,8 @@ export const listMyInvoicingIntegrations = query({
       lastVerifiedAt: row.lastVerifiedAt,
       hasApiToken: Boolean(row.sealedApiToken ?? row.apiToken),
       hasApiKey: Boolean(row.sealedApiKey ?? row.apiKey),
-      maskedApiToken: row.apiToken != null ? toMasked(row.apiToken) : undefined,
-      maskedApiKey: row.apiKey != null ? toMasked(row.apiKey) : undefined,
+      maskedApiToken: undefined,
+      maskedApiKey: undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }));
@@ -130,8 +123,8 @@ export const upsertMyInvoicingIntegration = mutation({
         isActive: args.isActive ?? existing.isActive,
         displayName: args.displayName ?? existing.displayName,
         baseUrl: normalizedBaseUrl,
-        apiToken: undefined,
-        apiKey: undefined,
+        apiToken: null,
+        apiKey: null,
         sealedApiToken: sealedApiToken ?? existing.sealedApiToken,
         sealedApiKey: sealedApiKey ?? existing.sealedApiKey,
         accountId: args.accountId?.trim() || existing.accountId,
@@ -148,8 +141,8 @@ export const upsertMyInvoicingIntegration = mutation({
       isActive: args.isActive ?? true,
       displayName: args.displayName?.trim(),
       baseUrl: normalizedBaseUrl,
-      apiToken: undefined,
-      apiKey: undefined,
+      apiToken: null,
+      apiKey: null,
       sealedApiToken,
       sealedApiKey,
       accountId: args.accountId?.trim(),
@@ -250,8 +243,8 @@ export const listMyPaymentIntegrations = query({
       hasApiToken: Boolean(row.sealedApiToken ?? row.apiToken),
       hasApiKey: Boolean(row.sealedApiKey ?? row.apiKey),
       hasWebhookSecret: Boolean(row.sealedWebhookSecret ?? row.webhookSecret),
-      maskedApiToken: row.apiToken != null ? toMasked(row.apiToken) : undefined,
-      maskedApiKey: row.apiKey != null ? toMasked(row.apiKey) : undefined,
+      maskedApiToken: undefined,
+      maskedApiKey: undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }));
@@ -325,9 +318,9 @@ export const upsertMyPaymentIntegration = mutation({
         isActive: args.isActive ?? existing.isActive,
         displayName: args.displayName ?? existing.displayName,
         mode: args.mode ?? existing.mode,
-        apiToken: undefined,
-        apiKey: undefined,
-        webhookSecret: undefined,
+        apiToken: null,
+        apiKey: null,
+        webhookSecret: null,
         sealedApiToken: sealedApiToken ?? existing.sealedApiToken,
         sealedApiKey: sealedApiKey ?? existing.sealedApiKey,
         sealedWebhookSecret:
@@ -346,9 +339,9 @@ export const upsertMyPaymentIntegration = mutation({
       isActive: args.isActive ?? true,
       displayName: args.displayName?.trim(),
       mode: args.mode ?? "sandbox",
-      apiToken: undefined,
-      apiKey: undefined,
-      webhookSecret: undefined,
+      apiToken: null,
+      apiKey: null,
+      webhookSecret: null,
       sealedApiToken,
       sealedApiKey,
       sealedWebhookSecret,
@@ -437,5 +430,86 @@ export const getStudioPaymentIntegrationByProvider = internalQuery({
         q.eq("studioId", studioId).eq("provider", provider),
       )
       .unique();
+  },
+});
+
+export const migrateLegacyPlaintextSecrets = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireStudioUser(ctx);
+    const now = Date.now();
+    let cleaned = 0;
+
+    const billingRows = await ctx.db
+      .query("studioBillingIntegrations")
+      .withIndex("by_studio", (q) => q.eq("studioId", user._id))
+      .collect();
+    for (const row of billingRows) {
+      const updates: Record<string, string | null | number | undefined> = {
+        updatedAt: now,
+      };
+      let changed = false;
+      if (!row.sealedApiToken && row.apiToken?.trim()) {
+        updates.sealedApiToken = await sealSecret(row.apiToken.trim());
+        changed = true;
+      }
+      if (!row.sealedApiKey && row.apiKey?.trim()) {
+        updates.sealedApiKey = await sealSecret(row.apiKey.trim());
+        changed = true;
+      }
+      if (row.apiToken != null) {
+        updates.apiToken = null;
+        changed = true;
+      }
+      if (row.apiKey != null) {
+        updates.apiKey = null;
+        changed = true;
+      }
+      if (changed) {
+        await ctx.db.patch(row._id, updates);
+        cleaned += 1;
+      }
+    }
+
+    const paymentRows = await ctx.db
+      .query("studioPaymentIntegrations")
+      .withIndex("by_studio", (q) => q.eq("studioId", user._id))
+      .collect();
+    for (const row of paymentRows) {
+      const updates: Record<string, string | null | number | undefined> = {
+        updatedAt: now,
+      };
+      let changed = false;
+      if (!row.sealedApiToken && row.apiToken?.trim()) {
+        updates.sealedApiToken = await sealSecret(row.apiToken.trim());
+        changed = true;
+      }
+      if (!row.sealedApiKey && row.apiKey?.trim()) {
+        updates.sealedApiKey = await sealSecret(row.apiKey.trim());
+        changed = true;
+      }
+      if (!row.sealedWebhookSecret && row.webhookSecret?.trim()) {
+        updates.sealedWebhookSecret = await sealSecret(row.webhookSecret.trim());
+        changed = true;
+      }
+      if (row.apiToken != null) {
+        updates.apiToken = null;
+        changed = true;
+      }
+      if (row.apiKey != null) {
+        updates.apiKey = null;
+        changed = true;
+      }
+      if (row.webhookSecret != null) {
+        updates.webhookSecret = null;
+        changed = true;
+      }
+      if (changed) {
+        await ctx.db.patch(row._id, updates);
+        cleaned += 1;
+      }
+    }
+
+    return { cleaned };
   },
 });

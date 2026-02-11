@@ -55,7 +55,25 @@ class InstructorPaymentHistoryScreen extends ConsumerWidget {
       ),
       body: paymentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Failed to load payments: $error')),
+        error: (error, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Failed to load payments: $error',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () => ref.invalidate(instructorPaymentsProvider),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
         data: (payments) {
           if (payments.isEmpty) {
             return const Center(

@@ -66,7 +66,7 @@ const buildRapydSignature = async ({
   return btoa(hex);
 };
 
-const normalizeRapydPayoutStatus = (
+export const normalizeRapydPayoutStatus = (
   rawStatus: string | undefined,
 ): { status: PayoutStatus; terminal: boolean } => {
   const status = (rawStatus ?? "").toUpperCase().trim();
@@ -94,6 +94,19 @@ const normalizeRapydPayoutStatus = (
     return { status: "failed", terminal: true };
   }
   return { status: "pending_provider", terminal: false };
+};
+
+export const computeNextPayoutWebhookStatus = (
+  currentStatus: PayoutStatus,
+  webhookStatus: PayoutStatus,
+): PayoutStatus => {
+  if (TERMINAL_PAYOUT_STATUSES.has(currentStatus)) {
+    return currentStatus;
+  }
+  if (webhookStatus === "processing" || webhookStatus === "queued") {
+    return "pending_provider";
+  }
+  return webhookStatus;
 };
 
 const computeRetryDelayMs = (attempt: number): number => {
@@ -312,6 +325,24 @@ export const getPayoutExecutionContext = internalQuery({
       destination: destination ?? null,
       integration: integration ?? null,
     };
+  },
+});
+
+export const getPayoutByProviderRefs = internalQuery({
+  args: {
+    provider: v.union(v.literal("rapyd"), v.literal("bitpay")),
+    providerPayoutId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (args.providerPayoutId) {
+      return await ctx.db
+        .query("payouts")
+        .withIndex("by_provider_payoutId", (q) =>
+          q.eq("provider", args.provider).eq("providerPayoutId", args.providerPayoutId),
+        )
+        .unique();
+    }
+    return null;
   },
 });
 
@@ -674,6 +705,136 @@ export const recordPayoutAttemptResult = internalMutation({
       status: nextStatus,
       retryScheduled: shouldScheduleRetry,
       nextRetryAt,
+    };
+  },
+});
+
+export const processRapydPayoutWebhookEvent = internalMutation({
+  args: {
+    providerEventId: v.string(),
+    eventType: v.optional(v.string()),
+    providerPayoutId: v.optional(v.string()),
+    statusRaw: v.optional(v.string()),
+    signatureValid: v.boolean(),
+    payloadHash: v.string(),
+    payload: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const existingEvent = await ctx.db
+      .query("payoutEvents")
+      .withIndex("by_provider_eventId", (q) =>
+        q.eq("provider", RAPYD_PROVIDER).eq("providerEventId", args.providerEventId),
+      )
+      .unique();
+    if (existingEvent) {
+      return { ignored: true, reason: "duplicate_event" as const };
+    }
+
+    const payout = args.providerPayoutId
+      ? await ctx.db
+          .query("payouts")
+          .withIndex("by_provider_payoutId", (q) =>
+            q
+              .eq("provider", RAPYD_PROVIDER)
+              .eq("providerPayoutId", args.providerPayoutId),
+          )
+          .unique()
+      : null;
+    if (!payout) {
+      return {
+        ignored: false,
+        processed: false,
+        reason: "payout_not_found" as const,
+      };
+    }
+
+    const now = Date.now();
+    if (!args.signatureValid) {
+      const eventId = await ctx.db.insert("payoutEvents", {
+        payoutId: payout._id,
+        paymentId: payout.paymentId,
+        provider: RAPYD_PROVIDER,
+        eventType: "status_update",
+        attempt: payout.attemptCount,
+        providerEventId: args.providerEventId,
+        providerPayoutId: args.providerPayoutId ?? payout.providerPayoutId,
+        statusRaw: args.statusRaw,
+        mappedStatus: payout.status,
+        retryable: false,
+        errorCode: "invalid_signature",
+        message: "Ignored Rapyd payout webhook due to invalid signature",
+        payload: {
+          payloadHash: args.payloadHash,
+          eventType: args.eventType,
+          raw: args.payload,
+        },
+        createdAt: now,
+      });
+      return { ignored: true, reason: "invalid_signature" as const, eventId };
+    }
+
+    const mapped = normalizeRapydPayoutStatus(args.statusRaw);
+    const nextStatus = computeNextPayoutWebhookStatus(payout.status, mapped.status);
+    const movedToTerminal =
+      !TERMINAL_PAYOUT_STATUSES.has(payout.status) &&
+      TERMINAL_PAYOUT_STATUSES.has(nextStatus);
+
+    await ctx.db.patch(payout._id, {
+      status: nextStatus,
+      providerPayoutId: args.providerPayoutId ?? payout.providerPayoutId,
+      providerStatusRaw: args.statusRaw ?? payout.providerStatusRaw,
+      nextRetryAt: undefined,
+      terminalAt: movedToTerminal ? now : payout.terminalAt,
+      lastError:
+        nextStatus === "failed" || nextStatus === "cancelled"
+          ? `Rapyd payout webhook reported ${args.statusRaw ?? "unknown"}`
+          : payout.lastError,
+      updatedAt: now,
+    });
+
+    const eventId = await ctx.db.insert("payoutEvents", {
+      payoutId: payout._id,
+      paymentId: payout.paymentId,
+      provider: RAPYD_PROVIDER,
+      eventType: "status_update",
+      attempt: payout.attemptCount,
+      providerEventId: args.providerEventId,
+      providerPayoutId: args.providerPayoutId ?? payout.providerPayoutId,
+      statusRaw: args.statusRaw,
+      mappedStatus: nextStatus,
+      retryable: false,
+      message: movedToTerminal
+        ? "Payout reached terminal status via Rapyd webhook"
+        : "Payout status updated via Rapyd webhook",
+      payload: {
+        payloadHash: args.payloadHash,
+        eventType: args.eventType,
+      },
+      createdAt: now,
+    });
+
+    if (nextStatus === "failed" || nextStatus === "cancelled" || nextStatus === "needs_attention") {
+      await ctx.db.insert("payoutEvents", {
+        payoutId: payout._id,
+        paymentId: payout.paymentId,
+        provider: RAPYD_PROVIDER,
+        eventType: "terminal_failure",
+        attempt: payout.attemptCount,
+        providerEventId: args.providerEventId,
+        providerPayoutId: args.providerPayoutId ?? payout.providerPayoutId,
+        statusRaw: args.statusRaw,
+        mappedStatus: nextStatus,
+        message: "Payout moved to terminal failure state via webhook",
+        createdAt: now,
+      });
+    }
+
+    return {
+      ignored: false,
+      processed: true,
+      eventId,
+      payoutId: payout._id,
+      status: nextStatus,
     };
   },
 });

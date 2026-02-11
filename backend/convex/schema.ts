@@ -336,7 +336,20 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_provider_eventId", ["provider", "providerEventId"])
-    .index("by_payment", ["paymentId", "createdAt"]),
+    .index("by_payment", ["paymentId", "createdAt"])
+    .index("by_provider_payment_processed", [
+      "provider",
+      "providerPaymentId",
+      "processed",
+      "createdAt",
+    ])
+    .index("by_provider_checkout_processed", [
+      "provider",
+      "providerCheckoutId",
+      "processed",
+      "createdAt",
+    ])
+    .index("by_provider_payloadHash", ["provider", "payloadHash"]),
 
   // ==========================================
   // PAYOUTS - provider payout orchestration state
@@ -483,8 +496,8 @@ export default defineSchema({
     baseUrl: v.string(),
     // Provider-specific auth fields.
     // Legacy plaintext fields kept for backward compatibility.
-    apiToken: v.optional(v.string()),
-    apiKey: v.optional(v.string()),
+    apiToken: v.optional(v.union(v.string(), v.null())),
+    apiKey: v.optional(v.union(v.string(), v.null())),
     // Encrypted-at-rest credentials (preferred).
     sealedApiToken: v.optional(v.string()),
     sealedApiKey: v.optional(v.string()),
@@ -511,9 +524,9 @@ export default defineSchema({
     mode: v.union(v.literal("sandbox"), v.literal("production")),
     // Provider-specific auth fields.
     // Legacy plaintext fields kept for backward compatibility.
-    apiToken: v.optional(v.string()),
-    apiKey: v.optional(v.string()),
-    webhookSecret: v.optional(v.string()),
+    apiToken: v.optional(v.union(v.string(), v.null())),
+    apiKey: v.optional(v.union(v.string(), v.null())),
+    webhookSecret: v.optional(v.union(v.string(), v.null())),
     // Encrypted-at-rest credentials (preferred).
     sealedApiToken: v.optional(v.string()),
     sealedApiKey: v.optional(v.string()),

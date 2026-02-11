@@ -91,6 +91,11 @@ type PaymentForLookup = {
   studioId: Id<"users">;
 };
 
+type PayoutForLookup = {
+  _id: Id<"payouts">;
+  studioId: Id<"users">;
+};
+
 type StudioPaymentIntegration = {
   provider: "rapyd" | "bitpay";
   apiToken?: string;
@@ -132,10 +137,16 @@ export const rapydWebhook = httpAction(async (ctx, req) => {
     data?: {
       id?: string;
       status?: string;
+      payout?: { id?: string; status?: string };
       payment?: { id?: string; status?: string };
       checkout?: { id?: string };
+      merchant_reference_id?: string;
+      metadata?: { payoutId?: string };
     };
   };
+
+  const eventType = payload.type?.toString().trim() || undefined;
+  const isPayoutEvent = eventType?.toLowerCase().includes("payout") ?? false;
 
   const providerEventId = payload.id?.toString().trim();
   if (!providerEventId) {
@@ -144,13 +155,22 @@ export const rapydWebhook = httpAction(async (ctx, req) => {
       headers: { "Content-Type": "application/json" },
     });
   }
+  const providerPayoutId = (
+    payload.data?.payout?.id?.toString().trim() ||
+    (isPayoutEvent ? payload.data?.id?.toString().trim() : undefined)
+  ) || undefined;
   const providerPaymentId =
     payload.data?.payment?.id?.toString().trim() ||
-    payload.data?.id?.toString().trim() ||
+    (isPayoutEvent ? undefined : payload.data?.id?.toString().trim()) ||
     undefined;
   const providerCheckoutId =
     payload.data?.checkout?.id?.toString().trim() || undefined;
+  const payoutRefFromPayload =
+    payload.data?.merchant_reference_id?.toString().trim() ||
+    payload.data?.metadata?.payoutId?.toString().trim() ||
+    undefined;
   const statusRaw =
+    payload.data?.payout?.status?.toString().trim() ||
     payload.data?.payment?.status?.toString().trim() ||
     payload.data?.status?.toString().trim() ||
     undefined;
@@ -163,11 +183,21 @@ export const rapydWebhook = httpAction(async (ctx, req) => {
       providerCheckoutId,
     },
   )) as PaymentForLookup | null;
+  const payout = (await ctx.runQuery(
+    internal.payouts.getPayoutByProviderRefs,
+    {
+      provider: "rapyd",
+      providerPayoutId,
+    },
+  )) as PayoutForLookup | null;
 
-  const studioIntegration = payment
+  const studioIntegration = payment || payout
     ? ((await ctx.runQuery(
         internal.billing.getStudioPaymentIntegrationByProvider,
-        { studioId: payment.studioId, provider: "rapyd" },
+        {
+          studioId: payment?.studioId ?? payout!.studioId,
+          provider: "rapyd",
+        },
       )) as StudioPaymentIntegration | null)
     : null;
 
@@ -212,16 +242,28 @@ export const rapydWebhook = httpAction(async (ctx, req) => {
       accessKeyHeader === expectedAccessKey && safeEqual(expected, signature);
   }
 
-  await ctx.runMutation(internal.payments.processRapydWebhookEvent, {
-    providerEventId,
-    eventType: payload.type?.toString(),
-    providerPaymentId,
-    providerCheckoutId,
-    statusRaw,
-    signatureValid,
-    payloadHash,
-    payload: parsedPayload,
-  });
+  if (isPayoutEvent || providerPayoutId || payoutRefFromPayload) {
+    await ctx.runMutation(internal.payouts.processRapydPayoutWebhookEvent, {
+      providerEventId,
+      eventType,
+      providerPayoutId,
+      statusRaw,
+      signatureValid,
+      payloadHash,
+      payload: parsedPayload,
+    });
+  } else {
+    await ctx.runMutation(internal.payments.processRapydWebhookEvent, {
+      providerEventId,
+      eventType,
+      providerPaymentId,
+      providerCheckoutId,
+      statusRaw,
+      signatureValid,
+      payloadHash,
+      payload: parsedPayload,
+    });
+  }
 
   return new Response(
     JSON.stringify({ received: true, signatureValid, timestampValid }),

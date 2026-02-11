@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:quickfit/features/instructor/payments/presentation/widgets/payment_status_chip.dart';
 import 'package:quickfit/features/instructor/payments/providers/instructor_payment_providers.dart';
 import 'package:quickfit/shared/widgets/adaptive_app_bar.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class InstructorPaymentDetailScreen extends ConsumerWidget {
   const InstructorPaymentDetailScreen({
@@ -16,6 +17,27 @@ class InstructorPaymentDetailScreen extends ConsumerWidget {
   String _formatAgorot(dynamic amount, String currency) {
     final num safe = amount is num ? amount : 0;
     return '$currency ${(safe / 100).toStringAsFixed(2)}';
+  }
+
+  Future<void> _openInvoiceUrl(BuildContext context, String raw) async {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return;
+    final normalized = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+        ? trimmed
+        : 'https://$trimmed';
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invoice link is invalid')),
+      );
+      return;
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.platformDefault);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open invoice link')),
+      );
+    }
   }
 
   @override
@@ -56,6 +78,10 @@ class InstructorPaymentDetailScreen extends ConsumerWidget {
                   (payment['capturedAt'] as num).toInt(),
                 )
               : null;
+          final invoiceRef =
+              (invoice['externalInvoiceUrl'] ?? invoice['externalInvoiceId'])
+                  ?.toString()
+                  .trim();
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -92,13 +118,20 @@ class InstructorPaymentDetailScreen extends ConsumerWidget {
                       ),
                       if (capturedAt != null) ...[
                         const SizedBox(height: 8),
-                        Text('Captured: ${DateFormat('MMM d, yyyy • HH:mm').format(capturedAt)}'),
+                        Text('Captured: ${DateFormat('MMM d, yyyy - HH:mm').format(capturedAt)}'),
                       ],
-                      if (invoice['externalInvoiceUrl'] != null) ...[
+                      if (invoiceRef != null && invoiceRef.isNotEmpty) ...[
                         const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: () => _openInvoiceUrl(context, invoiceRef),
+                          icon: const Icon(Icons.open_in_new, size: 18),
+                          label: const Text('Open invoice'),
+                        ),
                         SelectableText(
-                          'Invoice: ${invoice['externalInvoiceUrl']}',
-                          style: Theme.of(context).textTheme.bodySmall,
+                          'Invoice Ref: $invoiceRef',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ],
