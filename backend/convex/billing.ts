@@ -2,30 +2,16 @@ import {
   internalQuery,
   mutation,
   query,
-  type MutationCtx,
-  type QueryCtx,
 } from "./_generated/server";
 import { v } from "convex/values";
+import { requireStudioUserByIdentity } from "./lib/auth";
 import { sealSecret } from "./lib/secrets";
 import { validateAndNormalizeProviderBaseUrl } from "./lib/urlSecurity";
-
-const requireStudioUser = async (ctx: QueryCtx | MutationCtx) => {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not authenticated");
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-    .unique();
-  if (!user) throw new Error("User not found");
-  if (user.role !== "studio")
-    throw new Error("Only studios can manage billing");
-  return user;
-};
 
 export const listMyInvoicingIntegrations = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireStudioUser(ctx);
+    const user = await requireStudioUserByIdentity(ctx);
 
     const rows = await ctx.db
       .query("studioBillingIntegrations")
@@ -66,7 +52,7 @@ export const upsertMyInvoicingIntegration = mutation({
     defaultVatRate: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
-    const user = await requireStudioUser(ctx);
+    const user = await requireStudioUserByIdentity(ctx);
 
     const now = Date.now();
     const normalizedBaseUrl = validateAndNormalizeProviderBaseUrl(
@@ -159,7 +145,7 @@ export const setMyInvoicingIntegrationActive = mutation({
     isActive: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const user = await requireStudioUser(ctx);
+    const user = await requireStudioUserByIdentity(ctx);
 
     const row = await ctx.db
       .query("studioBillingIntegrations")
@@ -194,7 +180,7 @@ export const setMyInvoicingIntegrationActive = mutation({
 export const removeMyInvoicingIntegration = mutation({
   args: { provider: v.union(v.literal("morning"), v.literal("icount")) },
   handler: async (ctx, args) => {
-    const user = await requireStudioUser(ctx);
+    const user = await requireStudioUserByIdentity(ctx);
 
     const row = await ctx.db
       .query("studioBillingIntegrations")
@@ -225,7 +211,7 @@ export const getActiveStudioInvoicingIntegration = internalQuery({
 export const listMyPaymentIntegrations = query({
   args: {},
   handler: async (ctx) => {
-    await requireStudioUser(ctx);
+    await requireStudioUserByIdentity(ctx);
     return [];
   },
 });
@@ -243,7 +229,7 @@ export const upsertMyPaymentIntegration = mutation({
     merchantId: v.optional(v.string()),
   },
   handler: async (ctx, _args) => {
-    await requireStudioUser(ctx);
+    await requireStudioUserByIdentity(ctx);
     throw new Error(
       "Studio payment integrations are deprecated. Payments are managed by QuickFit platform.",
     );
@@ -256,7 +242,7 @@ export const setMyPaymentIntegrationActive = mutation({
     isActive: v.boolean(),
   },
   handler: async (ctx, _args) => {
-    await requireStudioUser(ctx);
+    await requireStudioUserByIdentity(ctx);
     throw new Error(
       "Studio payment integrations are deprecated. Payments are managed by QuickFit platform.",
     );
@@ -266,7 +252,7 @@ export const setMyPaymentIntegrationActive = mutation({
 export const removeMyPaymentIntegration = mutation({
   args: { provider: v.union(v.literal("rapyd"), v.literal("bitpay")) },
   handler: async (ctx, _args) => {
-    await requireStudioUser(ctx);
+    await requireStudioUserByIdentity(ctx);
     throw new Error(
       "Studio payment integrations are deprecated. Payments are managed by QuickFit platform.",
     );
@@ -293,7 +279,7 @@ export const getStudioPaymentIntegrationByProvider = internalQuery({
 export const migrateLegacyPlaintextSecrets = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireStudioUser(ctx);
+    const user = await requireStudioUserByIdentity(ctx);
     const now = Date.now();
     let cleaned = 0;
 

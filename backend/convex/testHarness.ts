@@ -358,6 +358,26 @@ export const backdateClaim = internalMutation({
   },
 });
 
+export const backdateJobWindow = internalMutation({
+  args: {
+    jobId: v.id("jobs"),
+    startTimeMs: v.number(),
+    endTimeMs: v.number(),
+  },
+  handler: async (ctx, { jobId, startTimeMs, endTimeMs }) => {
+    const durationMinutes = Math.max(
+      1,
+      Math.round((endTimeMs - startTimeMs) / (60 * 1000)),
+    );
+    await ctx.db.patch(jobId, {
+      startTime: startTimeMs,
+      endTime: endTimeMs,
+      durationMinutes,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const runTestSuite = action({
   args: {
     token: v.string(),
@@ -524,8 +544,6 @@ export const runTestSuite = action({
       longitude: 34.782,
       address: "Tel Aviv",
       baseRate: 200,
-      startTimeMs: Date.now() - 2 * 60 * 60 * 1000,
-      endTimeMs: Date.now() - 60 * 60 * 1000,
     });
 
     const matches = await ctx.runQuery(
@@ -557,6 +575,12 @@ export const runTestSuite = action({
     await ctx.runMutation(internal.testHarness.respondToClaimAs, {
       claimId,
       accept: true,
+    });
+
+    await ctx.runMutation(internal.testHarness.backdateJobWindow, {
+      jobId,
+      startTimeMs: Date.now() - 2 * 60 * 60 * 1000,
+      endTimeMs: Date.now() - 60 * 60 * 1000,
     });
 
     const job = await ctx.runQuery(internal.jobs.getJobInternal, { jobId });

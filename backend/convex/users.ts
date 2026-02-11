@@ -10,6 +10,12 @@ import {
 import { v } from "convex/values";
 import { syncInstructorLocation, removeInstructorLocation } from "./geo";
 import { internal } from "./_generated/api";
+import {
+  getCurrentUserByIdentity,
+  requireCurrentUserByIdentity,
+  requireIdentitySubject,
+  requireStudioUserByIdentity,
+} from "./lib/auth";
 import { normalizeLeadTimeSurgeRules } from "./pricing";
 
 const MIN_RADIUS_KM = 0.1;
@@ -21,15 +27,7 @@ const MAX_RADIUS_KM = 15;
 
 export const getCurrentUser = query({
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .unique();
-
-    return user;
+    return await getCurrentUserByIdentity(ctx);
   },
 });
 
@@ -42,9 +40,7 @@ export const syncUser = mutation({
     photoUrl: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    const uid = identity.subject;
+    const uid = await requireIdentitySubject(ctx);
 
     const existing = await ctx.db
       .query("users")
@@ -95,17 +91,8 @@ export const completeOnboarding = mutation({
     zoneIds: v.optional(v.array(v.id("zones"))),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
     console.log("[completeOnboarding] Called with args:", JSON.stringify(args));
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .unique();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     const now = Date.now();
 
@@ -196,15 +183,7 @@ export const completeOnboarding = mutation({
 export const resetOnboarding = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .unique();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     await ctx.db.patch(user._id, {
       hasCompletedOnboarding: false,
@@ -256,14 +235,7 @@ export const getUserProfile = query({
 export const getMyStudioPricingSettings = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("AUTH_REQUIRED");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-    if (!user || user.role !== "studio") throw new Error("STUDIO_ONLY");
+    const user = await requireStudioUserByIdentity(ctx);
 
     const settings = user.studioPricing;
     return {
@@ -350,12 +322,11 @@ export const upsertUser = mutation({
     businessName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const uid = await requireIdentitySubject(ctx);
 
     const existing = await ctx.db
       .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", uid))
       .first();
 
     const now = Date.now();
@@ -372,7 +343,7 @@ export const upsertUser = mutation({
     }
 
     return await ctx.db.insert("users", {
-      firebaseUid: identity.subject,
+      firebaseUid: uid,
       name: args.name,
       email: args.email,
       phone: args.phone,
@@ -395,15 +366,7 @@ export const updateLocation = mutation({
     categories: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     const radiusKm = Math.min(
       Math.max(args.radiusKm ?? user.radiusKm ?? 5, MIN_RADIUS_KM),
@@ -451,15 +414,7 @@ export const updateLocation = mutation({
 export const updateFcmToken = mutation({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .unique();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     await ctx.db.patch(user._id, { fcmToken: token });
   },
@@ -479,15 +434,7 @@ export const updateProfile = mutation({
     categories: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.name !== undefined) updates.name = args.name;
@@ -567,14 +514,7 @@ export const setMyStudioPricingSettings = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("AUTH_REQUIRED");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-    if (!user || user.role !== "studio") throw new Error("STUDIO_ONLY");
+    const user = await requireStudioUserByIdentity(ctx);
 
     const defaultBaseRate = Math.min(Math.max(args.defaultBaseRate, 1), 10000);
     const leadTimeSurgeRules = normalizeLeadTimeSurgeRules(
@@ -633,21 +573,12 @@ export const setVerified = internalMutation({
 export const updateRadius = mutation({
   args: { radiusKm: v.float64() },
   handler: async (ctx, { radiusKm }) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
     if (radiusKm < MIN_RADIUS_KM || radiusKm > MAX_RADIUS_KM) {
       throw new Error(
         `Radius must be between ${MIN_RADIUS_KM} and ${MAX_RADIUS_KM} km`,
       );
     }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     await ctx.db.patch(user._id, {
       radiusKm,
@@ -677,15 +608,7 @@ export const updateRadius = mutation({
 export const updateNotificationPreferences = mutation({
   args: { enabled: v.boolean() },
   handler: async (ctx, { enabled }) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     await ctx.db.patch(user._id, {
       notificationsEnabled: enabled,
@@ -720,14 +643,7 @@ export const updateSettingsPreferences = mutation({
     languageCode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.notificationsEnabled !== undefined) {
@@ -781,15 +697,7 @@ export const updateDispatchMode = mutation({
     zoneIds: v.optional(v.array(v.id("zones"))),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
     if (user.role !== "instructor")
       throw new Error("Only instructors can set dispatch mode");
 
@@ -861,15 +769,7 @@ export const updateDispatchMode = mutation({
 export const updateZones = mutation({
   args: { zoneIds: v.array(v.id("zones")) },
   handler: async (ctx, { zoneIds }) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     await ctx.db.patch(user._id, {
       zoneIds,

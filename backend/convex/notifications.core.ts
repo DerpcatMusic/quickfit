@@ -79,6 +79,10 @@ const dispatchJobNotifications = internalAction({
     const toNotify = instructors.filter((i: any): i is NonNullable<typeof i> => !!i && !!i.fcmToken);
     if (toNotify.length === 0) {
       console.log(`[dispatch] No instructors with FCM tokens for job ${jobId}`);
+      await ctx.runMutation(internal.jobs.markNotified, {
+        jobId,
+        instructorIds: [],
+      });
       return;
     }
 
