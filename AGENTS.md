@@ -1,124 +1,135 @@
 # AGENTS.md
 
 ## Purpose
-Operational guide for all coding agents working in `quickfit`.
-This file defines architecture invariants, ownership boundaries, and required test gates.
+Operational guide for coding agents in `quickfit`.
+This file defines architecture invariants, delivery gates, and roadmap workflow.
 
-## Current Architecture (Post-Refactor Baseline)
+## Current Architecture (Live Baseline)
 
 ### Backend (Convex)
-- Primary domain modules:
-  - `backend/convex/jobs.ts`
-  - `backend/convex/users.ts`
-  - `backend/convex/verifications.ts`
-  - `backend/convex/storage.ts`
-  - `backend/convex/notifications.ts`
-  - `backend/convex/geo.ts`
-  - `backend/convex/zoneSubscriptions.ts`
-- Schema source of truth:
-  - `backend/convex/schema.ts`
-  - Includes mutation replay dedupe table: `mutationIdempotency`
-  - Includes upload registration session table: `uploadSessions`
-- Actions:
-  - `backend/convex/actions/geminiVerify.ts`
-  - `backend/convex/actions/sendPush.ts`
+Primary domain modules:
+- `backend/convex/users.ts`
+- `backend/convex/jobs.ts`
+- `backend/convex/claims.ts`
+- `backend/convex/notifications.ts`
+- `backend/convex/verifications.ts`
+- `backend/convex/storage.ts`
+- `backend/convex/geo.ts`
+- `backend/convex/zoneSubscriptions.ts`
+- `backend/convex/payments.ts`
+- `backend/convex/payouts.ts`
+- `backend/convex/billing.ts`
+- `backend/convex/invoicing.ts`
+- `backend/convex/rapyd.ts`
+- `backend/convex/bitpay.ts`
+- `backend/convex/webhooks.ts`
+- `backend/convex/http.ts`
+
+Schema source of truth:
+- `backend/convex/schema.ts`
+
+Key schema domains:
+- Marketplace core: `users`, `jobs`, `claims`
+- Verification and files: `verifications`, `userFiles`, `uploadSessions`
+- Dispatch: `zones`, `zoneSubscriptions`
+- Reliability: `mutationIdempotency`
+- Payments: `payments`, `paymentEvents`, `payoutDestinations`, `payouts`, `payoutEvents`, `invoices`
+- Integrations: `studioPaymentIntegrations`, `studioBillingIntegrations`
 
 ### Mobile (Flutter)
-- Auth/profile:
-  - `apps/mobile/lib/features/auth/**`
-- Jobs/claims:
-  - `apps/mobile/lib/features/jobs/**`
-  - `apps/mobile/lib/features/claims/**`
-  - Canonical studio jobs provider: `apps/mobile/lib/features/jobs/providers/studio_jobs_provider.dart`
-- Verification:
-  - `apps/mobile/lib/features/verification/**`
-- Shared services:
-  - `apps/mobile/lib/core/services/**`
-  - Offline replay canonical runner: `apps/mobile/lib/core/services/offline_mutation_runner.dart`
-  - Offline queue coordination: `apps/mobile/lib/core/services/offline_queue_manager.dart`
+- Auth/profile: `apps/mobile/lib/features/auth/**`, `apps/mobile/lib/features/profile/**`
+- Jobs/claims: `apps/mobile/lib/features/jobs/**`
+- Verification: `apps/mobile/lib/features/verification/**`
+- Instructor payments: `apps/mobile/lib/features/instructor/payments/**`
+- Shared services: `apps/mobile/lib/core/services/**`
+  - Canonical offline runner: `apps/mobile/lib/core/services/offline_mutation_runner.dart`
+  - Queue coordination: `apps/mobile/lib/core/services/offline_queue_manager.dart`
 
 ## Non-Negotiable Invariants
 
-1. Identity must come from `ctx.auth.getUserIdentity()`.
-- Never trust client-provided identity values for authorization.
+1. Identity and auth
+- Authorization must derive from `ctx.auth.getUserIdentity()`.
+- Never trust client-supplied user IDs for authorization.
 
-2. File access is ownership-based.
-- Verification files must use `storageId` ownership checks via `userFiles`.
-- Do not use arbitrary external URLs for trusted verification processing.
+2. File ownership and verification safety
+- Verification file access must validate ownership through `userFiles` and `storageId`.
 - `storage:registerUploadedFile` must validate a live `uploadToken` from `uploadSessions`.
 
-3. Notification log types must remain schema-aligned.
-- Any new notification type requires schema union update before use.
+3. Domain lifecycle consistency
+- Jobs/claims transitions must remain coherent (no confirmed job without accepted final primary claim).
+- Payment lifecycle transitions must remain monotonic/idempotent.
+- Payout lifecycle must be idempotent and auditable.
 
-4. Job and claim lifecycle must stay consistent.
-- A job cannot be `confirmed` without an accepted claim for the final primary instructor.
-- Backup promotion must keep `jobs` and `claims` states aligned.
+4. Index-driven hot paths
+- Do not use DB `.filter(...)` on hot paths when index predicates are possible.
+- Prefer `withIndex(... eq/lt/gt ...)`.
 
-5. Domain writes should be centralized.
-- Avoid duplicating lifecycle logic across multiple files.
+5. Idempotent replay-safe writes
+- Offline/network-retried mutations must support idempotency keys.
+- Webhook processing must dedupe by provider event id and protect against payload replay.
 
-6. Hot-path queries must be index-driven.
-- Avoid DB `.filter(...)` on Convex hot paths when predicates can be expressed by indexes.
-- Prefer `withIndex(... eq/lt/gt ...)` for predictable performance.
+6. Secret handling
+- Prefer sealed credentials (`sealedApiToken`, `sealedApiKey`, `sealedWebhookSecret`).
+- Plaintext legacy fields must be migrated/cleared.
 
-7. Write mutations that can be replayed must be idempotent.
-- `jobs:claimJob` and `jobs:withdrawClaim` accept `idempotencyKey` and dedupe via `mutationIdempotency`.
-- `claims:withdrawClaim` must forward idempotency to jobs internal idempotent withdrawal path.
-- Offline replay must pass stable keys so network retries do not duplicate side effects.
-
-8. Auth and routing state must be race-safe.
-- Auth sync must not overwrite state for a user that has already logged out or switched accounts.
-- Router redirects must wait for resolved role (`studio` or `instructor`) before role-protected navigation.
+7. Mobile auth/routing race safety
+- Auth sync cannot overwrite state after logout/account switch.
+- Role-guarded routing must wait for resolved role.
 
 ## API and Type-Safety Rules
 
-1. Any backend API shape change must trigger:
+1. Backend API shape changes must include:
 - Convex codegen update.
-- Flutter caller updates for payload and response handling.
-- Tests updated for new contract.
+- Flutter caller updates.
+- Test updates.
 
-2. Avoid `any` in domain paths.
-- If unavoidable at integration boundaries, isolate and narrow immediately.
+2. Keep domain paths strongly typed.
+- Avoid `any` unless isolated at boundary and narrowed immediately.
 
-3. Prefer explicit typed errors over generic string errors.
+3. Prefer typed/domain-specific error semantics over generic strings.
 
-## Testing Gate (Required Before Merge)
+## Required Verification Gate (Before Merge)
 
-1. Backend:
+Backend:
 - `backend/node_modules/.bin/tsc --noEmit -p backend/tsconfig.json`
-- `npm --prefix backend test`
+- `npm --prefix backend test` (or `bun --cwd backend test`)
 
-2. Mobile:
+Mobile:
 - `flutter analyze --no-pub apps/mobile`
 - Relevant widget/integration tests for changed flows.
 
-3. For lifecycle/security changes:
-- Add or update tests in:
-  - `backend/tests/test_harness.test.mjs`
-  - `apps/mobile/integration_test/`
-  - Include replay/idempotency coverage for offline queue retries on claim/withdraw flows.
+For lifecycle/security/payment changes:
+- Add or update backend tests in `backend/tests/`
+- Include replay/idempotency coverage where applicable.
 
-4. For query/index refactors:
-- Re-run backend typecheck and harness tests after schema index changes.
-- Ensure call sites are switched to new compound indexes in the same change.
+## Roadmap Workflow (Mandatory)
 
-## High-Priority Ongoing Refactor Targets
+Source docs:
+- `docs/FEATURES_STATUS.md`
+- `docs/PRODUCT_ROADMAP.md`
 
-1. Consolidate claim withdrawal and state transitions into one canonical path.
-2. Make verification UI status backend-driven (not local-only state).
-3. Unify offline replay logic between foreground and background sync.
+Rules:
+1. Every meaningful feature change must update `docs/FEATURES_STATUS.md`.
+2. Every multi-step initiative must exist in `docs/PRODUCT_ROADMAP.md` with owner, phase, and exit criteria.
+3. PRs must state:
+- Which roadmap item(s) they advance.
+- Which invariants are affected.
+- What risks remain.
+
+Statuses used in roadmap/docs:
+- `live`
+- `partial`
+- `planned`
+- `blocked`
 
 ## Agent Workflow Requirements
 
-1. Before edits:
-- Identify affected invariants from this file.
+Before edits:
+- Identify affected invariants and roadmap items.
 
-2. During edits:
-- Update dependent schema/types/callers in same change set where possible.
+During edits:
+- Update dependent schema/types/callers in same change set when feasible.
 
-3. After edits:
-- Run required typecheck/analyze/tests.
-- Report residual risks and follow-up items.
-7. Offline replay must use one canonical execution path.
-- Foreground queue and background sync must both route through `offline_mutation_runner.dart`.
-- Use cooperative lock semantics to avoid duplicate processing.
+After edits:
+- Run required checks.
+- Report residual risks and follow-up tasks.
