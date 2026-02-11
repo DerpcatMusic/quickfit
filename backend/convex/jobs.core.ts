@@ -727,27 +727,57 @@ async function getClaimsForInstructorForMyJobs(
     .order("desc")
     .take(MAX_MY_JOBS_CLAIMS);
 
-  const claimsWithJobs = await Promise.all(
-    claims.map(async (claim) => {
-      const job = await ctx.db.get(claim.jobId);
-      if (!job) return null;
-      if (args.windowStartMs !== undefined && job.startTime < args.windowStartMs) {
-        return null;
-      }
-      if (args.windowEndMs !== undefined && job.startTime > args.windowEndMs) {
-        return null;
-      }
-      const studio = await ctx.db.get(job.studioId);
-      return {
-        ...claim,
-        job: {
-          ...job,
-          studioName: studio?.businessName || studio?.name,
-          studioAvatarUrl: studio?.avatarUrl,
-        },
-      };
-    }),
+  const uniqueJobIds = Array.from(new Set(claims.map((claim) => claim.jobId)));
+  const hydratedJobs = await Promise.all(
+    uniqueJobIds.map((jobId) => ctx.db.get(jobId)),
   );
+  const jobById = new Map<Id<"jobs">, any>();
+  for (let index = 0; index < uniqueJobIds.length; index += 1) {
+    const job = hydratedJobs[index];
+    if (!job) continue;
+    if (
+      args.windowStartMs !== undefined &&
+      job.startTime < args.windowStartMs
+    ) {
+      continue;
+    }
+    if (args.windowEndMs !== undefined && job.startTime > args.windowEndMs) {
+      continue;
+    }
+    jobById.set(uniqueJobIds[index], job);
+  }
+
+  const uniqueStudioIds = Array.from(
+    new Set(
+      Array.from(jobById.values()).map(
+        (job) => job.studioId as Id<"users">,
+      ),
+    ),
+  );
+  const hydratedStudios = await Promise.all(
+    uniqueStudioIds.map((studioId) => ctx.db.get(studioId)),
+  );
+  const studioById = new Map<Id<"users">, any>();
+  for (let index = 0; index < uniqueStudioIds.length; index += 1) {
+    const studio = hydratedStudios[index];
+    if (studio) {
+      studioById.set(uniqueStudioIds[index], studio);
+    }
+  }
+
+  const claimsWithJobs = claims.map((claim) => {
+    const job = jobById.get(claim.jobId);
+    if (!job) return null;
+    const studio = studioById.get(job.studioId);
+    return {
+      ...claim,
+      job: {
+        ...job,
+        studioName: studio?.businessName || studio?.name,
+        studioAvatarUrl: studio?.avatarUrl,
+      },
+    };
+  });
 
   const filtered = claimsWithJobs.filter(
     (entry): entry is NonNullable<typeof entry> => Boolean(entry),

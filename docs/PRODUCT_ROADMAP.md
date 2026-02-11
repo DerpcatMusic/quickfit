@@ -28,7 +28,7 @@ Status values:
   - Studio-only radius controls are not exposed in studio profile flows.
   - Studio auth-required surfaces are localized (no hardcoded fallback strings).
   - Studio jobs list query avoids timeout-prone N+1 claim lookups on hot path.
-  - Instructor `jobs:getMyJobs` claim hydration is bounded on indexed reads to prevent timeout under long history.
+  - Instructor `jobs:getMyJobs` claim hydration is bounded and batch-hydrated on indexed reads to prevent timeout under long history.
   - Studio post action reports success even if follow-up list refresh times out.
   - Studio `My Jobs` screen cannot remain in indefinite loading state (watchdog + query bootstrap).
   - Studio `My Jobs` provider must tolerate dynamic subscription payloads and still terminate loading/error state deterministically.

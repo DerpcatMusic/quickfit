@@ -70,7 +70,7 @@ Legend:
 - Studio jobs list read now uses canonical `jobs` index fallback even when projections are missing: `live`
 - Projection-backed studio jobs and instructor availability feed (with lifecycle sync + fallback): `partial`
 - Role-aware `jobs:getMyJobs` endpoint shared by studio/instructor "my jobs" flows: `partial`
-- Instructor `jobs:getMyJobs` claim hydration bounded + window-gated to avoid query timeouts: `partial`
+- Instructor `jobs:getMyJobs` claim hydration bounded, window-gated, and batched by job/studio IDs to avoid timeout-prone N+1 reads: `partial`
 - Studio `My Jobs` loading watchdog + bootstrap fallback (prevents infinite spinner): `live`
 - Studio jobs bootstrap now falls back to legacy query only when `jobs:getMyJobs` is missing (not on transient timeout): `live`
 - Studio post-job mutation timeout guard with explicit failure surface: `live`

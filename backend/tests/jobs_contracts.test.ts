@@ -13,6 +13,8 @@ describe("jobs reliability contracts", () => {
     expect(source).toContain(".withIndex(\"by_instructor\"");
     expect(source).toContain(".order(\"desc\")");
     expect(source).toContain(".take(MAX_MY_JOBS_CLAIMS)");
+    expect(source).toContain("const uniqueJobIds = Array.from(new Set(");
+    expect(source).toContain("const uniqueStudioIds = Array.from(");
   });
 
   it("schedules zone backfill when post-job zone detection times out", () => {
