@@ -528,8 +528,10 @@ class QuickFitMapState extends State<QuickFitMap>
         'type': 'Feature',
         'properties': {
           'jobId': job.id,
+          'studioId': job.studioId,
           'label': job.label,
           'isSos': job.isSos,
+          'jobCount': job.jobCount,
         },
         'geometry': {
           'type': 'Point',
@@ -689,9 +691,14 @@ class QuickFitMapState extends State<QuickFitMap>
       if (!mounted) return;
       if (features.isNotEmpty) {
         final props = features.first['properties'];
-        final jobId = props?['jobId'];
-        if (jobId != null) {
-          widget.onJobTapped?.call(jobId.toString());
+        final studioId = props?['studioId'];
+        final markerId = props?['jobId'];
+        if (studioId != null) {
+          widget.onJobTapped?.call(studioId.toString());
+          return;
+        }
+        if (markerId != null) {
+          widget.onJobTapped?.call(markerId.toString());
           return;
         }
       }
@@ -763,9 +770,11 @@ class QuickFitJobMarker {
     required this.id,
     required this.position,
     required this.label,
+    this.studioId,
     this.isSos = false,
     this.currentRate,
     this.distanceKm,
+    this.jobCount = 1,
   });
 
   /// Unique job ID.
@@ -777,6 +786,9 @@ class QuickFitJobMarker {
   /// Display label (e.g., job title).
   final String label;
 
+  /// Studio owner for aggregated pins.
+  final String? studioId;
+
   /// Whether this is an SOS urgent job.
   final bool isSos;
 
@@ -785,4 +797,7 @@ class QuickFitJobMarker {
 
   /// Distance from instructor in km.
   final double? distanceKm;
+
+  /// Number of jobs represented by this marker.
+  final int jobCount;
 }

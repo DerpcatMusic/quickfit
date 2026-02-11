@@ -23,4 +23,5 @@ abstract final class AppRoutes {
   static const String verification = '/verification';
   static const String settings = '/settings';
   static const String jobDetail = '/jobs/:id';
+  static const String studioPublicProfile = '/studios/:id';
 }

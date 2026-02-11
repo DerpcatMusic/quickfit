@@ -6,6 +6,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:quickfit/features/auth/models/auth_state.dart';
 import 'package:quickfit/features/auth/services/auth_service.dart';
 import 'package:quickfit/features/auth/services/user_service.dart';
+import 'package:quickfit/core/services/hive_service.dart';
 
 export 'package:quickfit/features/auth/models/auth_state.dart';
 
@@ -50,6 +51,7 @@ class AuthNotifier extends _$AuthNotifier {
   }
 
   bool _isSyncing = false;
+  bool _syncQueued = false;
 
   List<String>? _normalizedZoneIds(dynamic rawZoneIds) {
     if (rawZoneIds is! List) return null;
@@ -72,7 +74,10 @@ class AuthNotifier extends _$AuthNotifier {
   }
 
   Future<void> _syncUserData(firebase_auth.User user) async {
-    if (_isSyncing) return;
+    if (_isSyncing) {
+      _syncQueued = true;
+      return;
+    }
     _isSyncing = true;
     final syncUid = user.uid;
 
@@ -123,6 +128,13 @@ class AuthNotifier extends _$AuthNotifier {
       state = state.copyWith(user: user, error: e.toString(), isLoading: false);
     } finally {
       _isSyncing = false;
+      if (_syncQueued) {
+        _syncQueued = false;
+        final latest = _authService.currentUser;
+        if (latest != null && state.user?.uid == latest.uid) {
+          unawaited(_syncUserData(latest));
+        }
+      }
     }
   }
 
@@ -176,6 +188,14 @@ class AuthNotifier extends _$AuthNotifier {
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true);
     try {
+      final uid = state.user?.uid;
+      if (uid != null && uid.isNotEmpty) {
+        try {
+          await HiveService().removeMutationsForUser(uid);
+        } catch (_) {
+          // Queue cleanup is best-effort and should not block sign-out.
+        }
+      }
       await _authService.signOut();
       await _userService.clearAuth();
     } catch (e) {
@@ -366,11 +386,16 @@ class AuthNotifier extends _$AuthNotifier {
     state = state.copyWith(isLoading: true);
     try {
       await _userService.resetOnboarding();
-      state = state.copyWith(
+      state = AuthState(
+        user: state.user,
         hasCompletedOnboarding: false,
         isLoading: false,
         error: null,
       );
+      final currentUser = _authService.currentUser;
+      if (currentUser != null) {
+        unawaited(_syncUserData(currentUser));
+      }
       return true;
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);

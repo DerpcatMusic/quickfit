@@ -13,6 +13,7 @@ class OfflineMutationRunner {
   static final _uuid = const Uuid();
 
   static Future<void> runPending({
+    required String userUid,
     Function(String mutationId, String status)? onStatusChange,
     Function(String message)? onShowNotification,
   }) async {
@@ -24,7 +25,7 @@ class OfflineMutationRunner {
     }
 
     try {
-      final pending = hive.getPendingMutations();
+      final pending = hive.getPendingMutations(userUid: userUid);
       for (final mutation in pending) {
         await hive.refreshLock(key: _lockKey, owner: owner);
         await _processOne(

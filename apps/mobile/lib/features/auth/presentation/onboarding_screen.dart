@@ -595,6 +595,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               // Geocode and update map
               final pos =
                   await LocationService.instance.getLatLngFromAddress(address);
+              if (!mounted) return;
               if (pos != null) {
                 final latLng = LatLng(pos.latitude, pos.longitude);
                 setState(() {
@@ -611,6 +612,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           OutlinedButton.icon(
             onPressed: () async {
               await _findMyLocation();
+              if (!mounted) return;
               // Reverse geocode to fill address field if possible
               if (_currentLocation != null) {
                 final address =

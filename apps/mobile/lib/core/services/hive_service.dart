@@ -40,12 +40,26 @@ class HiveService {
     return cacheBox.get(key);
   }
 
-  List<PendingMutation> getPendingMutations() {
-    return mutationBox.values.where((m) => m.status == 'pending').toList();
+  List<PendingMutation> getPendingMutations({String? userUid}) {
+    return mutationBox.values.where((m) {
+      if (m.status != 'pending') return false;
+      if (userUid == null) return true;
+      return m.userUid == userUid;
+    }).toList();
   }
 
   Future<void> addMutation(PendingMutation mutation) async {
     await mutationBox.put(mutation.id, mutation);
+  }
+
+  Future<void> removeMutationsForUser(String userUid) async {
+    final ids = mutationBox.values
+        .where((m) => m.userUid == userUid)
+        .map((m) => m.id)
+        .toList(growable: false);
+    for (final id in ids) {
+      await mutationBox.delete(id);
+    }
   }
 
   Future<void> markCompleted(String id) async {

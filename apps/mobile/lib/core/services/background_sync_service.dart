@@ -137,7 +137,7 @@ Future<void> _syncPendingMutations() async {
       return; // No connection, skip
     }
 
-    await OfflineMutationRunner.runPending();
+    await OfflineMutationRunner.runPending(userUid: user.uid);
   } catch (e, stack) {
     developer.log(
       'Background sync error',

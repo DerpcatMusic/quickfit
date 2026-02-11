@@ -21,6 +21,7 @@ import 'package:quickfit/features/verification/presentation/verification_screen.
 import 'package:quickfit/features/instructor/map/presentation/instructor_map_screen.dart';
 import 'package:quickfit/features/instructor/screens/instructor_schedule_screen.dart';
 import 'package:quickfit/features/studio/presentation/screens/studio_jobs_screen.dart';
+import 'package:quickfit/features/studio/presentation/screens/studio_public_profile_screen.dart';
 import 'package:quickfit/shared/layouts/app_scaffold.dart';
 
 part 'app_router.g.dart';
@@ -73,9 +74,11 @@ GoRouter router(Ref ref) {
       final isStudioRoute = state.matchedLocation.startsWith('/studio');
       final isInstructorRoute = state.matchedLocation.startsWith('/instructor');
 
-      // Still loading while we do not yet have a logged-in user.
-      if (auth.isLoading && !isLoggedIn) {
-        return isSplashRoute ? null : AppRoutes.splash;
+      // Avoid role/onboarding redirect races until auth/profile hydration settles.
+      if (auth.isLoading) {
+        if (isSplashRoute) return null;
+        if (!isLoggedIn && isLoginRoute) return null;
+        return AppRoutes.splash;
       }
 
       // Not logged in -> go to login
@@ -230,6 +233,13 @@ GoRouter router(Ref ref) {
         builder: (context, state) {
           final jobId = state.pathParameters['id']!;
           return JobDetailScreen(jobId: jobId);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.studioPublicProfile,
+        builder: (context, state) {
+          final studioId = state.pathParameters['id']!;
+          return StudioPublicProfileScreen(studioId: studioId);
         },
       ),
     ],

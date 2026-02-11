@@ -22,6 +22,7 @@ class InstructorMapView extends ConsumerWidget {
     required this.zonesAsync,
     required this.onZoneSelectionChanged,
     required this.onMapTap,
+    required this.onJobTapped,
     required this.interactionEnabled,
     this.onStyleLoaded,
   });
@@ -53,6 +54,9 @@ class InstructorMapView extends ConsumerWidget {
   /// Callback triggered when the map is tapped (e.g., to drop a pin).
   final ValueChanged<LatLng> onMapTap;
 
+  /// Callback triggered when a studio/job marker is tapped.
+  final ValueChanged<String> onJobTapped;
+
   /// Whether base map gestures are enabled.
   final bool interactionEnabled;
 
@@ -75,6 +79,7 @@ class InstructorMapView extends ConsumerWidget {
         interactionEnabled: interactionEnabled,
         jobs: jobs,
         onStyleLoaded: onStyleLoaded,
+        onJobTapped: onJobTapped,
         onMapTap: onMapTap,
       );
     }

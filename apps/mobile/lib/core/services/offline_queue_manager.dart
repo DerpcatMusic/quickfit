@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:convex_flutter/convex_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:uuid/uuid.dart';
 import '../models/pending_mutation.dart';
@@ -50,10 +51,16 @@ class OfflineQueueManager {
     required Map<String, dynamic> payload,
     Function? optimisticUpdate,
   }) async {
+    final userUid = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    if (userUid == null || userUid.isEmpty) {
+      throw Exception('Must be signed in to queue offline operations');
+    }
+
     final mutation = PendingMutation(
       id: _uuid.v4(),
       operation: operation,
       payload: jsonEncode(payload),
+      userUid: userUid,
       createdAt: DateTime.now(),
       status: 'pending',
     );
@@ -77,11 +84,28 @@ class OfflineQueueManager {
     if (_isSyncing) return;
     await _checkConnectivity();
     if (!_isOnline) return;
-    if (firebase_auth.FirebaseAuth.instance.currentUser == null) return;
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final syncUid = user.uid;
     _isSyncing = true;
 
     try {
+      await ConvexClient.instance.setAuthWithRefresh(
+        fetchToken: () async => await user.getIdToken(),
+      );
+      if (!ConvexClient.instance.isConnected) {
+        await ConvexClient.instance.connectionState
+            .firstWhere((s) => s == WebSocketConnectionState.connected)
+            .timeout(const Duration(seconds: 15));
+      }
+
+      final latestUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (latestUser == null || latestUser.uid != syncUid) {
+        return;
+      }
+
       await OfflineMutationRunner.runPending(
+        userUid: syncUid,
         onStatusChange: onMutationStatusChange,
         onShowNotification: onShowNotification,
       );
