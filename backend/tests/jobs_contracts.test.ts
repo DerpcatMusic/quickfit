@@ -27,6 +27,15 @@ describe("jobs reliability contracts", () => {
     expect(source).toContain("throw new Error(\"BASE_RATE_INVALID\")");
   });
 
+  it("uses studio projection read model first with legacy fallback", () => {
+    const source = readFileSync(jobsCorePath, "utf8");
+
+    expect(source).toContain(".query(\"readModel_studioJobs\")");
+    expect(source).toContain(".withIndex(\"by_studio_updatedAt\"");
+    expect(source).toContain("if (projectedRows.length > 0)");
+    expect(source).toContain("return await getStudioJobsForStudioLegacy(ctx, studioId)");
+  });
+
   it("schedules zone backfill when post-job zone detection times out", () => {
     const source = readFileSync(jobsCorePath, "utf8");
 

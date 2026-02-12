@@ -895,9 +895,47 @@ async function getStudioJobsForStudio(
   ctx: { db: QueryCtx["db"] },
   studioId: Id<"users">,
 ) {
-  // Canonical studio dashboard path intentionally reads from jobs table index.
-  // This keeps list/read reliability even if projections are stale or still
-  // backfilling after deploy.
+  const projectedRows = await ctx.db
+    .query("readModel_studioJobs")
+    .withIndex("by_studio_updatedAt", (q) => q.eq("studioId", studioId))
+    .order("desc")
+    .take(60);
+
+  if (projectedRows.length > 0) {
+    const projectedJobs = projectedRows.map((row) => ({
+      _id: row.jobId,
+      _creationTime: row.createdAt,
+      studioId: row.studioId,
+      title: row.title,
+      description: row.description,
+      category: row.category,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      durationMinutes: row.durationMinutes,
+      baseRate: row.baseRate,
+      currentRate: row.currentRate,
+      sosBoostApplied: row.sosBoostApplied,
+      sosBoostPercentage: row.sosBoostPercentage,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      address: row.address,
+      status: row.status,
+      claimedBy: row.claimedBy,
+      claimedAt: row.claimedAt,
+      confirmedAt: row.confirmedAt,
+      backupClaimedBy: row.backupClaimedBy,
+      backupClaimedAt: row.backupClaimedAt,
+      requiresVerification: row.requiresVerification,
+      claimedInstructor: row.claimedInstructor,
+      claimId: row.claimId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+
+    return sortStudioJobsByPriority(projectedJobs);
+  }
+
+  // Fallback keeps studio dashboard reliable during projection cold-start.
   return await getStudioJobsForStudioLegacy(ctx, studioId);
 }
 

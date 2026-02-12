@@ -34,6 +34,7 @@ Status values:
   - Studio `My Jobs` screen cannot remain in indefinite loading state (watchdog + query bootstrap).
   - Studio `My Jobs` provider must tolerate dynamic subscription payloads and still terminate loading/error state deterministically.
   - Studio and instructor "my jobs" clients can consume a role-aware shared query endpoint.
+  - Studio role path in `jobs:getMyJobs` should read projection-first (`readModel_studioJobs`) with fallback when projection rows are unavailable.
   - Studio jobs bootstrap should degrade safely to legacy query path when shared query is unavailable or times out.
   - Post-job recovers zone assignment asynchronously when inline zone detection times out.
   - Post-job zone backfill recovers notification dispatch for newly eligible zone instructors without duplicate pings.

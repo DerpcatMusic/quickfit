@@ -68,6 +68,7 @@ Legend:
 - Studio post-job sticky bottom submit CTA: `live`
 - Job detail completion and rating dialog flows are localized (no hardcoded action copy): `live`
 - Studio jobs list query hot-path optimized to reduce timeout risk: `partial`
+- Studio `jobs:getMyJobs` studio path now reads `readModel_studioJobs` first with legacy jobs-table fallback on projection cold-start: `live`
 - Studio jobs list read now uses canonical `jobs` index fallback even when projections are missing: `live`
 - Projection-backed studio jobs and instructor availability feed (with lifecycle sync + fallback): `partial`
 - Role-aware `jobs:getMyJobs` endpoint shared by studio/instructor "my jobs" flows: `partial`
