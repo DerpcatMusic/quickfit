@@ -27,6 +27,7 @@ const dispatchJobNotifications = internalAction({
     if (!job || job.status !== "open") return;
     if (dispatchVersion !== undefined && job.dispatchVersion !== dispatchVersion) return;
     if (job.notificationsSent) return;
+    const alreadyNotified = new Set<Id<"users">>(job.notifiedInstructors ?? []);
 
     // ========================================
     // 1. RADIUS MODE: Geospatial query
@@ -56,13 +57,22 @@ const dispatchJobNotifications = internalAction({
     // ========================================
     // 3. Merge & dedupe instructor IDs
     // ========================================
-    const instructorIds = new Set<Id<"users">>([
+    const matchedInstructorIds = new Set<Id<"users">>([
       ...radiusMatches.map((m: { instructorId: Id<"users"> }) => m.instructorId),
       ...zoneMatches.map((m: { instructorId: Id<"users"> }) => m.instructorId),
     ]);
+    const instructorIds = new Set<Id<"users">>(
+      Array.from(matchedInstructorIds).filter((id) => !alreadyNotified.has(id)),
+    );
     
     if (instructorIds.size === 0) {
-      console.log(`[dispatch] No instructors matched for job ${jobId}`);
+      console.log(`[dispatch] No newly eligible instructors matched for job ${jobId}`);
+      if (alreadyNotified.size > 0) {
+        await ctx.runMutation(internal.jobs.markNotified, {
+          jobId,
+          instructorIds: [],
+        });
+      }
       return;
     }
     console.log(`[dispatch] Total unique instructors: ${instructorIds.size}`);

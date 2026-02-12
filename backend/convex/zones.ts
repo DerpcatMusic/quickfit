@@ -6,6 +6,7 @@ import { query, mutation, internalMutation, internalQuery } from "./_generated/s
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { syncJobReadModels } from "./jobReadModels";
+import { internal } from "./_generated/api";
 
 // ==========================================
 // ZONE QUERIES
@@ -208,6 +209,29 @@ export const backfillJobZoneForPostedJob = internalMutation({
       updatedAt: Date.now(),
     });
     await syncJobReadModels(ctx as any, jobId);
+
+    // Recover notification delivery for zone-mode instructors that were not
+    // reachable before zone assignment was available.
+    if (job.status === "open" && job.notificationsSent) {
+      const nextDispatchVersion = (job.dispatchVersion ?? 0) + 1;
+      const now = Date.now();
+      await ctx.db.patch(jobId, {
+        notificationsSent: false,
+        dispatchVersion: nextDispatchVersion,
+        dispatchAttempt: 0,
+        dispatchScheduledAt: now,
+        dispatchLastError: undefined,
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.notifications.dispatchJobNotifications,
+        {
+          jobId,
+          dispatchVersion: nextDispatchVersion,
+        },
+      );
+    }
 
     return { updated: true, zoneId: detectedZoneId };
   },

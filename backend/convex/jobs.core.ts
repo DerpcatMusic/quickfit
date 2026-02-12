@@ -2341,9 +2341,17 @@ const markNotified = internalMutation({
     instructorIds: v.array(v.id("users")),
   },
   handler: async (ctx, { jobId, instructorIds }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return;
+    const mergedInstructorIds = Array.from(
+      new Set<Id<"users">>([
+        ...(job.notifiedInstructors ?? []),
+        ...instructorIds,
+      ]),
+    );
     await ctx.db.patch(jobId, {
       notificationsSent: true,
-      notifiedInstructors: instructorIds,
+      notifiedInstructors: mergedInstructorIds,
       updatedAt: Date.now(),
     });
   },
