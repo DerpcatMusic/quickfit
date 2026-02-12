@@ -17,18 +17,14 @@ void main() {
       );
     });
 
-    test('legacy fallback is only for missing-function compatibility', () {
+    test('legacy fallback activates for missing-function or timeout errors', () {
       final source = File('lib/features/jobs/providers/studio_jobs_provider.dart')
           .readAsStringSync();
 
-      expect(source, contains("queryName == _myJobsQueryName &&"));
-      expect(source, contains("contains('Could not find function')"));
-      expect(
-        source,
-        contains(
-          "!e.toString().contains('Could not find function')",
-        ),
-      );
+      expect(source, contains('_shouldFallbackToLegacyStudioQuery'));
+      expect(source, contains("message.contains('Could not find function')"));
+      expect(source, contains("message.contains('Query timeout')"));
+      expect(source, contains('error is TimeoutException'));
     });
 
     test('bootstrap failures terminate loading deterministically', () {
@@ -46,6 +42,15 @@ void main() {
       expect(source, contains('_looksLikeConvexId(jobId)'));
       expect(source, contains("RegExp(r'^[A-Za-z0-9_-]+\$')"));
     });
+
+    test('post-job surfaces server validation errors before id parsing', () {
+      final source = File('lib/features/jobs/providers/studio_jobs_provider.dart')
+          .readAsStringSync();
+
+      expect(source, contains('final serverError = _extractServerError(rawResult);'));
+      expect(source, contains("normalized.contains('ArgumentValidationError')"));
+      expect(source, contains("throw StateError(serverError);"));
+    });
   });
 
   group('Studio post-job pricing contract', () {
@@ -56,6 +61,8 @@ void main() {
       expect(source, contains('bool _hasUserEditedRate = false;'));
       expect(source, contains('if (!_hasUserEditedRate && defaultRate != null)'));
       expect(source, contains('_hasUserEditedRate = true;'));
+      expect(source, contains('_parseRateInput(_rateController.text)'));
+      expect(source, contains("replaceAll(RegExp(r'[^0-9,.\\-]'), '')"));
     });
   });
 

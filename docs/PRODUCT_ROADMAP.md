@@ -30,10 +30,11 @@ Status values:
   - Studio jobs list query avoids timeout-prone N+1 claim lookups on hot path.
   - Instructor `jobs:getMyJobs` claim hydration is bounded and batch-hydrated on indexed reads to prevent timeout under long history.
   - Studio post action reports success even if follow-up list refresh times out.
+  - Post-job base-rate serialization is resilient across localized/numeric-string inputs and fails with explicit validation semantics.
   - Studio `My Jobs` screen cannot remain in indefinite loading state (watchdog + query bootstrap).
   - Studio `My Jobs` provider must tolerate dynamic subscription payloads and still terminate loading/error state deterministically.
   - Studio and instructor "my jobs" clients can consume a role-aware shared query endpoint.
-  - Studio jobs bootstrap should not downgrade to legacy query path on transient timeout.
+  - Studio jobs bootstrap should degrade safely to legacy query path when shared query is unavailable or times out.
   - Post-job recovers zone assignment asynchronously when inline zone detection times out.
   - Post-job zone backfill recovers notification dispatch for newly eligible zone instructors without duplicate pings.
   - Profile billing bootstrap does not retry timeouting queries on every rebuild.

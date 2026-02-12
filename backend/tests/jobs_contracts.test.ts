@@ -19,6 +19,14 @@ describe("jobs reliability contracts", () => {
     expect(source).toContain("const uniqueStudioIds = Array.from(");
   });
 
+  it("accepts numeric-string baseRate at the mutation boundary with explicit invalid guard", () => {
+    const source = readFileSync(jobsCorePath, "utf8");
+
+    expect(source).toContain("baseRate: v.optional(v.union(v.float64(), v.string()))");
+    expect(source).toContain("typeof args.baseRate === \"string\"");
+    expect(source).toContain("throw new Error(\"BASE_RATE_INVALID\")");
+  });
+
   it("schedules zone backfill when post-job zone detection times out", () => {
     const source = readFileSync(jobsCorePath, "utf8");
 

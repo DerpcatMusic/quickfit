@@ -1003,7 +1003,7 @@ const postJob = mutation({
     category: v.string(),
     startTime: v.number(),
     endTime: v.number(),
-    baseRate: v.optional(v.float64()),
+    baseRate: v.optional(v.union(v.float64(), v.string())),
     address: v.string(),
     latitude: v.float64(),
     longitude: v.float64(),
@@ -1025,8 +1025,21 @@ const postJob = mutation({
     const now = Date.now();
     const hoursUntilStart = (args.startTime - now) / (1000 * 60 * 60);
 
+    const parsedBaseRateArg =
+      typeof args.baseRate === "string"
+        ? Number.parseFloat(args.baseRate.trim())
+        : args.baseRate;
+    if (
+      args.baseRate !== undefined &&
+      (parsedBaseRateArg === undefined ||
+        !Number.isFinite(parsedBaseRateArg) ||
+        parsedBaseRateArg <= 0)
+    ) {
+      throw new Error("BASE_RATE_INVALID");
+    }
+
     const baseRate =
-      args.baseRate ??
+      parsedBaseRateArg ??
       user.studioPricing?.defaultBaseRate ??
       DEFAULT_STUDIO_BASE_RATE;
     if (!baseRate || baseRate <= 0) {

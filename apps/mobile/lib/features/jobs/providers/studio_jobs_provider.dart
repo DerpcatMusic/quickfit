@@ -228,7 +228,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         onError: (message, value) {
           if (_subscriptionSessionKey != sessionKey) return;
           if (queryName == _myJobsQueryName &&
-              message.contains('Could not find function')) {
+              _shouldFallbackToLegacyStudioQuery(message)) {
             unawaited(_subscribeWithQueryName(
               _studioJobsQueryName,
               sessionKey,
@@ -247,7 +247,7 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     } catch (e) {
       if (_subscriptionSessionKey != sessionKey) return;
       if (queryName == _myJobsQueryName &&
-          e.toString().contains('Could not find function')) {
+          _shouldFallbackToLegacyStudioQuery(e)) {
         await _subscribeWithQueryName(
           _studioJobsQueryName,
           sessionKey,
@@ -284,10 +284,8 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         return queryName;
       } catch (e) {
         lastError = e;
-        // Keep studio/instructor paths centralized on jobs:getMyJobs.
-        // Only use legacy studio query when shared query is unavailable.
         if (queryName == _myJobsQueryName &&
-            !e.toString().contains('Could not find function')) {
+            !_shouldFallbackToLegacyStudioQuery(e)) {
           log.e('Studio jobs bootstrap query failed [$queryName] without fallback: $e');
           if (_subscriptionSessionKey == sessionKey) {
             _setState(
@@ -433,6 +431,39 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
         ));
       }
     } catch (e) {
+      if (_activeQueryName == _myJobsQueryName &&
+          _shouldFallbackToLegacyStudioQuery(e)) {
+        try {
+          final fallbackPayload =
+              await ConvexClient.instance.query(_studioJobsQueryName, const {});
+          if (_subscriptionSessionKey == sessionKey) {
+            final rows = _decodeRowsFromPayload(fallbackPayload);
+            final jobsList = rows.map(StudioJobRecord.fromJson).toList()
+              ..sort((a, b) => b.job.createdAt.compareTo(a.job.createdAt));
+            _activeQueryName = _studioJobsQueryName;
+            unawaited(HiveService().save(_cacheKeyForUser(user.uid), rows));
+            _cancelLoadWatchdog();
+            _setState(_lastState.copyWith(
+              jobs: jobsList,
+              isLoading: false,
+              error: null,
+            ));
+          }
+        } catch (fallbackError) {
+          if (_subscriptionSessionKey == sessionKey) {
+            _cancelLoadWatchdog();
+            log.e(
+              'Studio jobs refresh query failed [$_activeQueryName] with fallback failure: $fallbackError',
+            );
+            _setState(_lastState.copyWith(
+              isLoading: false,
+              error: fallbackError.toString(),
+            ));
+          }
+        }
+        await _subscribeToMyJobs(sessionKey, user.uid);
+        return;
+      }
       if (_subscriptionSessionKey == sessionKey) {
         _cancelLoadWatchdog();
         log.e('Studio jobs refresh query failed [$_activeQueryName]: $e');
@@ -461,12 +492,13 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     bool requiresVerification = false,
   }) async {
     try {
+      final normalizedBaseRate = _normalizeBaseRate(baseRate);
       final requestArgs = {
         'title': title,
         'category': category,
         'startTime': startTime.millisecondsSinceEpoch,
         'endTime': endTime.millisecondsSinceEpoch,
-        'baseRate': baseRate,
+        'baseRate': normalizedBaseRate,
         'address': address,
         'latitude': latitude,
         'longitude': longitude,
@@ -484,6 +516,11 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
               'Posting job timed out. Please retry.',
             ),
           );
+
+      final serverError = _extractServerError(rawResult);
+      if (serverError != null) {
+        throw StateError(serverError);
+      }
 
       String jobId = '';
       if (rawResult is String) {
@@ -583,5 +620,31 @@ class StudioJobsNotifier extends _$StudioJobsNotifier {
     if (normalized.length < 8) return false;
     if (normalized == 'null' || normalized == 'undefined') return false;
     return RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(normalized);
+  }
+
+  double _normalizeBaseRate(double value) {
+    if (!value.isFinite || value <= 0) {
+      throw StateError('Base rate must be a positive number.');
+    }
+    return double.parse(value.toStringAsFixed(2));
+  }
+
+  String? _extractServerError(dynamic rawResult) {
+    if (rawResult is! String) return null;
+    final normalized = rawResult.trim();
+    if (normalized.isEmpty) return null;
+    if (normalized.contains('Server Error') ||
+        normalized.contains('ArgumentValidationError') ||
+        normalized.contains('[Request ID:')) {
+      return normalized;
+    }
+    return null;
+  }
+
+  bool _shouldFallbackToLegacyStudioQuery(Object error) {
+    final message = error.toString();
+    return message.contains('Could not find function') ||
+        message.contains('Query timeout') ||
+        error is TimeoutException;
   }
 }

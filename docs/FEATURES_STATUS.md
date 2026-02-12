@@ -73,9 +73,10 @@ Legend:
 - Role-aware `jobs:getMyJobs` endpoint shared by studio/instructor "my jobs" flows: `partial`
 - Instructor `jobs:getMyJobs` claim hydration bounded, window-gated, and batched by job/studio IDs to avoid timeout-prone N+1 reads: `partial`
 - Studio `My Jobs` loading watchdog + bootstrap fallback (prevents infinite spinner): `live`
-- Studio jobs bootstrap now falls back to legacy query only when `jobs:getMyJobs` is missing (not on transient timeout): `live`
+- Studio jobs bootstrap/refresh falls back to legacy query when shared `jobs:getMyJobs` is unavailable or transiently timed out: `live`
 - Studio post-job mutation timeout guard with explicit failure surface: `live`
 - Post-job mutation success no longer blocked by studio jobs refresh timeout: `live`
+- Post-job base-rate input now normalizes numeric text client-side and backend accepts numeric-string compatibility with explicit invalid guard: `live`
 - Studio post-job zoneId backfill after detection timeout (restores zone dispatch/map after best-effort post): `partial`
 - Zone backfill now triggers deduped redispatch for newly eligible instructors without re-notifying prior recipients: `partial`
 - Instructor map studio markers show studio + posted-time context for open jobs: `live`

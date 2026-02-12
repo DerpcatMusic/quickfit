@@ -67,9 +67,26 @@ class AuthService {
       final googleUser = await _googleSignIn.authenticate();
       return await _processGoogleAccount(googleUser);
     } catch (e) {
+      if (_isUserCancelledGoogleSignIn(e)) {
+        developer.log(
+          'Google Sign-In canceled by user',
+          name: 'auth_service',
+        );
+        return null;
+      }
       developer.log('Google Sign-In Error', name: 'auth_service', error: e);
       rethrow;
     }
+  }
+
+  bool _isUserCancelledGoogleSignIn(Object error) {
+    if (error is auth_gsi.GoogleSignInException) {
+      return error.code == auth_gsi.GoogleSignInExceptionCode.canceled;
+    }
+    final message = error.toString().toLowerCase();
+    return message.contains('googlesigninexceptioncode.canceled') ||
+        message.contains('sign in canceled') ||
+        message.contains('signin canceled');
   }
 
   Future<firebase_auth.UserCredential> _processGoogleAccount(

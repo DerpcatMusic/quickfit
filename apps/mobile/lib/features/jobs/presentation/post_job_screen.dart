@@ -171,7 +171,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       return;
     }
 
-    final rate = double.tryParse(_rateController.text);
+    final rate = _parseRateInput(_rateController.text);
     if (rate == null || rate <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.postJobPleaseEnterValidRate)),
@@ -259,6 +259,15 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         ),
       );
     }
+  }
+
+  double? _parseRateInput(String raw) {
+    final normalized = raw
+        .trim()
+        .replaceAll(RegExp(r'[^0-9,.\-]'), '')
+        .replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
   }
 
   @override
