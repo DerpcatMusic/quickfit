@@ -63,6 +63,7 @@ Legend:
 - Post-job category chips are l10n-backed (no hardcoded category labels): `live`
 - Studio radius controls hidden outside instructor role: `live`
 - Studio-facing auth/error/action copy localization coverage: `partial`
+- Hebrew localization coverage expanded for studio jobs, post-job, public profile, and job detail flows: `partial`
 - Studio billing/invoicing sheet extracted to feature module and localized (no hardcoded UI copy): `live`
 - Studio post-job sticky bottom submit CTA: `live`
 - Job detail completion and rating dialog flows are localized (no hardcoded action copy): `live`

@@ -204,6 +204,7 @@ Status values:
   - Hardcoded billing/payment copy removed from studio-facing widgets and covered by l10n regression tests.
   - Post-job category labels are sourced from l10n keys (no hardcoded category chip labels).
   - Job detail completion/rating dialogs use l10n keys (no hardcoded action/status strings).
+  - Hebrew translations are populated for studio jobs/post-job/public-profile/job-detail core flows.
   - Top hotspot screens (`profile`, `onboarding`, `post_job`) begin section/widget extraction with clear ownership boundaries.
 
 ## Active Priority Order

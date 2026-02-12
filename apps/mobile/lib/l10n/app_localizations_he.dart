@@ -199,7 +199,7 @@ class AppLocalizationsHe extends AppLocalizations {
   String get cancel => 'ביטול';
 
   @override
-  String get submit => 'Submit';
+  String get submit => 'שלח';
 
   @override
   String get language => 'שפה';
@@ -565,80 +565,79 @@ class AppLocalizationsHe extends AppLocalizations {
   String get visibleLabel => 'Visible';
 
   @override
-  String get postJobTitle => 'Post a Job';
+  String get postJobTitle => 'פרסום עבודה';
 
   @override
-  String get postJobClassTitle => 'Class Title';
+  String get postJobClassTitle => 'כותרת השיעור';
 
   @override
-  String get postJobClassType => 'Class Type';
+  String get postJobClassType => 'סוג שיעור';
 
   @override
-  String get postJobDate => 'Date';
+  String get postJobDate => 'תאריך';
 
   @override
-  String get postJobTime => 'Time';
+  String get postJobTime => 'שעה';
 
   @override
-  String get postJobRateIls => 'Rate (ILS)';
+  String get postJobRateIls => 'תעריף (₪)';
 
   @override
-  String get postJobNotesOptional => 'Notes (optional)';
+  String get postJobNotesOptional => 'הערות (אופציונלי)';
 
   @override
-  String get postJobInstructorEligibility => 'Instructor Eligibility';
+  String get postJobInstructorEligibility => 'זכאות מדריכים';
 
   @override
-  String get postJobTitleHint => 'e.g. Morning Vinyasa Flow';
+  String get postJobTitleHint => 'למשל: ויניאסה בוקר';
 
   @override
-  String get postJobStartLabel => 'Start';
+  String get postJobStartLabel => 'התחלה';
 
   @override
-  String get postJobEndLabel => 'End';
+  String get postJobEndLabel => 'סיום';
 
   @override
   String get postJobRateHint => '0';
 
   @override
-  String get postJobNotesHint =>
-      'Any special requirements or notes for the instructor...';
+  String get postJobNotesHint => 'דרישות מיוחדות או הערות למדריך...';
 
   @override
-  String get postJobSosTitle => 'Priority dispatch';
+  String get postJobSosTitle => 'הפצה בעדיפות';
 
   @override
   String get postJobSosDescription =>
-      'Jobs starting within 3 hours get priority notifications and boosted rates to attract instructors faster.';
+      'עבודות שמתחילות בתוך 3 שעות מקבלות התראות בעדיפות ותעריף מוגדל כדי למשוך מדריכים מהר יותר.';
 
   @override
   String postJobButtonWithRate(Object rate) {
-    return 'Post Job - ILS $rate';
+    return 'פרסם עבודה - ₪ $rate';
   }
 
   @override
-  String get postJobPleaseEnterClassTitle => 'Please enter a class title';
+  String get postJobPleaseEnterClassTitle => 'יש להזין כותרת שיעור';
 
   @override
-  String get postJobPleaseSelectCategory => 'Please select a category';
+  String get postJobPleaseSelectCategory => 'יש לבחור קטגוריה';
 
   @override
-  String get postJobPleaseEnterValidRate => 'Please enter a valid rate';
+  String get postJobPleaseEnterValidRate => 'יש להזין תעריף תקין';
 
   @override
-  String get postJobVerifiedOnlyLabel => 'Verified instructors only';
+  String get postJobVerifiedOnlyLabel => 'מדריכים מאומתים בלבד';
 
   @override
   String get postJobVerifiedOnlyHelp =>
-      'Enable to restrict this job to verified instructors.';
+      'הפעל כדי להגביל עבודה זו למדריכים מאומתים.';
 
   @override
   String get postJobLessonTypeRequired =>
-      'Please select or type a lesson type so we can auto-tag the category.';
+      'יש לבחור או להקליד סוג שיעור כדי שנוכל לתייג קטגוריה אוטומטית.';
 
   @override
   String get postJobLessonTypeHint =>
-      'Type lesson freely (e.g. reformer flow, vinyasa, hiit core)';
+      'אפשר לכתוב סוג שיעור חופשי (למשל: רפורמר, ויניאסה, HIIT Core)';
 
   @override
   String get postJobCategoryYoga => 'יוגה';
@@ -688,21 +687,21 @@ class AppLocalizationsHe extends AppLocalizations {
   String get postJobSosRateBonusLabel => '+15%';
 
   @override
-  String get postJobStudioLocationFallback => 'Studio Location';
+  String get postJobStudioLocationFallback => 'מיקום הסטודיו';
 
   @override
   String get postJobStudioAddressNotSet =>
-      'Studio address not set. Please complete onboarding first.';
+      'כתובת הסטודיו לא הוגדרה. יש להשלים הרשמה תחילה.';
 
   @override
-  String get postJobStartTimeFuture => 'Start time must be in the future';
+  String get postJobStartTimeFuture => 'שעת ההתחלה חייבת להיות בעתיד';
 
   @override
-  String get postJobEndTimeAfterStart => 'End time must be after start time';
+  String get postJobEndTimeAfterStart =>
+      'שעת הסיום חייבת להיות אחרי שעת ההתחלה';
 
   @override
-  String get postJobSuccessMessage =>
-      'Job posted! Instructors are being notified.';
+  String get postJobSuccessMessage => 'העבודה פורסמה! המדריכים מקבלים התראה.';
 
   @override
   String get verifyCertificationTitle => 'Verify Certification';
@@ -824,98 +823,98 @@ class AppLocalizationsHe extends AppLocalizations {
   String get addToGoogleCalendar => 'Add to Google Calendar';
 
   @override
-  String get studioJobsClaimAccepted => 'Claim accepted!';
+  String get studioJobsClaimAccepted => 'הבקשה אושרה!';
 
   @override
-  String get studioJobsClaimRejected => 'Claim rejected.';
+  String get studioJobsClaimRejected => 'הבקשה נדחתה.';
 
   @override
-  String get studioJobsCompleteConfirmTitle => 'Mark class completed?';
+  String get studioJobsCompleteConfirmTitle => 'לסמן שיעור כהושלם?';
 
   @override
   String get studioJobsCompleteConfirmBody =>
-      'This marks the job as completed and unlocks post-job rating.';
+      'הפעולה תסמן את העבודה כהושלמה ותאפשר דירוג לאחר עבודה.';
 
   @override
-  String get studioJobsCompleteConfirmAction => 'Mark completed';
+  String get studioJobsCompleteConfirmAction => 'סמן כהושלם';
 
   @override
-  String get studioJobsCompleteSuccess => 'Job marked as completed.';
+  String get studioJobsCompleteSuccess => 'העבודה סומנה כהושלמה.';
 
   @override
-  String get studioJobsCompleteFailure => 'Failed to complete job.';
+  String get studioJobsCompleteFailure => 'לא ניתן לסמן את העבודה כהושלמה.';
 
   @override
-  String get studioJobsBillingTooltip => 'Billing';
+  String get studioJobsBillingTooltip => 'חיוב';
 
   @override
   String studioJobsTabActiveWithCount(Object count) {
-    return 'Active ($count)';
+    return 'פעיל ($count)';
   }
 
   @override
   String studioJobsTabHistoryWithCount(Object count) {
-    return 'History ($count)';
+    return 'היסטוריה ($count)';
   }
 
   @override
-  String get studioJobsSummaryActive => 'Active';
+  String get studioJobsSummaryActive => 'פעיל';
 
   @override
-  String get studioJobsSummaryHistory => 'History';
+  String get studioJobsSummaryHistory => 'היסטוריה';
 
   @override
-  String get studioJobsSummaryPayments => 'Payments';
+  String get studioJobsSummaryPayments => 'תשלומים';
 
   @override
-  String get studioJobsSectionEmpty => 'No jobs yet in this section.';
+  String get studioJobsSectionEmpty => 'עדיין אין עבודות בחלק הזה.';
 
   @override
-  String get studioJobsCancelTitle => 'Cancel job?';
+  String get studioJobsCancelTitle => 'לבטל עבודה?';
 
   @override
-  String get studioJobsCancelBody => 'This action cannot be undone.';
+  String get studioJobsCancelBody => 'לא ניתן לבטל פעולה זו.';
 
   @override
-  String get studioJobsCancelNo => 'No';
+  String get studioJobsCancelNo => 'לא';
 
   @override
-  String get studioJobsCancelYes => 'Yes, cancel';
+  String get studioJobsCancelYes => 'כן, לבטל';
 
   @override
-  String get studioJobsCancelled => 'Job cancelled.';
+  String get studioJobsCancelled => 'העבודה בוטלה.';
 
   @override
-  String get studioJobsTitle => 'My Jobs';
+  String get studioJobsTitle => 'העבודות שלי';
 
   @override
-  String get studioJobsRefresh => 'Refresh';
+  String get studioJobsRefresh => 'רענן';
 
   @override
-  String get studioJobsPostJob => 'Post Job';
+  String get studioJobsPostJob => 'פרסום עבודה';
 
   @override
   String studioJobsLoadFailed(Object error) {
-    return 'Failed to load jobs: $error';
+    return 'טעינת עבודות נכשלה: $error';
   }
 
   @override
   String get retry => 'Retry';
 
   @override
-  String get studioJobsEmptyTitle => 'No jobs posted yet';
+  String get studioJobsEmptyTitle => 'עדיין לא פורסמו עבודות';
 
   @override
-  String get studioJobsEmptyBody => 'Post a job to find instructors.';
+  String get studioJobsEmptyBody => 'פרסם עבודה כדי למצוא מדריכים.';
 
   @override
-  String get studioJobsPostFirstJob => 'Post your first job';
+  String get studioJobsPostFirstJob => 'פרסם את העבודה הראשונה שלך';
 
   @override
-  String get studioJobsUntitled => 'Untitled';
+  String get studioJobsUntitled => 'ללא כותרת';
 
   @override
-  String get studioJobsNoDate => 'No date';
+  String get studioJobsNoDate => 'ללא תאריך';
 
   @override
   String studioJobsRate(Object amount) {
@@ -923,31 +922,31 @@ class AppLocalizationsHe extends AppLocalizations {
   }
 
   @override
-  String get studioJobsInstructorFallback => 'Instructor';
+  String get studioJobsInstructorFallback => 'מדריך';
 
   @override
-  String get studioJobsVerified => 'Verified';
+  String get studioJobsVerified => 'מאומת';
 
   @override
-  String get studioJobsAccept => 'Accept';
+  String get studioJobsAccept => 'אשר';
 
   @override
-  String get studioJobsReject => 'Reject';
+  String get studioJobsReject => 'דחה';
 
   @override
-  String get studioJobsStatusOpen => 'Open';
+  String get studioJobsStatusOpen => 'פתוח';
 
   @override
-  String get studioJobsStatusPending => 'Pending';
+  String get studioJobsStatusPending => 'ממתין';
 
   @override
-  String get studioJobsStatusConfirmed => 'Confirmed';
+  String get studioJobsStatusConfirmed => 'אושר';
 
   @override
-  String get studioJobsStatusCompleted => 'Completed';
+  String get studioJobsStatusCompleted => 'הושלם';
 
   @override
-  String get studioJobsStatusCancelled => 'Cancelled';
+  String get studioJobsStatusCancelled => 'בוטל';
 
   @override
   String get studioAuthRequiredTitle => 'Studio session required';
@@ -1121,191 +1120,189 @@ class AppLocalizationsHe extends AppLocalizations {
   }
 
   @override
-  String get studioPublicProfileTitle => 'Studio Profile';
+  String get studioPublicProfileTitle => 'פרופיל סטודיו';
 
   @override
-  String get studioPublicProfileNotFound => 'Studio not found';
+  String get studioPublicProfileNotFound => 'הסטודיו לא נמצא';
 
   @override
-  String get studioPublicProfileFallbackName => 'Studio';
+  String get studioPublicProfileFallbackName => 'סטודיו';
 
   @override
   String studioPublicProfileOpenJobsCount(Object count) {
-    return 'Open jobs: $count';
+    return 'עבודות פתוחות: $count';
   }
 
   @override
   String studioPublicProfileActiveJobsCount(Object count) {
-    return 'Active jobs: $count';
+    return 'עבודות פעילות: $count';
   }
 
   @override
-  String get studioPublicProfileAvailableJobsTitle => 'Available Jobs';
+  String get studioPublicProfileAvailableJobsTitle => 'עבודות זמינות';
 
   @override
-  String get studioPublicProfileNoAvailableJobs =>
-      'No available jobs right now.';
+  String get studioPublicProfileNoAvailableJobs => 'אין כרגע עבודות זמינות.';
 
   @override
-  String get studioPublicProfileUntitledClass => 'Untitled class';
+  String get studioPublicProfileUntitledClass => 'שיעור ללא כותרת';
 
   @override
-  String get studioPublicProfileCategoryFallback => 'general';
+  String get studioPublicProfileCategoryFallback => 'כללי';
 
   @override
   String get studioPublicProfileRateCurrency => 'ILS';
 
   @override
   String studioPublicProfilePostedAt(Object time) {
-    return 'Posted $time';
+    return 'פורסם $time';
   }
 
   @override
-  String get jobDetailClaimQueued => 'Claim request queued.';
+  String get jobDetailClaimQueued => 'בקשת התפיסה נשלחה לתור.';
 
   @override
-  String get jobDetailWithdrawalQueued => 'Withdrawal request queued.';
+  String get jobDetailWithdrawalQueued => 'בקשת המשיכה נשלחה לתור.';
 
   @override
-  String get jobDetailNoActiveClaim => 'No active claim found.';
+  String get jobDetailNoActiveClaim => 'לא נמצאה בקשה פעילה.';
 
   @override
-  String get jobDetailClaimRejected => 'Claim rejected.';
+  String get jobDetailClaimRejected => 'הבקשה נדחתה.';
 
   @override
   String jobDetailActionFailed(Object error) {
-    return 'Action failed: $error';
+    return 'הפעולה נכשלה: $error';
   }
 
   @override
-  String get jobDetailCancelled => 'Job cancelled.';
+  String get jobDetailCancelled => 'העבודה בוטלה.';
 
   @override
   String jobDetailCancelFailed(Object error) {
-    return 'Failed to cancel: $error';
+    return 'הביטול נכשל: $error';
   }
 
   @override
-  String get jobDetailTitle => 'Job Details';
+  String get jobDetailTitle => 'פרטי עבודה';
 
   @override
-  String get jobDetailNotFound => 'Job not found';
+  String get jobDetailNotFound => 'העבודה לא נמצאה';
 
   @override
   String get jobDetailSosBoost => 'SOS BOOST';
 
   @override
-  String get jobDetailDefaultTitle => 'Fitness Class';
+  String get jobDetailDefaultTitle => 'שיעור כושר';
 
   @override
-  String get jobDetailDefaultStudio => 'Studio';
+  String get jobDetailDefaultStudio => 'סטודיו';
 
   @override
-  String get jobDetailDate => 'Date';
+  String get jobDetailDate => 'תאריך';
 
   @override
-  String get jobDetailTime => 'Time';
+  String get jobDetailTime => 'שעה';
 
   @override
-  String get jobDetailLocation => 'Location';
+  String get jobDetailLocation => 'מיקום';
 
   @override
-  String get jobDetailDefaultLocation => 'Israel';
+  String get jobDetailDefaultLocation => 'ישראל';
 
   @override
-  String get jobDetailRate => 'Rate';
+  String get jobDetailRate => 'תעריף';
 
   @override
-  String get jobDetailRequirements => 'Requirements & Notes';
+  String get jobDetailRequirements => 'דרישות והערות';
 
   @override
-  String get jobDetailNoRequirements => 'No special requirements listed.';
+  String get jobDetailNoRequirements => 'לא צוינו דרישות מיוחדות.';
 
   @override
-  String get jobDetailClaimBackup => 'Claim as Backup';
+  String get jobDetailClaimBackup => 'תפוס כמחליף גיבוי';
 
   @override
-  String get jobDetailClaimPrimary => 'Claim this Job';
+  String get jobDetailClaimPrimary => 'תפוס את העבודה';
 
   @override
   String get jobDetailBackupHint =>
-      'This job is claimed, but you can join as a backup.';
+      'העבודה כבר נתפסה, אבל אפשר להצטרף כמחליף גיבוי.';
 
   @override
-  String get jobDetailClaimedBy => 'Claimed By';
+  String get jobDetailClaimedBy => 'נתפס על ידי';
 
   @override
-  String get jobDetailRejectClaim => 'Reject Claim';
+  String get jobDetailRejectClaim => 'דחיית בקשה';
 
   @override
-  String get jobDetailAcceptClaim => 'Accept Claim';
+  String get jobDetailAcceptClaim => 'אישור בקשה';
 
   @override
-  String get jobDetailPrimaryRole => 'You are the primary instructor.';
+  String get jobDetailPrimaryRole => 'אתה המדריך הראשי.';
 
   @override
-  String get jobDetailBackupRole => 'You are an assigned backup.';
+  String get jobDetailBackupRole => 'שובצת כמחליף גיבוי.';
 
   @override
-  String get jobDetailProcessing => 'Processing...';
+  String get jobDetailProcessing => 'מעבד...';
 
   @override
-  String get jobDetailCancelClaim => 'Cancel Claim';
+  String get jobDetailCancelClaim => 'בטל בקשה';
 
   @override
-  String get jobDetailUnknown => 'Unknown';
+  String get jobDetailUnknown => 'לא ידוע';
 
   @override
-  String get jobDetailVerifiedProfessional => 'Verified Professional';
+  String get jobDetailVerifiedProfessional => 'בעל אימות מקצועי';
 
   @override
-  String get jobDetailCancelTitle => 'Cancel Job?';
+  String get jobDetailCancelTitle => 'לבטל עבודה?';
 
   @override
-  String get jobDetailCancelBody =>
-      'Are you sure you want to cancel this job? This cannot be undone.';
+  String get jobDetailCancelBody => 'האם לבטל את העבודה הזו? לא ניתן לשחזר.';
 
   @override
-  String get jobDetailKeepIt => 'Keep It';
+  String get jobDetailKeepIt => 'להשאיר';
 
   @override
-  String get jobDetailCancelCta => 'Cancel Job';
+  String get jobDetailCancelCta => 'ביטול עבודה';
 
   @override
-  String get jobDetailCompleteSuccessSnack => 'Job marked as completed.';
+  String get jobDetailCompleteSuccessSnack => 'העבודה סומנה כהושלמה.';
 
   @override
   String jobDetailCompleteFailureSnack(Object error) {
-    return 'Failed to complete job: $error';
+    return 'סימון השלמה נכשל: $error';
   }
 
   @override
   String jobDetailRateDialogTitle(Object targetLabel) {
-    return 'Rate $targetLabel';
+    return 'דרג את $targetLabel';
   }
 
   @override
-  String get jobDetailRatePrompt => 'How was your experience?';
+  String get jobDetailRatePrompt => 'איך הייתה החוויה שלך?';
 
   @override
-  String get jobDetailRateCommentHint => 'Optional comment';
+  String get jobDetailRateCommentHint => 'הערה (אופציונלי)';
 
   @override
-  String get jobDetailRatingSubmittedSnack => 'Rating submitted.';
+  String get jobDetailRatingSubmittedSnack => 'הדירוג נשלח.';
 
   @override
   String jobDetailRatingFailedSnack(Object error) {
-    return 'Failed to submit rating: $error';
+    return 'שליחת הדירוג נכשלה: $error';
   }
 
   @override
-  String get jobDetailRateTargetInstructor => 'instructor';
+  String get jobDetailRateTargetInstructor => 'המדריך';
 
   @override
-  String get jobDetailRateTargetStudio => 'studio';
+  String get jobDetailRateTargetStudio => 'הסטודיו';
 
   @override
-  String get jobDetailRateCounterpartCta => 'Rate counterpart';
+  String get jobDetailRateCounterpartCta => 'דירוג הצד השני';
 
   @override
   String get onboardingLocationUnavailable =>
