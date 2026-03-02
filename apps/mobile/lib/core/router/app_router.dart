@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
+import 'package:quickfit/core/router/app_routes.dart';
 
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:quickfit/features/auth/presentation/login_screen.dart';
@@ -19,49 +21,40 @@ import 'package:quickfit/features/verification/presentation/verification_screen.
 import 'package:quickfit/features/instructor/map/presentation/instructor_map_screen.dart';
 import 'package:quickfit/features/instructor/screens/instructor_schedule_screen.dart';
 import 'package:quickfit/features/studio/presentation/screens/studio_jobs_screen.dart';
+import 'package:quickfit/features/studio/presentation/screens/studio_public_profile_screen.dart';
 import 'package:quickfit/shared/layouts/app_scaffold.dart';
 
 part 'app_router.g.dart';
 
-// Route paths
-abstract class AppRoutes {
-  static const String splash = '/';
-  static const String login = '/login';
-  static const String onboarding = '/onboarding';
-
-  // Instructor routes
-  static const String instructorHome = '/instructor';
-  static const String instructorJobs = '/instructor/jobs';
-  static const String instructorSchedule = '/instructor/schedule';
-  static const String instructorProfile = '/instructor/profile';
-  static const String instructorMap = '/instructor/map';
-
-  // Studio routes
-  static const String studioHome = '/studio';
-  static const String studioJobs = '/studio/jobs';
-  static const String studioPostJob = '/studio/post';
-  static const String studioProfile = '/studio/profile';
-
-  // Shared routes
-  static const String verification = '/verification';
-  static const String settings = '/settings';
-  static const String jobDetail = '/jobs/:id';
-}
-
 // Auth state change notifier for GoRouter refresh
 class _AuthRefreshNotifier extends ChangeNotifier {
   _AuthRefreshNotifier(this._ref) {
-    _ref.listen(authProvider, (_, __) {
+    _lastSnapshot = _snapshot(_ref.read(authProvider));
+    _ref.listen(authProvider, (previous, next) {
+      final nextSnapshot = _snapshot(next);
+      if (nextSnapshot == _lastSnapshot) return;
+      _lastSnapshot = nextSnapshot;
       notifyListeners();
     });
   }
 
   final Ref _ref;
+  String? _lastSnapshot;
+
+  String _snapshot(AuthState state) {
+    return [
+      state.user?.uid ?? '',
+      state.isLoading ? '1' : '0',
+      state.hasCompletedOnboarding ? '1' : '0',
+      state.role ?? '',
+    ].join('|');
+  }
 }
 
 @riverpod
 GoRouter router(Ref ref) {
   final refreshNotifier = _AuthRefreshNotifier(ref);
+  ref.onDispose(refreshNotifier.dispose);
 
   final goRouter = GoRouter(
     initialLocation: AppRoutes.splash,
@@ -76,10 +69,16 @@ GoRouter router(Ref ref) {
       final isLoginRoute = state.matchedLocation == AppRoutes.login;
       final isOnboardingRoute = state.matchedLocation == AppRoutes.onboarding;
       final isSplashRoute = state.matchedLocation == AppRoutes.splash;
+      final isVerificationRoute =
+          state.matchedLocation == AppRoutes.verification;
+      final isStudioRoute = state.matchedLocation.startsWith('/studio');
+      final isInstructorRoute = state.matchedLocation.startsWith('/instructor');
 
-      // Still loading
+      // Avoid role/onboarding redirect races until auth/profile hydration settles.
       if (auth.isLoading) {
-        return isSplashRoute ? null : AppRoutes.splash;
+        if (isSplashRoute) return null;
+        if (!isLoggedIn && isLoginRoute) return null;
+        return AppRoutes.splash;
       }
 
       // Not logged in -> go to login
@@ -92,9 +91,30 @@ GoRouter router(Ref ref) {
         return isOnboardingRoute ? null : AppRoutes.onboarding;
       }
 
+      if (userRole == null) {
+        return isSplashRoute ? null : AppRoutes.splash;
+      }
+
       // Logged in with onboarding complete
       if (isLoginRoute || isOnboardingRoute || isSplashRoute) {
         // Redirect to appropriate home based on role
+        return userRole == 'studio'
+            ? AppRoutes.studioHome
+            : AppRoutes.instructorHome;
+      }
+
+      if (isStudioRoute && userRole != 'studio') {
+        return userRole == 'instructor'
+            ? AppRoutes.instructorHome
+            : AppRoutes.splash;
+      }
+
+      if (isInstructorRoute && userRole != 'instructor') {
+        return userRole == 'studio' ? AppRoutes.studioHome : AppRoutes.splash;
+      }
+
+      // Verification is instructor-only.
+      if (isVerificationRoute && userRole != 'instructor') {
         return userRole == 'studio'
             ? AppRoutes.studioHome
             : AppRoutes.instructorHome;
@@ -117,6 +137,14 @@ GoRouter router(Ref ref) {
       GoRoute(
         path: AppRoutes.onboarding,
         builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.instructorHome,
+        redirect: (_, __) => AppRoutes.instructorJobs,
+      ),
+      GoRoute(
+        path: AppRoutes.studioHome,
+        redirect: (_, __) => AppRoutes.studioJobs,
       ),
 
       // Instructor shell
@@ -207,12 +235,20 @@ GoRouter router(Ref ref) {
           return JobDetailScreen(jobId: jobId);
         },
       ),
+      GoRoute(
+        path: AppRoutes.studioPublicProfile,
+        builder: (context, state) {
+          final studioId = state.pathParameters['id']!;
+          return StudioPublicProfileScreen(studioId: studioId);
+        },
+      ),
     ],
     errorBuilder: (context, state) => _ErrorScreen(error: state.error),
   );
 
   // GLOBAL NOTIFICATION LISTENER
-  NotificationService.instance.onNotification.listen((message) {
+  final notificationSub =
+      NotificationService.instance.onNotification.listen((message) {
     final data = message.data;
     final type = data['type'];
     final jobId = data['jobId'];
@@ -223,6 +259,7 @@ GoRouter router(Ref ref) {
       goRouter.push(AppRoutes.jobDetail.replaceFirst(':id', jobId));
     }
   });
+  ref.onDispose(notificationSub.cancel);
 
   return goRouter;
 }
@@ -233,20 +270,21 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              'Quickfit',
-              style: TextStyle(
+              l10n.appName,
+              style: const TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 24),
-            CircularProgressIndicator(),
+            const SizedBox(height: 24),
+            const CircularProgressIndicator(),
           ],
         ),
       ),
@@ -262,19 +300,20 @@ class _ErrorScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              'Page not found',
-              style: TextStyle(fontSize: 24),
+            Text(
+              l10n.pageNotFound,
+              style: const TextStyle(fontSize: 24),
             ),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: () => context.go(AppRoutes.splash),
-              child: const Text('Go Home'),
+              child: Text(l10n.goHome),
             ),
           ],
         ),

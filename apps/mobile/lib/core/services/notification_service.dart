@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/logger.dart';
 
 import '../constants/app_constants.dart';
+import 'settings_service.dart';
 
 class NotificationService {
   NotificationService._();
@@ -27,6 +28,8 @@ class NotificationService {
   String? get fcmToken => _fcmToken;
 
   Future<void> initialize() async {
+    await SettingsService.instance.load();
+
     // Request permissions
     await _requestPermissions();
 
@@ -50,6 +53,8 @@ class NotificationService {
     if (initialMessage != null) {
       _handleNotificationTap(initialMessage);
     }
+
+    await applySettings(SettingsService.instance.current);
   }
 
   Future<void> _requestPermissions() async {
@@ -88,7 +93,7 @@ class NotificationService {
     );
 
     await _localNotifications.initialize(
-      initSettings,
+      settings: initSettings,
       onDidReceiveNotificationResponse: _onNotificationResponse,
     );
 
@@ -147,6 +152,12 @@ class NotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
+    final settings = SettingsService.instance.current;
+    if (!settings.notificationsEnabled) return;
+    final isSos = message.data['isSos'] == 'true';
+    if (isSos && !settings.sosJobAlerts) return;
+    if (!isSos && !settings.regularJobAlerts) return;
+
     log.i('Received foreground message: ${message.messageId}');
     _notificationController.add(message);
 
@@ -175,10 +186,15 @@ class NotificationService {
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
+    final settings = SettingsService.instance.current;
+    if (!settings.notificationsEnabled) return;
+
     final notification = message.notification;
     if (notification == null) return;
 
     final isSos = message.data['isSos'] == 'true';
+    if (isSos && !settings.sosJobAlerts) return;
+    if (!isSos && !settings.regularJobAlerts) return;
     final channelId = isSos ? 'sos_jobs' : 'regular_jobs';
 
     final androidDetails = AndroidNotificationDetails(
@@ -202,12 +218,28 @@ class NotificationService {
     );
 
     await _localNotifications.show(
-      message.hashCode,
-      notification.title,
-      notification.body,
-      details,
+      id: message.hashCode,
+      title: notification.title,
+      body: notification.body,
+      notificationDetails: details,
       payload: message.data['jobId'],
     );
+  }
+
+  Future<void> applySettings(UserSettings settings) async {
+    try {
+      await _fcm.setAutoInitEnabled(settings.notificationsEnabled);
+    } catch (_) {
+      // Ignore if platform doesn't support it
+    }
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      await _fcm.setForegroundNotificationPresentationOptions(
+        alert: settings.notificationsEnabled,
+        badge: settings.notificationsEnabled,
+        sound: settings.notificationsEnabled,
+      );
+    }
   }
 
   // Subscribe to topic (e.g., category or area)

@@ -65,7 +65,7 @@ export const getPendingReview = query({
 
 export const uploadCertificate = mutation({
   args: {
-    docUrl: v.string(),
+    storageId: v.id("_storage"),
     docType: v.string(),
     originalFilename: v.optional(v.string()),
   },
@@ -80,10 +80,18 @@ export const uploadCertificate = mutation({
     
     if (!user) throw new Error("User not found");
     if (user.role !== "instructor") throw new Error("Only instructors can upload certificates");
+
+    const owner = await ctx.db
+      .query("userFiles")
+      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+      .first();
+    if (!owner || owner.userId !== user._id) {
+      throw new Error("Unauthorized certificate file");
+    }
     
     const verificationId = await ctx.db.insert("verifications", {
       userId: user._id,
-      docUrl: args.docUrl,
+      storageId: args.storageId,
       docType: args.docType,
       originalFilename: args.originalFilename,
       status: "pending",

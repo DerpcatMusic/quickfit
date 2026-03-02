@@ -1,0 +1,646 @@
+{
+  "@@locale": "he",
+  "appName": "Quickfit",
+  "loading": "טוען...",
+  "pageNotFound": "העמוד לא נמצא",
+  "goHome": "לדף הבית",
+  "loginTagline": "מצא מחליפי מדריכים מהר",
+  "continueWithGoogle": "המשך עם Google",
+  "continueWithApple": "המשך עם Apple",
+  "continueWithEmail": "המשך עם אימייל",
+  "or": "או",
+  "back": "חזרה",
+  "createAccount": "יצירת חשבון",
+  "signIn": "התחברות",
+  "nameLabel": "שם",
+  "displayNameLabel": "שם תצוגה",
+  "emailLabel": "אימייל",
+  "passwordLabel": "סיסמה",
+  "emailRequired": "נדרש אימייל",
+  "emailInvalid": "הזן אימייל תקין",
+  "passwordRequired": "נדרשת סיסמה",
+  "passwordMinLength": "סיסמה חייבת להיות לפחות 6 תווים",
+  "confirmPasswordLabel": "אימות סיסמה",
+  "passwordsDoNotMatch": "הסיסמאות אינן תואמות",
+  "alreadyHaveAccount": "כבר יש לך חשבון? התחבר",
+  "dontHaveAccount": "אין לך חשבון? הירשם",
+  "forgotPassword": "שכחת סיסמה?",
+  "passwordResetSent": "נשלחה הודעת איפוס סיסמה",
+  "enterEmailFirst": "הכנס אימייל קודם",
+  "termsPrefix": "בהמשך, אתה מסכים ל",
+  "and": "ו",
+  "termsOfService": "תנאי שימוש",
+  "privacyPolicy": "מדיניות פרטיות",
+  "profileInfo": "פרטי פרופיל",
+  "phoneNumber": "מספר טלפון",
+  "homeAddress": "כתובת בית",
+  "addressHint": "לדוגמה: רוטשילד 1, תל אביב",
+  "searchRadius": "רדיוס חיפוש",
+  "maximumDistance": "מרחק מקסימלי",
+  "expertise": "התמחות",
+  "saveChanges": "שמירת שינויים",
+  "profileUpdated": "הפרופיל עודכן בהצלחה",
+  "account": "חשבון",
+  "notSet": "לא הוגדר",
+  "email": "אימייל",
+  "changeEmail": "שינוי אימייל",
+  "newEmailLabel": "אימייל חדש",
+  "currentPasswordLabel": "סיסמה נוכחית",
+  "currentPasswordRequired": "נדרשת סיסמה נוכחית",
+  "emailUnchanged": "יש להזין אימייל שונה",
+  "sendVerification": "שלח אימות",
+  "emailChangeVerificationSent": "נשלח מייל אימות. אשר אותו כדי להשלים את שינוי האימייל.",
+  "workRadius": "רדיוס עבודה",
+  "teachingCategories": "קטגוריות הוראה",
+  "classTypes": "סוגי שיעורים",
+  "settings": "הגדרות",
+  "linkedAccounts": "חשבונות מקושרים",
+  "none": "אין",
+  "addPassword": "הוסף סיסמה",
+  "enableEmailLogin": "אפשר התחברות באימייל",
+  "notifications": "התראות",
+  "redoOnboarding": "בצע מחדש את ההרשמה",
+  "redoOnboardingPrompt": "זה יאפשר לבחור תפקיד ופרטי פרופיל מחדש.",
+  "redo": "בצע מחדש",
+  "cancel": "ביטול",
+  "submit": "שלח",
+  "language": "שפה",
+  "helpSupport": "עזרה ותמיכה",
+  "signOut": "התנתקות",
+  "verify": "אימות",
+  "verifiedCredentials": "המסמכים שלך אומתו",
+  "uploadCredentials": "העלה תעודה כדי לקבל אימות",
+  "notificationsLabelOff": "כבוי",
+  "notificationsLabelAll": "הכל",
+  "notificationsLabelSosOnly": "רק SOS",
+  "notificationsLabelRegularOnly": "רק רגיל",
+  "notificationsLabelMuted": "מושתק",
+  "notificationsTitle": "התראות",
+  "notificationsEnable": "אפשר התראות",
+  "notificationsRegular": "עבודות רגילות",
+  "notificationsSos": "עבודות SOS",
+  "sosLabel": "SOS",
+  "save": "שמור",
+  "languageRestartPrompt": "יש להפעיל מחדש את האפליקציה כדי להחיל את השפה.",
+  "languageEnglish": "English",
+  "languageHebrew": "עברית",
+  "close": "סגור",
+  "editProfile": "עריכת פרופיל",
+  "profileRoleStudio": "סטודיו",
+  "profileRoleInstructor": "מדריך",
+  "profileAnonymousUser": "משתמש אנונימי",
+  "profileUseAccountPhoto": "השתמש בתמונת החשבון",
+  "profileUseAccountPhotoUnavailable": "אין תמונת חשבון זמינה לשימוש.",
+  "profileUseAccountPhotoApplied": "תמונת הפרופיל עודכנה מהחשבון.",
+  "profileUseAccountPhotoFailed": "עדכון תמונת הפרופיל נכשל.",
+  "profileProviderGoogle": "Google",
+  "profileProviderApple": "Apple",
+  "profileProviderEmail": "אימייל",
+  "profileProviderOauth": "OAuth",
+  "profileEmailManagedByProvider": "האימייל מנוהל על ידי {providersLabel} ולא ניתן לערוך אותו כרגע ישירות באפליקציה.",
+  "@profileEmailManagedByProvider": {
+    "placeholders": {
+      "providersLabel": {}
+    }
+  },
+  "profileEmailManagedByProviderWithFallback": "האימייל מנוהל על ידי {providersLabel} ולא ניתן לערוך אותו כרגע ישירות באפליקציה. אפשר גם להוסיף התחברות עם סיסמה כאפשרות גיבוי.",
+  "@profileEmailManagedByProviderWithFallback": {
+    "placeholders": {
+      "providersLabel": {}
+    }
+  },
+  "profileDisplayNameRequired": "שם תצוגה הוא שדה חובה",
+  "profileVerifiedInstructor": "מדריך מאומת",
+  "profileAddPasswordDescription": "הוסף סיסמה כדי לאפשר התחברות עם אימייל ({email})",
+  "@profileAddPasswordDescription": {
+    "placeholders": {
+      "email": {}
+    }
+  },
+  "profilePasswordPlaceholder": "סיסמה (6+ תווים)",
+  "profilePasswordAddedSuccess": "הסיסמה נוספה! כעת אפשר להתחבר עם אימייל.",
+  "profilePasswordAddFailed": "נכשל בהוספת סיסמה",
+  "filterJobsTitle": "סינון עבודות",
+  "reset": "איפוס",
+  "categoryLabel": "קטגוריה",
+  "minimumRateLabelWithValue": "תעריף מינימלי: {currency} {value}",
+  "@minimumRateLabelWithValue": {
+    "placeholders": {
+      "currency": {},
+      "value": {}
+    }
+  },
+  "currencyILS": "ש\"ח",
+  "currencyAmount": "{currency} {amount}",
+  "@currencyAmount": {
+    "placeholders": {
+      "currency": {},
+      "amount": {}
+    }
+  },
+  "applyFilters": "החל סינונים",
+  "jobClaimedNotification": "העבודה נתפסה! הסטודיו {studioName} יקבל הודעה.",
+  "@jobClaimedNotification": {
+    "placeholders": {
+      "studioName": {}
+    }
+  },
+  "availableJobsTitle": "עבודות זמינות",
+  "somethingWentWrong": "אירעה שגיאה",
+  "tryAgain": "נסה שוב",
+  "noJobsAvailable": "אין עבודות זמינות",
+  "noJobsAvailableHint": "בדוק שוב בקרוב או הרחב את רדיוס החיפוש בהגדרות.",
+  "refresh": "רענן",
+  "urgentJobsTitle": "עבודות דחופות",
+  "pullToRefresh": "משוך למטה כדי לרענן",
+  "noJobsMatchFilters": "אין עבודות שמתאימות לסינונים שלך",
+  "clearFilters": "נקה סינונים",
+  "supportPlaceholder": "פרטי תמיכה עדיין לא הוגדרו. הוסף אותם בהגדרות כשיהיה מוכן.",
+  "termsPlaceholder": "תנאי השימוש עדיין לא הוגדרו. הוסף כאן את הטקסט כשיהיה מוכן.",
+  "privacyPlaceholder": "מדיניות הפרטיות עדיין לא הוגדרה. הוסף כאן את הטקסט כשיהיה מוכן.",
+  "versionLabel": "Quickfit v{version}",
+  "@versionLabel": {
+    "placeholders": {
+      "version": {}
+    }
+  },
+  "radiusKmLabel": "{value} ק\"מ",
+  "@radiusKmLabel": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "zonesSelectedLabel": "{count} אזורים נבחרו",
+  "@zonesSelectedLabel": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "calendarTitle": "Calendar",
+  "syncedAt": "Synced {time}",
+  "@syncedAt": {
+    "placeholders": {
+      "time": {}
+    }
+  },
+  "noJobsInThreeDayWindow": "No jobs in this 3-day window.",
+  "scheduleHoursCompact": "{hours}ש׳",
+  "@scheduleHoursCompact": {
+    "placeholders": {
+      "hours": {}
+    }
+  },
+  "scheduleGoogleCalendarDetailsHeader": "עבודת QuickFit #{jobId}",
+  "@scheduleGoogleCalendarDetailsHeader": {
+    "placeholders": {
+      "jobId": {}
+    }
+  },
+  "scheduleGoogleCalendarDetailsStudio": "סטודיו: {studioName}",
+  "@scheduleGoogleCalendarDetailsStudio": {
+    "placeholders": {
+      "studioName": {}
+    }
+  },
+  "instructorMapServiceArea": "Service Area",
+  "instructorMapLiveJobsInView": "{count} live jobs in view",
+  "@instructorMapLiveJobsInView": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "instructorMapTapToDropPin": "Tap the map once to drop your pin.",
+  "instructorMapPinUpdatedTapSave": "Pin updated. Tap Save Changes to apply.",
+  "instructorMapTypeAddressToMovePin": "Type address to move pin",
+  "instructorMapAddressNotFound": "Address not found. Try a more specific address.",
+  "instructorMapPleaseSelectLocation": "Please select a location on the map",
+  "instructorMapPleaseSelectOneZone": "Please select at least one zone",
+  "instructorMapSettingsSaved": "Settings saved successfully",
+  "instructorMapErrorSavingSettings": "Error saving settings: {error}",
+  "@instructorMapErrorSavingSettings": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "instructorMapMapSettingsTooltip": "Map settings",
+  "instructorMapDropPinTooltip": "Drop pin",
+  "instructorMapApplyAddressTooltip": "Apply address",
+  "mapSettingsTitle": "Map Settings",
+  "mapSettingsSubtitle": "Adjust how and where job matches are discovered.",
+  "mapModeRadius": "Radius",
+  "mapModeZones": "Zones",
+  "saving": "Saving...",
+  "mapSearchRadius": "Search Radius",
+  "mapSelectedZones": "Selected Zones",
+  "mapActiveCount": "{count} active",
+  "@mapActiveCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "mapZoneSelectionHint": "Zone selection is done directly on the map. Close this sheet to edit zones.",
+  "mapLoadingZones": "Loading zones...",
+  "mapNoZonesSelectedYet": "No zones selected yet.",
+  "mapMatchedCount": "{count} matched",
+  "@mapMatchedCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "mapSelectAll": "Select All",
+  "mapSelectAllInCity": "Select all in {city}",
+  "@mapSelectAllInCity": {
+    "placeholders": {
+      "city": {}
+    }
+  },
+  "mapClearAll": "Clear All",
+  "mapSearchZonesOrCitiesHint": "Search zones or cities...",
+  "mapErrorWithMessage": "Error: {error}",
+  "@mapErrorWithMessage": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "totalJobsLabel": "Total Jobs",
+  "earningsLabel": "Earnings",
+  "visibleLabel": "Visible",
+  "postJobTitle": "פרסום עבודה",
+  "postJobClassTitle": "כותרת השיעור",
+  "postJobClassType": "סוג שיעור",
+  "postJobDate": "תאריך",
+  "postJobTime": "שעה",
+  "postJobRateIls": "תעריף (₪)",
+  "postJobNotesOptional": "הערות (אופציונלי)",
+  "postJobInstructorEligibility": "זכאות מדריכים",
+  "postJobTitleHint": "למשל: ויניאסה בוקר",
+  "postJobStartLabel": "התחלה",
+  "postJobEndLabel": "סיום",
+  "postJobRateHint": "0",
+  "postJobNotesHint": "דרישות מיוחדות או הערות למדריך...",
+  "postJobSosTitle": "הפצה בעדיפות",
+  "postJobSosDescription": "עבודות שמתחילות בתוך 3 שעות מקבלות התראות בעדיפות ותעריף מוגדל כדי למשוך מדריכים מהר יותר.",
+  "postJobButtonWithRate": "פרסם עבודה - ₪ {rate}",
+  "@postJobButtonWithRate": {
+    "placeholders": {
+      "rate": {}
+    }
+  },
+  "postJobPleaseEnterClassTitle": "יש להזין כותרת שיעור",
+  "postJobPleaseSelectCategory": "יש לבחור קטגוריה",
+  "postJobPleaseEnterValidRate": "יש להזין תעריף תקין",
+  "postJobVerifiedOnlyLabel": "מדריכים מאומתים בלבד",
+  "postJobVerifiedOnlyHelp": "הפעל כדי להגביל עבודה זו למדריכים מאומתים.",
+  "postJobLessonTypeRequired": "יש לבחור או להקליד סוג שיעור כדי שנוכל לתייג קטגוריה אוטומטית.",
+  "postJobLessonTypeHint": "אפשר לכתוב סוג שיעור חופשי (למשל: רפורמר, ויניאסה, HIIT Core)",
+  "postJobCategoryYoga": "יוגה",
+  "postJobCategoryPilates": "פילאטיס",
+  "postJobCategoryReformerPilates": "פילאטיס רפורמר",
+  "postJobCategoryMatPilates": "פילאטיס מזרן",
+  "postJobCategoryFunctionalTraining": "אימון פונקציונלי",
+  "postJobCategoryHiit": "HIIT",
+  "postJobCategoryStrength": "כוח",
+  "postJobCategoryMobility": "ניידות",
+  "postJobCategoryBarre": "באר",
+  "postJobCategorySpinning": "ספינינג",
+  "postJobCategoryDance": "ריקוד",
+  "postJobCategoryPersonalTraining": "אימון אישי",
+  "postJobRateCurrency": "ILS",
+  "postJobRateBoostPill": "+{boostPercent}%",
+  "@postJobRateBoostPill": {
+    "placeholders": {
+      "boostPercent": {}
+    }
+  },
+  "postJobSosRateBonusLabel": "+15%",
+  "postJobStudioLocationFallback": "מיקום הסטודיו",
+  "postJobStudioAddressNotSet": "כתובת הסטודיו לא הוגדרה. יש להשלים הרשמה תחילה.",
+  "postJobStartTimeFuture": "שעת ההתחלה חייבת להיות בעתיד",
+  "postJobEndTimeAfterStart": "שעת הסיום חייבת להיות אחרי שעת ההתחלה",
+  "postJobSuccessMessage": "העבודה פורסמה! המדריכים מקבלים התראה.",
+  "verifyCertificationTitle": "Verify Certification",
+  "uploadCertificateTitle": "Upload Certificate",
+  "uploadCertificateDescription": "Upload a clear photo of your fitness instructor certification (Wingate, IFA, or equivalent).",
+  "submitForVerification": "Submit for Verification",
+  "verificationWhyTitle": "Why verify?",
+  "verificationWhyDescription": "Verified instructors get priority in job matching and can charge higher rates. Studios trust verified profiles more.",
+  "tapToUploadCertificate": "Tap to upload certificate",
+  "uploadFileTypesHint": "JPG, PNG or PDF ? Max 10MB",
+  "chooseFromGallery": "Choose from Gallery",
+  "takePhoto": "Take a Photo",
+  "verificationVerifiedTitle": "Verified!",
+  "verificationVerifiedSubtitle": "Your certification has been verified successfully.",
+  "verificationFailedTitle": "Verification Failed",
+  "verificationFailedSubtitle": "We couldn't verify your certificate. Please upload a clearer image.",
+  "verificationManualReviewTitle": "Manual Review",
+  "verificationManualReviewSubtitle": "Your certificate needs manual review by the team.",
+  "verificationExpiredTitle": "Verification Expired",
+  "verificationExpiredSubtitle": "Your verification has expired. Please upload a new document.",
+  "verificationProcessingTitle": "Processing",
+  "verificationPendingTitle": "Verification Pending",
+  "verificationPendingSubtitle": "We're reviewing your certificate. This usually takes a few minutes.",
+  "verificationRequirementsTitle": "Requirements",
+  "verificationRequirementReadable": "Certificate must be clearly readable",
+  "verificationRequirementNameVisible": "Your name must be visible on the certificate",
+  "verificationRequirementRecognizedInstitution": "Certificate must be from a recognized institution",
+  "verificationRequirementExpiryVisible": "Expiry date (if applicable) must be visible",
+  "verificationUploadSuccess": "Certificate uploaded! AI verification in progress...",
+  "verificationUploadFailed": "Upload failed: {error}",
+  "@verificationUploadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "mapApply": "Apply",
+  "couldNotOpenGoogleCalendar": "Could not open Google Calendar.",
+  "previousDayWindowTooltip": "Previous day window",
+  "todayLabel": "Today",
+  "nextDayWindowTooltip": "Next day window",
+  "swipeThreeDayWindowHint": "Swipe left/right to move 3-day window",
+  "addToGoogleCalendar": "Add to Google Calendar",
+  "studioJobsClaimAccepted": "הבקשה אושרה!",
+  "studioJobsClaimRejected": "הבקשה נדחתה.",
+  "studioJobsCompleteConfirmTitle": "לסמן שיעור כהושלם?",
+  "studioJobsCompleteConfirmBody": "הפעולה תסמן את העבודה כהושלמה ותאפשר דירוג לאחר עבודה.",
+  "studioJobsCompleteConfirmAction": "סמן כהושלם",
+  "studioJobsCompleteSuccess": "העבודה סומנה כהושלמה.",
+  "studioJobsCompleteFailure": "לא ניתן לסמן את העבודה כהושלמה.",
+  "studioJobsBillingTooltip": "חיוב",
+  "studioJobsTabActiveWithCount": "פעיל ({count})",
+  "@studioJobsTabActiveWithCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioJobsTabHistoryWithCount": "היסטוריה ({count})",
+  "@studioJobsTabHistoryWithCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioJobsSummaryActive": "פעיל",
+  "studioJobsSummaryHistory": "היסטוריה",
+  "studioJobsSummaryPayments": "תשלומים",
+  "studioJobsSectionEmpty": "עדיין אין עבודות בחלק הזה.",
+  "studioJobsCancelTitle": "לבטל עבודה?",
+  "studioJobsCancelBody": "לא ניתן לבטל פעולה זו.",
+  "studioJobsCancelNo": "לא",
+  "studioJobsCancelYes": "כן, לבטל",
+  "studioJobsCancelled": "העבודה בוטלה.",
+  "studioJobsTitle": "העבודות שלי",
+  "studioJobsRefresh": "רענן",
+  "studioJobsPostJob": "פרסום עבודה",
+  "studioJobsLoadFailed": "טעינת עבודות נכשלה: {error}",
+  "@studioJobsLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "retry": "Retry",
+  "studioJobsEmptyTitle": "עדיין לא פורסמו עבודות",
+  "studioJobsEmptyBody": "פרסם עבודה כדי למצוא מדריכים.",
+  "studioJobsPostFirstJob": "פרסם את העבודה הראשונה שלך",
+  "studioJobsUntitled": "ללא כותרת",
+  "studioJobsNoDate": "ללא תאריך",
+  "studioJobsRate": "ILS {amount}",
+  "@studioJobsRate": {
+    "placeholders": {
+      "amount": {}
+    }
+  },
+  "studioJobsInstructorFallback": "מדריך",
+  "studioJobsVerified": "מאומת",
+  "studioJobsAccept": "אשר",
+  "studioJobsReject": "דחה",
+  "studioJobsStatusOpen": "פתוח",
+  "studioJobsStatusPending": "ממתין",
+  "studioJobsStatusConfirmed": "אושר",
+  "studioJobsStatusCompleted": "הושלם",
+  "studioJobsStatusCancelled": "בוטל",
+  "studioAuthRequiredTitle": "Studio session required",
+  "studioAuthRequiredBodyJobs": "You are not authenticated as a studio. Sign in again to view and post jobs.",
+  "studioAuthRequiredBodyPostJob": "Sign in again as a studio to post jobs.",
+  "studioAuthRequiredSnack": "Studio authentication required. Please sign in again.",
+  "authGoToLogin": "Go to login",
+  "profileStudioBillingTitle": "Billing & Invoicing",
+  "profileStudioBillingSubtitle": "Auto-issue invoices for instructor payments",
+  "studioBillingProviderMorning": "Morning (Green Invoice)",
+  "studioBillingProviderIcount": "iCount",
+  "studioBillingSummaryNotConnected": "Not connected",
+  "studioBillingSummaryMorningActive": "Morning active",
+  "studioBillingSummaryIcountActive": "iCount active",
+  "studioBillingSummaryConnected": "Connected",
+  "studioBillingPlatformManagedNotice": "Payments are managed by QuickFit (Rapyd/BitPay). No studio payment setup is required.",
+  "studioBillingInvoicingSectionTitle": "Invoicing",
+  "studioBillingNoProviderConnected": "No provider connected yet.",
+  "studioBillingStatusActive": "Active",
+  "studioBillingStatusInactive": "Inactive",
+  "studioBillingMenuEdit": "Edit",
+  "studioBillingMenuSetInactive": "Set inactive",
+  "studioBillingMenuSetActive": "Set active",
+  "studioBillingMenuRemove": "Remove",
+  "studioBillingConnectMorning": "Connect Morning",
+  "studioBillingConnectIcount": "Connect iCount",
+  "studioBillingBaseUrlRequired": "Base URL is required",
+  "studioBillingBaseUrlHttpsRequired": "Base URL must start with https://",
+  "studioBillingApiTokenRequired": "API token is required",
+  "studioBillingApiKeyRequired": "API key is required",
+  "studioBillingConnected": "{provider} connected",
+  "@studioBillingConnected": {
+    "placeholders": {
+      "provider": {}
+    }
+  },
+  "studioBillingConnectProvider": "Connect {provider}",
+  "@studioBillingConnectProvider": {
+    "placeholders": {
+      "provider": {}
+    }
+  },
+  "studioBillingEditProvider": "Edit {provider}",
+  "@studioBillingEditProvider": {
+    "placeholders": {
+      "provider": {}
+    }
+  },
+  "studioBillingBaseUrlLabel": "Base URL",
+  "studioBillingApiTokenLabel": "API token (leave empty to keep existing)",
+  "studioBillingApiKeyLabel": "API key (leave empty to keep existing)",
+  "studioBillingAccountIdOptionalLabel": "Account ID (optional)",
+  "studioBillingDefaultVatOptionalLabel": "Default VAT rate (optional)",
+  "profileStudioPricingTitle": "Default Pricing",
+  "profileStudioPricingSubtitle": "Base rate and lead-time surge rules",
+  "profileStudioPricingDefaultRate": "Default base rate (ILS)",
+  "profileStudioPricingRuleHours": "Window (hours before start)",
+  "profileStudioPricingRuleBoost": "Boost (%)",
+  "profileStudioPricingAddRule": "Add rule",
+  "profileStudioPricingSaved": "Studio pricing updated.",
+  "profileStudioPricingSaveFailed": "Failed to update studio pricing.",
+  "profileStudioPricingSummary": "ILS {rate}, {rules}",
+  "@profileStudioPricingSummary": {
+    "placeholders": {
+      "rate": {},
+      "rules": {}
+    }
+  },
+  "profileStudioPricingRuleCompact": "{hours}h:+{boost}%",
+  "@profileStudioPricingRuleCompact": {
+    "placeholders": {
+      "hours": {},
+      "boost": {}
+    }
+  },
+  "profileStudioPublicJobsTitle": "My Available Jobs",
+  "profileStudioPublicJobsSubtitle": "View public profile with active jobs",
+  "profileStudioActiveJobsCount": "{count} active",
+  "@profileStudioActiveJobsCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioPublicProfileTitle": "פרופיל סטודיו",
+  "studioPublicProfileNotFound": "הסטודיו לא נמצא",
+  "studioPublicProfileFallbackName": "סטודיו",
+  "studioPublicProfileOpenJobsCount": "עבודות פתוחות: {count}",
+  "@studioPublicProfileOpenJobsCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioPublicProfileActiveJobsCount": "עבודות פעילות: {count}",
+  "@studioPublicProfileActiveJobsCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "studioPublicProfileAvailableJobsTitle": "עבודות זמינות",
+  "studioPublicProfileNoAvailableJobs": "אין כרגע עבודות זמינות.",
+  "studioPublicProfileUntitledClass": "שיעור ללא כותרת",
+  "studioPublicProfileCategoryFallback": "כללי",
+  "studioPublicProfileRateCurrency": "ILS",
+  "studioPublicProfilePostedAt": "פורסם {time}",
+  "@studioPublicProfilePostedAt": {
+    "placeholders": {
+      "time": {}
+    }
+  },
+  "jobDetailClaimQueued": "בקשת התפיסה נשלחה לתור.",
+  "jobDetailWithdrawalQueued": "בקשת המשיכה נשלחה לתור.",
+  "jobDetailNoActiveClaim": "לא נמצאה בקשה פעילה.",
+  "jobDetailClaimRejected": "הבקשה נדחתה.",
+  "jobDetailActionFailed": "הפעולה נכשלה: {error}",
+  "@jobDetailActionFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "jobDetailCancelled": "העבודה בוטלה.",
+  "jobDetailCancelFailed": "הביטול נכשל: {error}",
+  "@jobDetailCancelFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "jobDetailTitle": "פרטי עבודה",
+  "jobDetailNotFound": "העבודה לא נמצאה",
+  "jobDetailSosBoost": "SOS BOOST",
+  "jobDetailDefaultTitle": "שיעור כושר",
+  "jobDetailDefaultStudio": "סטודיו",
+  "jobDetailDate": "תאריך",
+  "jobDetailTime": "שעה",
+  "jobDetailLocation": "מיקום",
+  "jobDetailDefaultLocation": "ישראל",
+  "jobDetailRate": "תעריף",
+  "jobDetailRequirements": "דרישות והערות",
+  "jobDetailNoRequirements": "לא צוינו דרישות מיוחדות.",
+  "jobDetailClaimBackup": "תפוס כמחליף גיבוי",
+  "jobDetailClaimPrimary": "תפוס את העבודה",
+  "jobDetailBackupHint": "העבודה כבר נתפסה, אבל אפשר להצטרף כמחליף גיבוי.",
+  "jobDetailClaimedBy": "נתפס על ידי",
+  "jobDetailRejectClaim": "דחיית בקשה",
+  "jobDetailAcceptClaim": "אישור בקשה",
+  "jobDetailPrimaryRole": "אתה המדריך הראשי.",
+  "jobDetailBackupRole": "שובצת כמחליף גיבוי.",
+  "jobDetailProcessing": "מעבד...",
+  "jobDetailCancelClaim": "בטל בקשה",
+  "jobDetailUnknown": "לא ידוע",
+  "jobDetailVerifiedProfessional": "בעל אימות מקצועי",
+  "jobDetailCancelTitle": "לבטל עבודה?",
+  "jobDetailCancelBody": "האם לבטל את העבודה הזו? לא ניתן לשחזר.",
+  "jobDetailKeepIt": "להשאיר",
+  "jobDetailCancelCta": "ביטול עבודה",
+  "jobDetailCompleteSuccessSnack": "העבודה סומנה כהושלמה.",
+  "jobDetailCompleteFailureSnack": "סימון השלמה נכשל: {error}",
+  "@jobDetailCompleteFailureSnack": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "jobDetailRateDialogTitle": "דרג את {targetLabel}",
+  "@jobDetailRateDialogTitle": {
+    "placeholders": {
+      "targetLabel": {}
+    }
+  },
+  "jobDetailRatePrompt": "איך הייתה החוויה שלך?",
+  "jobDetailRateCommentHint": "הערה (אופציונלי)",
+  "jobDetailRatingSubmittedSnack": "הדירוג נשלח.",
+  "jobDetailRatingFailedSnack": "שליחת הדירוג נכשלה: {error}",
+  "@jobDetailRatingFailedSnack": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "jobDetailRateTargetInstructor": "המדריך",
+  "jobDetailRateTargetStudio": "הסטודיו",
+  "jobDetailRateCounterpartCta": "דירוג הצד השני",
+  "onboardingLocationUnavailable": "Could not get your location. Try entering your address.",
+  "onboardingLocationNotFound": "Could not find location. Please select from the list or use GPS.",
+  "onboardingStudioLocationRequired": "Studio location required. Please enter a valid address.",
+  "onboardingSetupFailed": "Failed to complete setup. Please try again.",
+  "onboardingWelcomeTitle": "Welcome.",
+  "onboardingWelcomeBody": "Choose your role to continue.",
+  "onboardingRoleInstructor": "Instructor",
+  "onboardingRoleInstructorBody": "Find sub jobs at studios near you and grow your network.",
+  "onboardingRoleStudio": "Studio",
+  "onboardingRoleStudioBody": "Post classes and find reliable instructors in minutes.",
+  "onboardingBuildProfile": "Build your profile.",
+  "onboardingFullName": "Full Name",
+  "onboardingStudioName": "Studio Name",
+  "onboardingAddress": "Address",
+  "onboardingAddressHint": "e.g., Rothschild 1, Tel Aviv",
+  "onboardingUseCurrentLocation": "Use Current Location",
+  "onboardingYourExpertise": "Your Expertise",
+  "onboardingCoverageZones": "Coverage Zones",
+  "onboardingSearchRadius": "Search Radius",
+  "onboardingZoneHint": "Tap zones on the map to select your coverage areas.",
+  "onboardingGetStarted": "Get Started",
+  "onboardingNextStep": "Next Step",
+  "onboardingTipFastMatchingTitle": "Fast Matching",
+  "onboardingTipFastMatchingBody": "Connect with studios in real-time.",
+  "onboardingTipVerifiedTitle": "Verified Pros",
+  "onboardingTipVerifiedBody": "Join a community of certified instructors.",
+  "onboardingTipLocalTitle": "Local Focus",
+  "onboardingTipLocalBody": "Work exactly where you want to.",
+  "onboardingPreview": "PREVIEW",
+  "onboardingYourName": "Your Name",
+  "onboardingUnselected": "UNSELECTED",
+  "onboardingSelectCategoriesHint": "Select categories to see them here.",
+  "onboardingRadiusLabel": "{value} km radius",
+  "@onboardingRadiusLabel": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "onboardingFindMyLocation": "Find My Location",
+  "onboardingCouldNotLoadZones": "Could not load zones",
+  "onboardingTryRadiusMode": "Try radius mode instead",
+  "onboardingSetYourLocation": "Set Your Location",
+  "onboardingSetYourLocationBody": "Enter your address in the form, or use GPS:",
+  "mapRadiusKm": "{value} km",
+  "@mapRadiusKm": {
+    "placeholders": {
+      "value": {}
+    }
+  }
+}

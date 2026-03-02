@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:quickfit/core/theme/app_colors.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 
 class InstructorStatsCard extends StatelessWidget {
   const InstructorStatsCard({
@@ -17,6 +18,13 @@ class InstructorStatsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppColors>()!;
+    final l10n = AppLocalizations.of(context);
+    final totalJobsLabel = l10n?.totalJobsLabel ?? 'Total Jobs';
+    final earningsLabel = l10n?.earningsLabel ?? 'Earnings';
+    final visibleLabel = l10n?.visibleLabel ?? 'Visible';
+    final earningsValue = l10n != null
+        ? l10n.currencyAmount(l10n.currencyILS, earnings.toStringAsFixed(0))
+        : 'ILS ${earnings.toStringAsFixed(0)}';
 
     return Card(
       elevation: 0,
@@ -30,7 +38,7 @@ class InstructorStatsCard extends StatelessWidget {
           children: [
             Expanded(
               child: _StatItem(
-                label: 'Total Jobs',
+                label: totalJobsLabel,
                 value: '$totalJobs',
                 icon: Icons.history,
               ),
@@ -38,15 +46,15 @@ class InstructorStatsCard extends StatelessWidget {
             Container(width: 1, height: 40, color: colors.divider),
             Expanded(
               child: _StatItem(
-                label: 'Earnings',
-                value: '₪${earnings.toStringAsFixed(0)}',
+                label: earningsLabel,
+                value: earningsValue,
                 icon: Icons.payments_outlined,
               ),
             ),
             Container(width: 1, height: 40, color: colors.divider),
             Expanded(
               child: _StatItem(
-                label: 'Visible',
+                label: visibleLabel,
                 value: '$visibleJobsCount',
                 icon: Icons.map,
                 highlight: true,

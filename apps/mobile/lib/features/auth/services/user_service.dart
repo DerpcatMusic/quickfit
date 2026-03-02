@@ -65,7 +65,8 @@ class UserService {
     double? latitude,
     double? longitude,
     String? address,
-    List<String>? selectedZones,
+    String? dispatchMode,
+    List<String>? zoneIds,
   }) async {
     final mutationArgs = <String, dynamic>{
       'role': role,
@@ -73,12 +74,15 @@ class UserService {
       'categories': categories.join(','),
     };
 
+    if (dispatchMode != null) {
+      mutationArgs['dispatchMode'] = dispatchMode;
+    }
     if (radiusKm != null) mutationArgs['radiusKm'] = radiusKm;
     if (latitude != null) mutationArgs['latitude'] = latitude;
     if (longitude != null) mutationArgs['longitude'] = longitude;
     if (address != null) mutationArgs['address'] = address;
-    if (selectedZones != null) {
-      mutationArgs['selectedZones'] = selectedZones;
+    if (zoneIds != null) {
+      mutationArgs['zoneIds'] = zoneIds;
     }
 
     await _convex.mutation(
@@ -90,6 +94,7 @@ class UserService {
   /// Updates the user's profile information.
   Future<void> updateProfile({
     String? name,
+    String? avatarUrl,
     String? phone,
     String? address,
     double? latitude,
@@ -101,12 +106,73 @@ class UserService {
       name: 'users:updateProfile',
       args: {
         if (name != null) 'name': name,
+        if (avatarUrl != null) 'avatarUrl': avatarUrl,
         if (phone != null) 'phone': phone,
         if (address != null) 'homeAddress': address,
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
         if (radiusKm != null) 'radiusKm': radiusKm,
         if (categories != null) 'categories': categories,
+      },
+    );
+  }
+
+  /// Updates instructor dispatch configuration without mutating onboarding fields.
+  ///
+  /// Uses dedicated profile + dispatch mutations to avoid overwriting unrelated
+  /// user data (e.g. name/categories) during map interactions.
+  Future<void> updateDispatchPreferences({
+    required String dispatchMode,
+    List<String>? zoneIds,
+    double? radiusKm,
+    double? latitude,
+    double? longitude,
+    String? address,
+  }) async {
+    // Persist address/location/radius if provided.
+    if (address != null ||
+        latitude != null ||
+        longitude != null ||
+        radiusKm != null) {
+      await _convex.mutation(
+        name: 'users:updateProfile',
+        args: {
+          if (address != null) 'homeAddress': address,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
+          if (radiusKm != null) 'radiusKm': radiusKm,
+        },
+      );
+    }
+
+    // Persist dispatch mode + mode-specific payload.
+    await _convex.mutation(
+      name: 'users:updateDispatchMode',
+      args: {
+        'mode': dispatchMode,
+        if (dispatchMode == 'radius' && latitude != null) 'latitude': latitude,
+        if (dispatchMode == 'radius' && longitude != null)
+          'longitude': longitude,
+        if (dispatchMode == 'radius' && radiusKm != null) 'radiusKm': radiusKm,
+        if (dispatchMode == 'zone' && zoneIds != null) 'zoneIds': zoneIds,
+      },
+    );
+  }
+
+  Future<void> updateSettingsPreferences({
+    bool? notificationsEnabled,
+    bool? regularJobAlerts,
+    bool? sosJobAlerts,
+    String? languageCode,
+  }) async {
+    await _convex.mutation(
+      name: 'users:updateSettingsPreferences',
+      args: {
+        if (notificationsEnabled != null)
+          'notificationsEnabled': notificationsEnabled,
+        if (regularJobAlerts != null) 'regularJobAlerts': regularJobAlerts,
+        if (sosJobAlerts != null) 'sosJobAlerts': sosJobAlerts,
+        if (languageCode != null) 'languageCode': languageCode,
       },
     );
   }

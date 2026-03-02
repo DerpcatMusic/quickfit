@@ -1,0 +1,52 @@
+name: PR Governance
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  governance-check:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR body governance fields
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = (context.payload.pull_request.body || "").trim();
+            const failures = [];
+
+            const hasRoadmapSection = /##\s*Roadmap Linkage \(Required\)/i.test(body);
+            const hasRoadmapId = /Roadmap Item\(s\):\s*`?RM-\d{3}`?/i.test(body);
+            const hasFeaturesRef = /Features status doc reference:\s*`?docs\/FEATURES_STATUS\.md`?/i.test(body);
+            const hasRoadmapRef = /Roadmap doc reference:\s*`?docs\/PRODUCT_ROADMAP\.md`?/i.test(body);
+            const hasFeaturesChecklist = /Features status reviewed and updated if behavior changed/i.test(body);
+            const hasInvariantsSection = /##\s*Invariants Impacted/i.test(body);
+
+            if (!hasRoadmapSection) {
+              failures.push("Missing `Roadmap Linkage (Required)` section.");
+            }
+            if (!hasRoadmapId) {
+              failures.push("Missing roadmap item ID in format `RM-###`.");
+            }
+            if (!hasInvariantsSection) {
+              failures.push("Missing `Invariants Impacted` section.");
+            }
+            if (!hasFeaturesRef || !hasRoadmapRef) {
+              failures.push("Missing required docs references to roadmap/features status files.");
+            }
+            if (!hasFeaturesChecklist) {
+              failures.push("Missing features status checklist line.");
+            }
+
+            if (failures.length > 0) {
+              core.setFailed(
+                "PR governance check failed:\n- " + failures.join("\n- ")
+              );
+            } else {
+              core.info("PR governance check passed.");
+            }

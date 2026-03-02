@@ -7,7 +7,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:convex_flutter/convex_flutter.dart';
 
-import '../../../core/services/location_service.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/offline_queue_manager.dart';
 import '../../../core/services/hive_service.dart';
@@ -79,6 +78,8 @@ class JobsState {
 @Riverpod(keepAlive: true)
 class JobsNotifier extends _$JobsNotifier {
   SubscriptionHandle? _subscription;
+  bool _bootstrapped = false;
+  JobsState _lastState = const JobsState();
 
   @override
   JobsState build() {
@@ -88,45 +89,65 @@ class JobsNotifier extends _$JobsNotifier {
     ref.onDispose(() {
       _subscription?.cancel();
       _subscription = null;
+      final queue = OfflineQueueManager();
+      queue.onMutationStatusChange = null;
+      queue.onShowNotification = null;
     });
 
     // Setup offline queue callbacks
     _setupOfflineQueueCallbacks();
 
     if (userId != null && hasCompletedOnboarding) {
-      if (_subscription == null) {
-        // Load from cache first
-        _loadFromCache();
+      if (!_bootstrapped) {
+        _bootstrapped = true;
+        final cachedState = _loadFromCacheSnapshot();
         Future.microtask(() => _subscribeToJobs());
-        return state.copyWith(isLoading: true);
+        _lastState = cachedState.copyWith(isLoading: true, error: null);
+        return _lastState;
       }
-      return state;
+
+      if (_subscription == null) {
+        Future.microtask(() => _subscribeToJobs());
+      }
+      _lastState = _lastState.copyWith(
+        isLoading: _lastState.jobs.isEmpty,
+        error: null,
+      );
+      return _lastState;
     }
 
     if (_subscription != null) {
       _subscription?.cancel();
       _subscription = null;
     }
-    return const JobsState(isLoading: false);
+    _bootstrapped = false;
+    _lastState = const JobsState(isLoading: false);
+    return _lastState;
   }
 
-  void _loadFromCache() {
+  JobsState _loadFromCacheSnapshot() {
     try {
       final cached = HiveService().get('jobs_nearby');
       if (cached != null) {
         final jobsList = (cached as List)
             .map((j) => Job.fromJson(Map<String, dynamic>.from(j as Map)))
             .toList();
-        state = state.copyWith(jobs: jobsList, lastUpdated: DateTime.now());
+        return JobsState(
+          jobs: jobsList,
+          isLoading: false,
+          lastUpdated: DateTime.now(),
+        );
       }
     } catch (e) {
       log.e('[JobsNotifier] Cache load error: $e');
     }
+    return const JobsState();
   }
 
   void _setupOfflineQueueCallbacks() {
     OfflineQueueManager().onMutationStatusChange = (mutationId, status) {
-      final entry = state.pendingOperations.entries.firstWhere(
+      if (!ref.mounted || !_bootstrapped) return;
+      final entry = _lastState.pendingOperations.entries.firstWhere(
         (e) => e.value.mutationId == mutationId,
         orElse: () => MapEntry(
             '', PendingOperation(mutationId: '', operation: '', status: '')),
@@ -134,53 +155,55 @@ class JobsNotifier extends _$JobsNotifier {
 
       if (entry.key.isNotEmpty) {
         final updatedOps =
-            Map<String, PendingOperation>.from(state.pendingOperations);
-        updatedOps[entry.key] = PendingOperation(
-          mutationId: mutationId,
-          operation: entry.value.operation,
-          status: status,
-        );
-        state = state.copyWith(pendingOperations: updatedOps);
+            Map<String, PendingOperation>.from(_lastState.pendingOperations);
+        if (status == 'completed' || status == 'failed') {
+          updatedOps.remove(entry.key);
+        } else {
+          updatedOps[entry.key] = PendingOperation(
+            mutationId: mutationId,
+            operation: entry.value.operation,
+            status: status,
+          );
+        }
+        _setState(_lastState.copyWith(pendingOperations: updatedOps));
       }
     };
 
     OfflineQueueManager().onShowNotification = (message) {
+      if (!ref.mounted) return;
       log.i('[OfflineQueue] Notification: $message');
     };
   }
 
   Future<void> _subscribeToJobs() async {
+    if (!ref.mounted) return;
     final auth = ref.read(authProvider);
     if (auth.user == null) return;
-
-    final lat = LocationService.instance.latitude;
-    final lng = LocationService.instance.longitude;
-
-    if (lat == null || lng == null) {
-      state = state.copyWith(isLoading: false, error: 'Location not available');
-      return;
-    }
 
     _subscription = await ConvexClient.instance.subscribe(
       name: 'jobs:getNearbyJobs',
       args: {'limit': AppConstants.jobsPageSize.toString()},
       onUpdate: (data) => _handleJobsUpdate(data),
       onError: (message, value) {
-        state = state.copyWith(isLoading: false, error: message);
+        if (!ref.mounted) return;
+        _setState(_lastState.copyWith(isLoading: false, error: message));
       },
     );
   }
 
   void _handleJobsUpdate(String data) {
+    if (!ref.mounted) return;
     try {
       if (data == 'null' || data.isEmpty) {
-        state = state.copyWith(isLoading: false, jobs: []);
+        if (!ref.mounted) return;
+        _setState(_lastState.copyWith(isLoading: false, jobs: []));
         return;
       }
 
       final dynamic parsed = json.decode(data);
       if (parsed == null || (parsed is List && parsed.isEmpty)) {
-        state = state.copyWith(isLoading: false, jobs: []);
+        if (!ref.mounted) return;
+        _setState(_lastState.copyWith(isLoading: false, jobs: []));
         return;
       }
       final jobsList = (parsed as List)
@@ -190,17 +213,24 @@ class JobsNotifier extends _$JobsNotifier {
       // Save to cache
       HiveService().save('jobs_nearby', parsed);
 
-      state = state.copyWith(
-          jobs: jobsList, isLoading: false, lastUpdated: DateTime.now());
+      if (!ref.mounted) return;
+      _setState(_lastState.copyWith(
+        jobs: jobsList,
+        isLoading: false,
+        lastUpdated: DateTime.now(),
+      ));
     } catch (e) {
       log.e('[JobsNotifier] Parse error: $e');
-      state = state.copyWith(isLoading: false, error: 'Failed to load jobs');
+      if (!ref.mounted) return;
+      _setState(
+          _lastState.copyWith(isLoading: false, error: 'Failed to load jobs'));
     }
   }
 
   Future<void> refresh() async {
-    state = state.copyWith(isLoading: true);
+    _setState(_lastState.copyWith(isLoading: true, error: null));
     _subscription?.cancel();
+    _subscription = null;
     await _subscribeToJobs();
   }
 
@@ -213,13 +243,14 @@ class JobsNotifier extends _$JobsNotifier {
       );
 
       final updatedOps =
-          Map<String, PendingOperation>.from(state.pendingOperations);
+          Map<String, PendingOperation>.from(_lastState.pendingOperations);
       updatedOps[jobId] = PendingOperation(
           mutationId: mutationId, operation: 'claimJob', status: 'pending');
-      state = state.copyWith(pendingOperations: updatedOps);
+      _setState(
+          _lastState.copyWith(pendingOperations: updatedOps, error: null));
       return true;
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      _setState(_lastState.copyWith(error: e.toString()));
       return false;
     }
   }
@@ -234,124 +265,24 @@ class JobsNotifier extends _$JobsNotifier {
       );
 
       final updatedOps =
-          Map<String, PendingOperation>.from(state.pendingOperations);
+          Map<String, PendingOperation>.from(_lastState.pendingOperations);
       updatedOps[jobId] = PendingOperation(
           mutationId: mutationId,
           operation: 'withdrawClaim',
           status: 'pending');
-      state = state.copyWith(pendingOperations: updatedOps);
+      _setState(
+          _lastState.copyWith(pendingOperations: updatedOps, error: null));
       return true;
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      _setState(_lastState.copyWith(error: e.toString()));
       return false;
     }
   }
-}
 
-// Provider for studio's posted jobs
-@Riverpod(keepAlive: true)
-class StudioJobsNotifier extends _$StudioJobsNotifier {
-  SubscriptionHandle? _subscription;
-
-  @override
-  JobsState build() {
-    final userId = ref.watch(currentUserProvider)?.uid;
-    final role = ref.watch(userRoleProvider);
-
-    ref.onDispose(() => _subscription?.cancel());
-
-    if (userId != null && role == 'studio') {
-      if (_subscription == null) {
-        Future.microtask(() => _subscribeToStudioJobs());
-        return const JobsState(isLoading: true);
-      }
-      return state;
-    }
-
-    return const JobsState(isLoading: false);
-  }
-
-  Future<void> _subscribeToStudioJobs() async {
-    final auth = ref.read(authProvider);
-    if (auth.user == null) return;
-
-    _subscription = await ConvexClient.instance.subscribe(
-      name: 'jobs:getStudioJobs',
-      args: {},
-      onUpdate: (data) => _handleStudioJobsUpdate(data),
-      onError: (message, value) {
-        state = state.copyWith(isLoading: false, error: message);
-      },
-    );
-  }
-
-  void _handleStudioJobsUpdate(String data) {
-    try {
-      if (data == 'null' || data.isEmpty) {
-        state = state.copyWith(isLoading: false, jobs: []);
-        return;
-      }
-      final dynamic parsed = json.decode(data);
-      if (parsed == null) {
-        state = state.copyWith(isLoading: false, jobs: []);
-        return;
-      }
-      final jobsList = (parsed as List)
-          .map((j) => Job.fromJson(j as Map<String, dynamic>))
-          .toList();
-      state = state.copyWith(
-          jobs: jobsList, isLoading: false, lastUpdated: DateTime.now());
-    } catch (e) {
-      log.e('[StudioJobsNotifier] Parse error: $e');
-      state = state.copyWith(isLoading: false, error: 'Failed to load jobs');
-    }
-  }
-
-  Future<String?> postJob({
-    required String title,
-    required String category,
-    required DateTime startTime,
-    required DateTime endTime,
-    required double baseRate,
-    required String address,
-    required double latitude,
-    required double longitude,
-    String? description,
-    bool requiresVerification = true,
-  }) async {
-    try {
-      final result = await ConvexClient.instance.mutation(
-        name: 'jobs:postJob',
-        args: {
-          'title': title,
-          'category': category,
-          'startTime': startTime.millisecondsSinceEpoch,
-          'endTime': endTime.millisecondsSinceEpoch,
-          'baseRate': baseRate,
-          'address': address,
-          'latitude': latitude,
-          'longitude': longitude,
-          'requiresVerification': requiresVerification,
-          if (description != null) 'description': description,
-        },
-      );
-      return result;
-    } catch (e) {
-      state = state.copyWith(error: e.toString());
-      return null;
-    }
-  }
-
-  Future<bool> cancelJob(String jobId) async {
-    try {
-      await ConvexClient.instance.mutation(
-        name: 'jobs:cancelJob',
-        args: {'jobId': jobId},
-      );
-      return true;
-    } catch (e) {
-      state = state.copyWith(error: e.toString());
-      return false;
+  void _setState(JobsState next) {
+    _lastState = next;
+    if (ref.mounted) {
+      state = next;
     }
   }
 }

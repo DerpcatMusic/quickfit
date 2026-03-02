@@ -2,6 +2,7 @@
 // lib/core/services/location_service.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,6 +42,10 @@ class LocationService {
   }
 
   Future<bool> _checkAndRequestPermission() async {
+    // Web geolocation can fail with JS interop type issues on some runtimes.
+    // Keep onboarding functional by allowing manual address flow on web.
+    if (kIsWeb) return true;
+
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return false;
 
@@ -104,6 +109,10 @@ class LocationService {
   }
 
   Future<Position?> updateLocation() async {
+    if (kIsWeb) {
+      return _currentPosition;
+    }
+
     try {
       _currentPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -139,6 +148,10 @@ class LocationService {
 
   // Stream location updates
   Stream<Position> watchLocation() {
+    if (kIsWeb) {
+      return const Stream<Position>.empty();
+    }
+
     return Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.medium,
@@ -208,11 +221,36 @@ class LocationService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as List;
         final results = data.map((place) {
+          final address = place['address'] as Map<String, dynamic>?;
+          final street = (address?['road'] ??
+                  address?['pedestrian'] ??
+                  address?['footway'] ??
+                  address?['path'])
+              ?.toString();
+          final houseNumber = address?['house_number']?.toString();
+          final city = (address?['city'] ??
+                  address?['town'] ??
+                  address?['village'] ??
+                  address?['hamlet'] ??
+                  address?['suburb'])
+              ?.toString();
+          final displayName = place['display_name']?.toString();
+          final fallbackLabel = _compactFromDisplayName(displayName);
+          final compactLabel = _buildCompactAddressLabel(
+            street: street,
+            houseNumber: houseNumber,
+            city: city,
+          );
+
           return {
-            'description': place['display_name'] as String,
+            'description': displayName ?? '',
+            'label': compactLabel ?? fallbackLabel ?? displayName ?? '',
             'place_id': place['place_id'].toString(),
             'lat': double.tryParse(place['lat']?.toString() ?? ''),
             'lng': double.tryParse(place['lon']?.toString() ?? ''),
+            'street': street,
+            'houseNumber': houseNumber,
+            'city': city,
           };
         }).toList();
 
@@ -228,6 +266,63 @@ class LocationService {
       log.e('Nominatim autocomplete error: $e');
     }
     return [];
+  }
+
+  String? _buildCompactAddressLabel({
+    String? street,
+    String? houseNumber,
+    String? city,
+  }) {
+    final streetValue = street?.trim() ?? '';
+    final numberValue = houseNumber?.trim() ?? '';
+    final cityValue = city?.trim() ?? '';
+
+    final streetPart = [streetValue, numberValue]
+        .where((part) => part.isNotEmpty)
+        .join(' ')
+        .trim();
+
+    final parts = <String>[
+      if (streetPart.isNotEmpty) streetPart,
+      if (cityValue.isNotEmpty) cityValue,
+    ];
+
+    if (parts.isEmpty) return null;
+    return parts.join(', ');
+  }
+
+  String? _compactFromDisplayName(String? displayName) {
+    if (displayName == null) return null;
+    final parts = displayName
+        .split(',')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return null;
+    if (parts.length == 1) return parts.first;
+
+    final secondary = parts.skip(1).firstWhere(
+          (part) => !_isAdministrativeSegment(part),
+          orElse: () => parts[1],
+        );
+    return '${parts.first}, $secondary';
+  }
+
+  bool _isAdministrativeSegment(String value) {
+    final lower = value.toLowerCase();
+    if (lower == 'israel' || lower == 'country') {
+      return true;
+    }
+    if (lower.contains('district') || lower.contains('subdistrict')) {
+      return true;
+    }
+    if (lower.contains('region') || lower.contains('county')) {
+      return true;
+    }
+    if (RegExp(r'^\d{5,}$').hasMatch(lower.replaceAll(' ', ''))) {
+      return true;
+    }
+    return false;
   }
 
   /// Get coordinates from an address using Nominatim geocoding.

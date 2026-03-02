@@ -1,19 +1,32 @@
-// Profile Screen - User profile and settings
-// lib/features/profile/presentation/profile_screen.dart
+import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import 'package:quickfit/core/constants/app_constants.dart';
 import 'package:quickfit/core/constants/categories.dart';
-import 'package:quickfit/core/router/app_router.dart';
+import 'package:quickfit/core/providers/settings_provider.dart';
+import 'package:quickfit/core/router/app_routes.dart';
+import 'package:quickfit/core/services/convex_service.dart';
 import 'package:quickfit/core/services/location_service.dart';
-import 'package:quickfit/features/auth/providers/auth_provider.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:flutter_typeahead/flutter_typeahead.dart';
+import 'package:quickfit/core/services/notification_service.dart';
+import 'package:quickfit/core/services/settings_service.dart';
 import 'package:quickfit/core/theme/app_colors.dart';
+import 'package:quickfit/core/utils/platform.dart';
+import 'package:quickfit/features/auth/providers/auth_provider.dart';
+import 'package:quickfit/features/profile/presentation/models/profile_settings_draft.dart';
+import 'package:quickfit/features/profile/presentation/widgets/profile_account_block.dart';
+import 'package:quickfit/features/profile/presentation/widgets/profile_primitives.dart';
+import 'package:quickfit/features/profile/presentation/widgets/profile_settings_block.dart';
+import 'package:quickfit/features/profile/presentation/widgets/profile_studio_billing_block.dart';
+import 'package:quickfit/features/jobs/providers/studio_jobs_provider.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
+import 'package:quickfit/shared/widgets/studio_billing_sheet.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -26,32 +39,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isEditing = false;
   bool _isSaving = false;
 
-  late TextEditingController _nameController;
-  late TextEditingController _phoneController;
-  late TextEditingController _addressController;
-  late Set<String> _selectedCategories;
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _addressController;
+
+  Set<String> _selectedCategories = <String>{};
   double _radiusKm = AppConstants.defaultRadiusKm;
   double? _lat;
   double? _lng;
+  String _resolvedAddress = '';
+  ProfileSettingsDraft _settingsDraft = ProfileSettingsDraft.defaults();
+  String? _authFingerprint;
+  bool _isBillingLoading = false;
+  bool _billingLoaded = false;
+  List<Map<String, dynamic>> _billingIntegrations = const [];
+  bool _isStudioPricingLoading = false;
+  bool _studioPricingLoaded = false;
+  double _studioDefaultBaseRate = 120;
+  List<Map<String, dynamic>> _studioLeadTimeRules = const [
+    {'maxHoursBeforeStart': 6.0, 'boostPercent': 10.0},
+    {'maxHoursBeforeStart': 3.0, 'boostPercent': 15.0},
+  ];
+
+  AppLocalizations get _l10n => AppLocalizations.of(context)!;
 
   @override
   void initState() {
     super.initState();
-    final authState = ref.read(authProvider);
-    _nameController =
-        TextEditingController(text: authState.user?.displayName ?? '');
-    _phoneController = TextEditingController(text: authState.phone ?? '');
-    _addressController =
-        TextEditingController(text: authState.homeAddress ?? '');
-    _selectedCategories = Set.from(authState.categories ?? []);
-    _radiusKm = authState.radiusKm ?? AppConstants.defaultRadiusKm;
-    _initData();
-  }
+    _nameController = TextEditingController();
+    _phoneController = TextEditingController();
+    _addressController = TextEditingController();
 
-  void _initData() {
-    final authState = ref.read(authProvider);
-    _radiusKm = authState.radiusKm ?? AppConstants.defaultRadiusKm;
-    _selectedCategories = Set.from(authState.categories ?? []);
+    _hydrateFromAuth(ref.read(authProvider), force: true);
+    _loadSettings();
   }
 
   @override
@@ -62,33 +82,470 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.dispose();
   }
 
+  void _disposeTransientController(TextEditingController controller) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
+  }
+
+  bool _shouldClearDraftLocationForAddressInput({
+    required String input,
+    required String resolvedAddress,
+  }) {
+    final typed = input.trim();
+    final resolved = resolvedAddress.trim();
+    if (typed.isEmpty) return true;
+    if (resolved.isEmpty) return false;
+    return typed != resolved;
+  }
+
+  void _hydrateFromAuth(AuthState authState, {bool force = false}) {
+    final fingerprint = [
+      authState.user?.uid ?? '',
+      authState.name ?? '',
+      authState.user?.displayName ?? '',
+      authState.phone ?? '',
+      authState.homeAddress ?? '',
+      authState.radiusKm?.toString() ?? '',
+      (authState.categories ?? const <String>[]).join(','),
+      authState.latitude?.toString() ?? '',
+      authState.longitude?.toString() ?? '',
+    ].join('|');
+
+    if (!force) {
+      if (_isEditing) return;
+      if (_authFingerprint == fingerprint) return;
+    }
+
+    _authFingerprint = fingerprint;
+    _nameController.text = authState.name ?? authState.user?.displayName ?? '';
+    _phoneController.text = authState.phone ?? '';
+    final normalizedAddress = (authState.homeAddress ?? '').trim();
+    _addressController.text = normalizedAddress;
+    _selectedCategories =
+        Set<String>.from(authState.categories ?? const <String>[]);
+    _radiusKm = authState.radiusKm ?? AppConstants.defaultRadiusKm;
+    _lat = authState.latitude;
+    _lng = authState.longitude;
+    _resolvedAddress =
+        normalizedAddress.isNotEmpty && _lat != null && _lng != null
+            ? normalizedAddress
+            : '';
+  }
+
+  Future<void> _loadSettings() async {
+    final cached = ref.read(settingsProvider).value;
+    final loaded = cached ?? await SettingsService.instance.load();
+    final auth = ref.read(authProvider);
+    final merged = loaded.copyWith(
+      notificationsEnabled:
+          auth.notificationsEnabled ?? loaded.notificationsEnabled,
+      regularJobAlerts: auth.regularJobAlerts ?? loaded.regularJobAlerts,
+      sosJobAlerts: auth.sosJobAlerts ?? loaded.sosJobAlerts,
+      languageCode: auth.languageCode ?? loaded.languageCode,
+    );
+    final changedFromLocal =
+        merged.notificationsEnabled != loaded.notificationsEnabled ||
+            merged.regularJobAlerts != loaded.regularJobAlerts ||
+            merged.sosJobAlerts != loaded.sosJobAlerts ||
+            merged.languageCode != loaded.languageCode;
+    if (changedFromLocal) {
+      await ref.read(settingsProvider.notifier).saveSettings(merged);
+      await NotificationService.instance.applySettings(merged);
+    }
+    if (!mounted) return;
+    setState(() {
+      _settingsDraft = ProfileSettingsDraft.fromSettings(merged);
+    });
+  }
+
+  Future<void> _loadBillingIntegrations() async {
+    if (_isBillingLoading) return;
+    setState(() => _isBillingLoading = true);
+    try {
+      final rows = await ConvexService.instance.getMyInvoicingIntegrations();
+      if (!mounted) return;
+      setState(() {
+        _billingIntegrations = rows;
+        _billingLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // Avoid repeated timeout loops on every rebuild; user can still open
+      // billing sheet to retry explicitly.
+      setState(() {
+        _billingIntegrations = const [];
+        _billingLoaded = true;
+      });
+    } finally {
+      if (mounted) setState(() => _isBillingLoading = false);
+    }
+  }
+
+  String _billingSummaryText() {
+    return StudioBillingSheet.summaryFromIntegrations(
+      _billingIntegrations,
+      context: context,
+    );
+  }
+
+  Future<void> _openStudioBillingSheet() async {
+    await StudioBillingSheet.show(
+      context,
+      onUpdated: _loadBillingIntegrations,
+    );
+  }
+
+  List<Map<String, dynamic>> _normalizeStudioPricingRules(
+    List<Map<String, dynamic>> rules,
+  ) {
+    final normalized = rules
+        .map((rule) => {
+              'maxHoursBeforeStart':
+                  ((rule['maxHoursBeforeStart'] as num?) ?? 0).toDouble(),
+              'boostPercent': ((rule['boostPercent'] as num?) ?? 0).toDouble(),
+            })
+        .where((rule) => rule['maxHoursBeforeStart']! > 0)
+        .toList(growable: false)
+      ..sort((a, b) => a['maxHoursBeforeStart']!.compareTo(
+            b['maxHoursBeforeStart']!,
+          ));
+    if (normalized.isEmpty) {
+      return const [
+        {'maxHoursBeforeStart': 6.0, 'boostPercent': 10.0},
+        {'maxHoursBeforeStart': 3.0, 'boostPercent': 15.0},
+      ];
+    }
+    return normalized.take(3).toList(growable: false);
+  }
+
+  Future<void> _loadStudioPricingSettings() async {
+    if (_isStudioPricingLoading) return;
+    setState(() => _isStudioPricingLoading = true);
+    try {
+      final payload = await ConvexService.instance.getMyStudioPricingSettings();
+      if (!mounted) return;
+      if (payload == null) {
+        setState(() {
+          _studioPricingLoaded = true;
+        });
+        return;
+      }
+      final defaultBaseRate =
+          (payload['defaultBaseRate'] as num?)?.toDouble() ?? 120;
+      final rules = ((payload['leadTimeSurgeRules'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+      setState(() {
+        _studioDefaultBaseRate = defaultBaseRate;
+        _studioLeadTimeRules = _normalizeStudioPricingRules(rules);
+        _studioPricingLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _studioPricingLoaded = true;
+      });
+    } finally {
+      if (mounted) setState(() => _isStudioPricingLoading = false);
+    }
+  }
+
+  String _studioPricingSummaryText() {
+    final compactRules = _studioLeadTimeRules.map((rule) {
+      final hours = ((rule['maxHoursBeforeStart'] as num?) ?? 0).round();
+      final boost = ((rule['boostPercent'] as num?) ?? 0).round();
+      return _l10n.profileStudioPricingRuleCompact(hours, boost);
+    }).join(', ');
+    return _l10n.profileStudioPricingSummary(
+      _studioDefaultBaseRate.toStringAsFixed(0),
+      compactRules,
+    );
+  }
+
+  Future<void> _openStudioPricingSheet() async {
+    final defaultRateController = TextEditingController(
+      text: _studioDefaultBaseRate.toStringAsFixed(0),
+    );
+    var rulesDraft = _studioLeadTimeRules
+        .map((rule) => Map<String, dynamic>.from(rule))
+        .toList(growable: true);
+    var isSaving = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            20 + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _l10n.profileStudioPricingTitle,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: defaultRateController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _l10n.profileStudioPricingDefaultRate,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (var i = 0; i < rulesDraft.length; i++) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _l10n.profileStudioPricingRuleHours,
+                        ),
+                        initialValue:
+                            ((rulesDraft[i]['maxHoursBeforeStart'] as num?) ??
+                                    0)
+                                .toStringAsFixed(1),
+                        onChanged: (value) {
+                          final parsed = double.tryParse(value);
+                          if (parsed == null) return;
+                          rulesDraft[i]['maxHoursBeforeStart'] = parsed;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextFormField(
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _l10n.profileStudioPricingRuleBoost,
+                        ),
+                        initialValue:
+                            ((rulesDraft[i]['boostPercent'] as num?) ?? 0)
+                                .toStringAsFixed(0),
+                        onChanged: (value) {
+                          final parsed = double.tryParse(value);
+                          if (parsed == null) return;
+                          rulesDraft[i]['boostPercent'] = parsed;
+                        },
+                      ),
+                    ),
+                    if (rulesDraft.length > 1)
+                      IconButton(
+                        onPressed: isSaving
+                            ? null
+                            : () => setSheetState(() {
+                                  rulesDraft.removeAt(i);
+                                }),
+                        icon: const Icon(LucideIcons.trash2, size: 18),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (rulesDraft.length < 3)
+                OutlinedButton.icon(
+                  onPressed: isSaving
+                      ? null
+                      : () => setSheetState(() {
+                            rulesDraft.add({
+                              'maxHoursBeforeStart': 2.0,
+                              'boostPercent': 10.0,
+                            });
+                          }),
+                  icon: const Icon(LucideIcons.plus, size: 16),
+                  label: Text(_l10n.profileStudioPricingAddRule),
+                ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final parsedRate = double.tryParse(
+                              defaultRateController.text.trim());
+                          if (parsedRate == null || parsedRate <= 0) return;
+                          final messenger = ScaffoldMessenger.of(this.context);
+                          final navigator = Navigator.of(context);
+                          final errorColor =
+                              Theme.of(this.context).colorScheme.error;
+                          setSheetState(() => isSaving = true);
+                          try {
+                            final normalizedRules =
+                                _normalizeStudioPricingRules(rulesDraft);
+                            await ConvexService.instance
+                                .setMyStudioPricingSettings(
+                              defaultBaseRate: parsedRate,
+                              leadTimeSurgeRules: normalizedRules,
+                            );
+                            if (!mounted) return;
+                            setState(() {
+                              _studioDefaultBaseRate = parsedRate;
+                              _studioLeadTimeRules = normalizedRules;
+                              _studioPricingLoaded = true;
+                            });
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(_l10n.profileStudioPricingSaved),
+                              ),
+                            );
+                            navigator.pop();
+                          } catch (_) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  _l10n.profileStudioPricingSaveFailed,
+                                ),
+                                backgroundColor: errorColor,
+                              ),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setSheetState(() => isSaving = false);
+                            }
+                          }
+                        },
+                  child: Text(
+                    isSaving ? _l10n.saving : _l10n.save,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startEditing() async {
+    setState(() {
+      _isEditing = true;
+      _authFingerprint = null;
+    });
+  }
+
+  Future<void> _cancelEditing(AuthState authState) async {
+    _hydrateFromAuth(authState, force: true);
+    setState(() {
+      _isEditing = false;
+    });
+  }
+
   Future<void> _saveProfile() async {
+    final authState = ref.read(authProvider);
+    final address = _addressController.text.trim();
+    final nextLat = _lat;
+    final nextLng = _lng;
+
+    final success = await _submitProfileUpdate(
+      name: _nameController.text.trim(),
+      phone: _phoneController.text.trim(),
+      address: address,
+      latitude: nextLat,
+      longitude: nextLng,
+      radiusKm: authState.role == 'instructor' ? _radiusKm : null,
+      categories: _selectedCategories.toList(),
+    );
+    if (!mounted || !success) return;
+    setState(() {
+      _lat = nextLat;
+      _lng = nextLng;
+      _resolvedAddress =
+          address.isNotEmpty && nextLat != null && nextLng != null
+              ? address
+              : '';
+      _isEditing = false;
+    });
+
+    // Keep profile save responsive: if we don't have coordinates yet, resolve
+    // address in the background and patch location once available.
+    unawaited(_backfillAddressCoordinatesIfNeeded(address));
+  }
+
+  Future<void> _backfillAddressCoordinatesIfNeeded(String address) async {
+    final trimmedAddress = address.trim();
+    if (trimmedAddress.isEmpty) return;
+    if (_lat != null && _lng != null) return;
+
+    try {
+      final pos = await LocationService.instance
+          .getLatLngFromAddress(trimmedAddress)
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
+      if (pos == null) return;
+
+      final updated = await ref.read(authProvider.notifier).updateProfile(
+            address: trimmedAddress,
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+          );
+      if (!mounted || !updated) return;
+      setState(() {
+        _lat = pos.latitude;
+        _lng = pos.longitude;
+        _resolvedAddress = trimmedAddress;
+      });
+    } catch (_) {
+      // Best-effort enrichment; keep save UX unaffected on network issues.
+    }
+  }
+
+  Future<bool> _submitProfileUpdate({
+    String? name,
+    String? phone,
+    String? address,
+    double? latitude,
+    double? longitude,
+    double? radiusKm,
+    List<String>? categories,
+  }) async {
+    if (_isSaving) return false;
     setState(() => _isSaving = true);
     try {
-      // 2026 FIX: Geocode if location is missing (fixes broken onboarding profiles)
-      if (_lat == null && _addressController.text.trim().isNotEmpty) {
-        final pos = await LocationService.instance
-            .getLatLngFromAddress(_addressController.text.trim());
-        if (pos != null) {
-          _lat = pos.latitude;
-          _lng = pos.longitude;
-        }
+      final success = await ref.read(authProvider.notifier).updateProfile(
+            name: name,
+            phone: phone,
+            address: address,
+            latitude: latitude,
+            longitude: longitude,
+            radiusKm: radiusKm,
+            categories: categories,
+          );
+
+      if (!mounted) return success;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_l10n.profileUpdated)),
+        );
+        return true;
       }
 
-      await ref.read(authProvider.notifier).updateProfile(
-            name: _nameController.text.trim(),
-            phone: _phoneController.text.trim(),
-            address: _addressController.text.trim(),
-            latitude: _lat,
-            longitude: _lng,
-            radiusKm: _radiusKm,
-            categories: _selectedCategories.toList(),
-          );
-      if (!mounted) return;
+      final errorText =
+          ref.read(authProvider).error ?? _l10n.somethingWentWrong;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully')),
+        SnackBar(
+          content: Text(errorText),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
-      setState(() => _isEditing = false);
+      return false;
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -97,362 +554,1535 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final user = authState.user;
-    final role = authState.role;
-    final isVerified = authState.isVerified;
+    final studioJobsState = ref.watch(studioJobsProvider);
+    _hydrateFromAuth(authState);
+    if (authState.role == 'studio' && !_billingLoaded && !_isBillingLoading) {
+      unawaited(_loadBillingIntegrations());
+    }
+    if (authState.role == 'studio' &&
+        !_studioPricingLoaded &&
+        !_isStudioPricingLoading) {
+      unawaited(_loadStudioPricingSettings());
+    }
+
     final theme = Theme.of(context);
+    final colors = context.colors;
+    final studioActiveJobsCount =
+        authState.role == 'studio' ? studioJobsState.activeJobs.length : 0;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      body: CustomScrollView(
-        slivers: [
-          // Header
-          SliverToBoxAdapter(
-            child: _buildHeader(
-                context, authState, Theme.of(context).extension<AppColors>()!),
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              theme.colorScheme.primary.withValues(alpha: 0.07),
+              theme.colorScheme.surface,
+              theme.colorScheme.surface,
+            ],
           ),
-
-          // Content
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                if (_isEditing)
-                  _buildEditForm(theme)
-                else ...[
-                  if (role == 'instructor') ...[
-                    _buildVerificationCard(context, isVerified),
-                    const SizedBox(height: 16),
-                  ],
-                  _buildAccountSection(user, role, theme),
-                  const SizedBox(height: 16),
-                  _buildCategoriesSection(role, theme),
-                  const SizedBox(height: 16),
-                  _buildSettingsSection(theme),
-                  const SizedBox(height: 16),
-                  _buildSignOutSection(theme),
-                ],
-                const SizedBox(height: 32),
-                _buildVersionInfo(),
-                const SizedBox(height: 16),
-              ]),
+        ),
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: _buildHeaderCard(authState, colors),
             ),
-          ),
-        ],
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  if (_isEditing)
+                    _buildEditForm(theme, authState)
+                  else ...[
+                    if (authState.role == 'instructor') ...[
+                      _buildVerificationCard(authState.isVerified),
+                      const SizedBox(height: 16),
+                    ],
+                    _buildAccountSection(authState),
+                    const SizedBox(height: 16),
+                    _buildCategoriesSection(authState),
+                    const SizedBox(height: 16),
+                    _buildSettingsSection(
+                      authState,
+                      studioActiveJobsCount: studioActiveJobsCount,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSignOutSection(),
+                    const SizedBox(height: 28),
+                    _buildVersionInfo(),
+                  ],
+                ]),
+              ),
+            ),
+          ],
+        ),
       ),
-      bottomNavigationBar: _isEditing ? _buildSaveBar(theme) : null,
+      bottomNavigationBar: _isEditing ? _buildSaveBar(theme, authState) : null,
     );
   }
 
-  Widget _buildEditForm(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionTitle('Profile Info'),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Display Name',
-                    prefixIcon: Icon(LucideIcons.user),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    prefixIcon: Icon(LucideIcons.phone),
-                  ),
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 16),
-                TypeAheadField<Map<String, dynamic>>(
-                  controller: _addressController,
-                  builder: (context, controller, focusNode) => TextFormField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    decoration: const InputDecoration(
-                      labelText: 'Home Address',
-                      prefixIcon: Icon(LucideIcons.mapPin),
-                    ),
-                  ),
-                  suggestionsCallback: (pattern) async {
-                    return await LocationService.instance
-                        .getAutocompleteSuggestions(pattern);
-                  },
-                  itemBuilder: (context, suggestion) {
-                    return ListTile(
-                      leading: const Icon(LucideIcons.mapPin, size: 18),
-                      title: Text(suggestion['description']!),
-                    );
-                  },
-                  onSelected: (suggestion) async {
-                    final address = suggestion['description']!;
-                    _addressController.text = address;
-                    final pos = await LocationService.instance
-                        .getLatLngFromAddress(address);
-                    if (pos != null) {
-                      _lat = pos.latitude;
-                      _lng = pos.longitude;
-                    }
-                  },
-                ),
+  Widget _buildHeaderCard(AuthState authState, AppColors colors) {
+    final theme = Theme.of(context);
+    final role = authState.role == 'studio'
+        ? _l10n.profileRoleStudio
+        : _l10n.profileRoleInstructor;
+    final resolvedName =
+        (authState.name ?? authState.user?.displayName ?? '').trim();
+    final providerPhotoUrl = (authState.user?.photoURL ?? '').trim();
+    final avatarUrl = (authState.avatarUrl ?? providerPhotoUrl).trim();
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: colors.cardBorder),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                theme.colorScheme.surfaceContainerHighest,
+                theme.colorScheme.surfaceContainer,
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 24),
-        _buildSectionTitle('Search Radius'),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Maximum Distance', style: theme.textTheme.bodyLarge),
-                    Text(
-                      '${_radiusKm.toStringAsFixed(1)} km',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      role,
+                      style: theme.textTheme.labelMedium?.copyWith(
                         color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Slider(
-                  value: _radiusKm.clamp(0.5, 50.0),
-                  min: 0.5,
-                  max: 50.0,
-                  divisions: 99,
-                  onChanged: (value) {
-                    setState(() {
-                      _radiusKm = value;
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
-        _buildSectionTitle('Expertise'),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: FitnessCategory.values.map((cat) {
-            final isSelected = _selectedCategories.contains(cat.id);
-            return FilterChip(
-              label: Text('${cat.emoji} ${cat.nameEn}'),
-              selected: isSelected,
-              onSelected: (selected) {
-                setState(() {
-                  if (selected) {
-                    _selectedCategories.add(cat.id);
-                  } else {
-                    _selectedCategories.remove(cat.id);
-                  }
-                });
-              },
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSaveBar(ThemeData theme) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: FilledButton(
-          onPressed: _isSaving ? null : _saveProfile,
-          child: _isSaving
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : const Text('Save Changes'),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-          fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey[600]),
-    );
-  }
-
-  Widget _buildAccountSection(
-      firebase_auth.User? user, String? role, ThemeData theme) {
-    return _buildSection(
-      title: 'Account',
-      children: [
-        _buildMenuItem(
-          icon: LucideIcons.user,
-          title: 'Display Name',
-          trailing: Text(user?.displayName ?? 'Not set',
-              style: TextStyle(color: Colors.grey[600])),
-        ),
-        _buildMenuItem(
-          icon: LucideIcons.mail,
-          title: 'Email',
-          trailing: Text(user?.email ?? 'Not set',
-              style: TextStyle(color: Colors.grey[600])),
-        ),
-        if (role == 'instructor')
-          _buildMenuItem(
-            icon: LucideIcons.mapPin,
-            title: 'Work Radius',
-            trailing: Text('${_radiusKm.round()} km',
-                style: TextStyle(color: Colors.grey[600])),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildCategoriesSection(String? role, ThemeData theme) {
-    return _buildSection(
-      title: role == 'instructor' ? 'Teaching Categories' : 'Class Types',
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: FitnessCategory.values.take(3).map((cat) {
-              return Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                    color: cat.color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(cat.emoji),
-                    const SizedBox(width: 4),
-                    Text(cat.nameEn,
-                        style: TextStyle(
-                            color: cat.color, fontWeight: FontWeight.w500)),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettingsSection(ThemeData theme) {
-    final authNotifier = ref.read(authProvider.notifier);
-    final hasPassword = authNotifier.hasEmailPasswordLinked;
-    final providers = authNotifier.linkedProviders;
-
-    return _buildSection(
-      title: 'Settings',
-      children: [
-        // Show linked providers
-        _buildMenuItem(
-          icon: LucideIcons.link,
-          title: 'Linked Accounts',
-          trailing: Text(
-            providers.isNotEmpty ? providers.join(', ') : 'None',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-        ),
-        // Add Password option for users who don't have it
-        if (!hasPassword)
-          _buildMenuItem(
-            icon: LucideIcons.keyRound,
-            title: 'Add Password',
-            subtitle: 'Enable email login',
-            onTap: () => _showAddPasswordDialog(),
-          ),
-        _buildMenuItem(
-            icon: LucideIcons.bell, title: 'Notifications', onTap: () {}),
-        _buildMenuItem(
-          icon: LucideIcons.refreshCw,
-          title: 'Redo Onboarding',
-          onTap: () async {
-            final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Redo Onboarding?'),
-                content: const Text(
-                    'This will let you choose your role and profile data again.'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel'),
                   ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Redo'),
+                  const Spacer(),
+                  IconButton.filledTonal(
+                    onPressed: _showNotificationSettings,
+                    icon: const Icon(LucideIcons.bell, size: 18),
+                    tooltip: _l10n.notifications,
                   ),
                 ],
               ),
-            );
-
-            if (confirmed == true) {
-              await ref.read(authProvider.notifier).resetOnboarding();
-            }
-          },
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 38,
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    backgroundImage: avatarUrl.isNotEmpty
+                        ? NetworkImage(avatarUrl)
+                        : null,
+                    child: avatarUrl.isEmpty
+                        ? Icon(
+                            LucideIcons.user,
+                            size: 36,
+                            color: theme.colorScheme.onPrimaryContainer,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          resolvedName.isNotEmpty
+                              ? resolvedName
+                              : _l10n.profileAnonymousUser,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          authState.user?.email ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colors.mutedText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _isEditing
+                        ? OutlinedButton.icon(
+                            onPressed: () => _cancelEditing(authState),
+                            icon: const Icon(LucideIcons.x, size: 16),
+                            label: Text(_l10n.cancel),
+                          )
+                        : FilledButton.icon(
+                            onPressed: _startEditing,
+                            icon: const Icon(LucideIcons.pencil, size: 16),
+                            label: Text(_l10n.editProfile),
+                          ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _showLanguagePicker,
+                      icon: const Icon(LucideIcons.globe, size: 16),
+                      label: Text(_languageLabel()),
+                    ),
+                  ),
+                ],
+              ),
+              if (providerPhotoUrl.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _applyAccountPhoto(providerPhotoUrl),
+                    icon: const Icon(LucideIcons.imagePlus, size: 16),
+                    label: Text(_l10n.profileUseAccountPhoto),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
-        _buildMenuItem(
-            icon: LucideIcons.globe,
-            title: 'Language',
-            trailing:
-                Text('English', style: TextStyle(color: Colors.grey[600])),
-            onTap: () {}),
-        _buildMenuItem(
-            icon: LucideIcons.helpCircle,
-            title: 'Help & Support',
-            onTap: () {}),
-        _buildMenuItem(
-            icon: LucideIcons.fileText,
-            title: 'Terms of Service',
-            onTap: () {}),
-        _buildMenuItem(
-            icon: LucideIcons.shield, title: 'Privacy Policy', onTap: () {}),
+      ),
+    );
+  }
+
+  Future<void> _applyAccountPhoto(String providerPhotoUrl) async {
+    final photo = providerPhotoUrl.trim();
+    if (photo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_l10n.profileUseAccountPhotoUnavailable)),
+      );
+      return;
+    }
+
+    final success = await ref.read(authProvider.notifier).updateProfile(
+          avatarUrl: photo,
+        );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success
+            ? _l10n.profileUseAccountPhotoApplied
+            : _l10n.profileUseAccountPhotoFailed),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _buildEditForm(ThemeData theme, AuthState authState) {
+    final localeCode = Localizations.localeOf(context).languageCode;
+    final isCupertino = isCupertinoPlatform(context);
+    final isInstructor = authState.role == 'instructor';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ProfileSectionCard(
+          title: _l10n.profileInfo,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      labelText: _l10n.displayNameLabel,
+                      prefixIcon: const Icon(LucideIcons.user),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _phoneController,
+                    decoration: InputDecoration(
+                      labelText: _l10n.phoneNumber,
+                      prefixIcon: const Icon(LucideIcons.phone),
+                    ),
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 12),
+                  TypeAheadField<Map<String, dynamic>>(
+                    controller: _addressController,
+                    builder: (context, controller, focusNode) => TextFormField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      decoration: InputDecoration(
+                        labelText: _l10n.homeAddress,
+                        prefixIcon: const Icon(LucideIcons.mapPin),
+                        hintMaxLines: 2,
+                      ),
+                      onChanged: (value) {
+                        if (_shouldClearDraftLocationForAddressInput(
+                          input: value,
+                          resolvedAddress: _resolvedAddress,
+                        )) {
+                          _lat = null;
+                          _lng = null;
+                        }
+                      },
+                    ),
+                    suggestionsCallback: (pattern) async {
+                      return LocationService.instance
+                          .getAutocompleteSuggestions(pattern);
+                    },
+                    itemBuilder: (context, suggestion) {
+                      return ListTile(
+                        leading: const Icon(LucideIcons.mapPin, size: 18),
+                        title: Text(
+                          (suggestion['label'] ??
+                                  suggestion['description'] ??
+                                  '')
+                              .toString(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    },
+                    onSelected: (suggestion) {
+                      final address = ((suggestion['label'] ??
+                                  suggestion['description'] ??
+                                  '')
+                              .toString())
+                          .trim();
+                      _addressController.text = address;
+                      final suggestionLat =
+                          (suggestion['lat'] as num?)?.toDouble();
+                      final suggestionLng =
+                          (suggestion['lng'] as num?)?.toDouble();
+                      if (suggestionLat != null && suggestionLng != null) {
+                        _lat = suggestionLat;
+                        _lng = suggestionLng;
+                        _resolvedAddress = address;
+                      } else {
+                        _lat = null;
+                        _lng = null;
+                        _resolvedAddress = '';
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (isInstructor) ...[
+          ProfileSectionCard(
+            title: _l10n.searchRadius,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _l10n.maximumDistance,
+                          style: theme.textTheme.bodyLarge,
+                        ),
+                        Text(
+                          _l10n.radiusKmLabel(_radiusKm.toStringAsFixed(1)),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    isCupertino
+                        ? CupertinoSlider(
+                            value: _radiusKm.clamp(0.1, 15.0),
+                            min: 0.1,
+                            max: 15.0,
+                            divisions: 149,
+                            onChanged: (value) =>
+                                setState(() => _radiusKm = value),
+                          )
+                        : Slider(
+                            value: _radiusKm.clamp(0.1, 15.0),
+                            min: 0.1,
+                            max: 15.0,
+                            divisions: 149,
+                            onChanged: (value) =>
+                                setState(() => _radiusKm = value),
+                          ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+        ProfileSectionCard(
+          title: _l10n.expertise,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: FitnessCategory.values.map((cat) {
+                  final isSelected = _selectedCategories.contains(cat.id);
+                  return FilterChip(
+                    label: Text(cat.displayNameWithEmoji(localeCode)),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedCategories.add(cat.id);
+                        } else {
+                          _selectedCategories.remove(cat.id);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _buildSignOutSection(ThemeData theme) {
-    return _buildSection(
+  Widget _buildSaveBar(ThemeData theme, AuthState authState) {
+    final isCupertino = isCupertinoPlatform(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: isCupertino
+                  ? CupertinoButton(
+                      onPressed:
+                          _isSaving ? null : () => _cancelEditing(authState),
+                      color: CupertinoColors.systemGrey4,
+                      child: Text(_l10n.cancel),
+                    )
+                  : OutlinedButton(
+                      onPressed:
+                          _isSaving ? null : () => _cancelEditing(authState),
+                      child: Text(_l10n.cancel),
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: isCupertino
+                  ? CupertinoButton.filled(
+                      onPressed: _isSaving ? null : _saveProfile,
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(_l10n.saveChanges),
+                    )
+                  : FilledButton(
+                      onPressed: _isSaving ? null : _saveProfile,
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(_l10n.saveChanges),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccountSection(AuthState authState) {
+    final resolvedName =
+        (authState.name ?? authState.user?.displayName ?? '').trim();
+    final displayName = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : (resolvedName.isNotEmpty ? resolvedName : _l10n.notSet);
+    final email = (authState.user?.email ?? '').trim();
+    final phone = (authState.phone ?? '').trim();
+    final address = _addressController.text.trim().isNotEmpty
+        ? _addressController.text.trim()
+        : ((authState.homeAddress ?? '').trim().isNotEmpty
+            ? authState.homeAddress!
+            : _l10n.notSet);
+
+    return ProfileAccountBlock(
+      title: _l10n.account,
+      displayName: displayName,
+      displayNameTitle: _l10n.displayNameLabel,
+      email: email.isNotEmpty ? email : _l10n.notSet,
+      emailTitle: _l10n.email,
+      phone: phone,
+      phoneTitle: _l10n.phoneNumber,
+      address: address,
+      homeAddressTitle: _l10n.homeAddress,
+      isInstructor: authState.role == 'instructor',
+      workRadiusLabel: _l10n.radiusKmLabel(_radiusKm.toStringAsFixed(1)),
+      workRadiusTitle: _l10n.workRadius,
+      isBusy: _isSaving,
+      onEditDisplayName: _editDisplayName,
+      onEmailActions: () => _showEmailActions(authState),
+      onEditAddress: _editAddress,
+      onEditRadius: _editRadius,
+    );
+  }
+
+  Future<void> _editDisplayName() async {
+    final nextName = await _showTextInputEditor(
+      title: _l10n.displayNameLabel,
+      initialValue: _nameController.text.trim(),
+      keyboardType: TextInputType.name,
+      validator: (value) {
+        if (value.trim().isEmpty) return _nameRequiredMessage();
+        return null;
+      },
+    );
+    if (nextName == null) return;
+
+    final success = await _submitProfileUpdate(name: nextName);
+    if (!mounted || !success) return;
+    setState(() {
+      _nameController.text = nextName;
+      _authFingerprint = null;
+    });
+  }
+
+  Future<void> _editAddress() async {
+    final draft = await _showAddressEditor(
+      initialAddress: _addressController.text.trim(),
+      initialLat: _lat,
+      initialLng: _lng,
+    );
+    if (draft == null) return;
+
+    final success = await _submitProfileUpdate(
+      address: draft.address,
+      latitude: draft.latitude,
+      longitude: draft.longitude,
+    );
+    if (!mounted || !success) return;
+    setState(() {
+      _addressController.text = draft.address;
+      if (draft.latitude != null && draft.longitude != null) {
+        _lat = draft.latitude;
+        _lng = draft.longitude;
+      }
+      _resolvedAddress =
+          draft.address.isNotEmpty && _lat != null && _lng != null
+              ? draft.address
+              : '';
+      _authFingerprint = null;
+    });
+  }
+
+  Future<void> _editRadius() async {
+    if (ref.read(authProvider).role != 'instructor') return;
+    final isCupertino = isCupertinoPlatform(context);
+    var radiusDraft = _radiusKm.clamp(0.1, 15.0);
+
+    Future<void> save() async {
+      final success = await _submitProfileUpdate(radiusKm: radiusDraft);
+      if (!mounted || !success) return;
+      setState(() => _radiusKm = radiusDraft);
+      Navigator.pop(context);
+    }
+
+    if (isCupertino) {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoPopupSurface(
+          child: SafeArea(
+            top: false,
+            child: StatefulBuilder(
+              builder: (context, setSheetState) => Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _l10n.workRadius,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(_l10n.radiusKmLabel(radiusDraft.toStringAsFixed(1))),
+                    CupertinoSlider(
+                      value: radiusDraft,
+                      min: 0.1,
+                      max: 15.0,
+                      divisions: 149,
+                      onChanged: _isSaving
+                          ? null
+                          : (value) => setSheetState(() => radiusDraft = value),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: CupertinoButton(
+                            onPressed:
+                                _isSaving ? null : () => Navigator.pop(context),
+                            color: CupertinoColors.systemGrey4,
+                            child: Text(_l10n.cancel),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: CupertinoButton.filled(
+                            onPressed: _isSaving ? null : save,
+                            child: Text(_l10n.save),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _l10n.workRadius,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(_l10n.radiusKmLabel(radiusDraft.toStringAsFixed(1))),
+              Slider(
+                value: radiusDraft,
+                min: 0.1,
+                max: 15.0,
+                divisions: 149,
+                onChanged: _isSaving
+                    ? null
+                    : (value) => setSheetState(() => radiusDraft = value),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed:
+                          _isSaving ? null : () => Navigator.pop(context),
+                      child: Text(_l10n.cancel),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _isSaving ? null : save,
+                      child: Text(_l10n.save),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEmailActions(AuthState authState) async {
+    final email = (authState.user?.email ?? '').trim();
+    final providers =
+        (authState.user?.providerData ?? const <firebase_auth.UserInfo>[])
+            .map((p) => _providerLabel(p.providerId))
+            .where((label) => label.isNotEmpty)
+            .toList();
+    final hasPassword =
+        authState.user?.providerData.any((p) => p.providerId == 'password') ??
+            false;
+    final providersLabel = providers.isNotEmpty
+        ? providers.join(', ')
+        : _l10n.profileProviderOauth;
+    final body = _emailEditMessage(
+      providersLabel: providersLabel,
+      hasPassword: hasPassword,
+    );
+    final isCupertino = isCupertinoPlatform(context);
+
+    if (isCupertino) {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoPopupSurface(
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _l10n.email,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(email.isNotEmpty ? email : _l10n.notSet),
+                  const SizedBox(height: 8),
+                  Text(body, style: const TextStyle(fontSize: 14)),
+                  const SizedBox(height: 12),
+                  if (!hasPassword) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton.filled(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          if (!mounted) return;
+                          await _showAddPasswordDialog();
+                        },
+                        child: Text(_l10n.addPassword),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton.filled(
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        if (!mounted) return;
+                        await _showChangeEmailDialog(authState);
+                      },
+                      child: Text(_l10n.changeEmail),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(_l10n.close),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _l10n.email,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(email.isNotEmpty ? email : _l10n.notSet),
+            const SizedBox(height: 8),
+            Text(body),
+            const SizedBox(height: 12),
+            if (!hasPassword) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    if (!mounted) return;
+                    await _showAddPasswordDialog();
+                  },
+                  child: Text(_l10n.addPassword),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonal(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  if (!mounted) return;
+                  await _showChangeEmailDialog(authState);
+                },
+                child: Text(_l10n.changeEmail),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(_l10n.close),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showChangeEmailDialog(AuthState authState) async {
+    final currentEmail = (authState.user?.email ?? '').trim();
+    final newEmailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final hasPassword =
+        authState.user?.providerData.any((p) => p.providerId == 'password') ??
+            false;
+
+    final isCupertino = isCupertinoPlatform(context);
+    final confirmed = await (isCupertino
+        ? showCupertinoDialog<bool>(
+            context: context,
+            builder: (context) {
+              String? errorText;
+              return StatefulBuilder(
+                builder: (context, setSheetState) => CupertinoAlertDialog(
+                  title: Text(_l10n.changeEmail),
+                  content: Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      CupertinoTextField(
+                        controller: newEmailController,
+                        placeholder: _l10n.newEmailLabel,
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      if (hasPassword) ...[
+                        const SizedBox(height: 8),
+                        CupertinoTextField(
+                          controller: passwordController,
+                          placeholder: _l10n.currentPasswordLabel,
+                          obscureText: true,
+                        ),
+                      ],
+                      if (errorText != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          errorText!,
+                          style: const TextStyle(
+                            color: CupertinoColors.systemRed,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  actions: [
+                    CupertinoDialogAction(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: Text(_l10n.cancel),
+                    ),
+                    CupertinoDialogAction(
+                      isDefaultAction: true,
+                      onPressed: () {
+                        final next = newEmailController.text.trim();
+                        if (next.isEmpty || !next.contains('@')) {
+                          setSheetState(() => errorText = _l10n.emailInvalid);
+                          return;
+                        }
+                        if (next.toLowerCase() == currentEmail.toLowerCase()) {
+                          setSheetState(() => errorText = _l10n.emailUnchanged);
+                          return;
+                        }
+                        if (hasPassword &&
+                            passwordController.text.trim().isEmpty) {
+                          setSheetState(
+                              () => errorText = _l10n.currentPasswordRequired);
+                          return;
+                        }
+                        Navigator.pop(context, true);
+                      },
+                      child: Text(_l10n.sendVerification),
+                    ),
+                  ],
+                ),
+              );
+            },
+          )
+        : showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(_l10n.changeEmail),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: newEmailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: _l10n.newEmailLabel,
+                      prefixIcon: const Icon(LucideIcons.mail),
+                    ),
+                  ),
+                  if (hasPassword) ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: _l10n.currentPasswordLabel,
+                        prefixIcon: const Icon(LucideIcons.lock),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(_l10n.cancel),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final next = newEmailController.text.trim();
+                    if (next.isEmpty ||
+                        !next.contains('@') ||
+                        next.toLowerCase() == currentEmail.toLowerCase() ||
+                        (hasPassword &&
+                            passwordController.text.trim().isEmpty)) {
+                      return;
+                    }
+                    Navigator.pop(context, true);
+                  },
+                  child: Text(_l10n.sendVerification),
+                ),
+              ],
+            ),
+          ));
+
+    if (confirmed == true) {
+      final success =
+          await ref.read(authProvider.notifier).requestEmailChangeVerification(
+                newEmail: newEmailController.text.trim(),
+                currentPassword:
+                    hasPassword ? passwordController.text.trim() : null,
+              );
+
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_l10n.emailChangeVerificationSent)),
+        );
+      } else {
+        final error = ref.read(authProvider).error ?? _l10n.somethingWentWrong;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
+    }
+
+    newEmailController.dispose();
+    passwordController.dispose();
+  }
+
+  Future<String?> _showTextInputEditor({
+    required String title,
+    required String initialValue,
+    String? Function(String value)? validator,
+    TextInputType keyboardType = TextInputType.text,
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    String? errorText;
+    final isCupertino = isCupertinoPlatform(context);
+
+    Future<void> submit(StateSetter setSheetState) async {
+      final value = controller.text.trim();
+      final validation = validator?.call(value);
+      if (validation != null) {
+        setSheetState(() => errorText = validation);
+        return;
+      }
+      Navigator.pop(context, value);
+    }
+
+    final result = await (isCupertino
+        ? showCupertinoModalPopup<String>(
+            context: context,
+            builder: (context) => CupertinoPopupSurface(
+              child: SafeArea(
+                top: false,
+                child: StatefulBuilder(
+                  builder: (context, setSheetState) => Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        CupertinoTextField(
+                          controller: controller,
+                          keyboardType: keyboardType,
+                        ),
+                        if (errorText != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            errorText!,
+                            style: const TextStyle(
+                              color: CupertinoColors.systemRed,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CupertinoButton(
+                                onPressed: () => Navigator.pop(context),
+                                color: CupertinoColors.systemGrey4,
+                                child: Text(_l10n.cancel),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CupertinoButton.filled(
+                                onPressed: () => submit(setSheetState),
+                                child: Text(_l10n.save),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
+        : showModalBottomSheet<String>(
+            context: context,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (context) => StatefulBuilder(
+              builder: (context, setSheetState) => Padding(
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  24,
+                  24,
+                  MediaQuery.of(context).viewInsets.bottom + 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: controller,
+                      keyboardType: keyboardType,
+                    ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        errorText!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: Text(_l10n.cancel),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () => submit(setSheetState),
+                            child: Text(_l10n.save),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ));
+
+    _disposeTransientController(controller);
+    if (result == null) return null;
+    return result.trim();
+  }
+
+  Future<_AddressEditResult?> _showAddressEditor({
+    required String initialAddress,
+    required double? initialLat,
+    required double? initialLng,
+  }) async {
+    final controller = TextEditingController(text: initialAddress);
+    var latDraft = initialLat;
+    var lngDraft = initialLng;
+    var resolvedAddress = initialAddress.trim();
+    var isResolving = false;
+    final isCupertino = isCupertinoPlatform(context);
+
+    Future<void> submit(StateSetter setSheetState) async {
+      final value = controller.text.trim();
+      if (value.isEmpty) {
+        Navigator.pop(
+          context,
+          const _AddressEditResult(
+              address: '', latitude: null, longitude: null),
+        );
+        return;
+      }
+
+      if (value != resolvedAddress) {
+        setSheetState(() => isResolving = true);
+        final pos = await LocationService.instance.getLatLngFromAddress(value);
+        if (pos != null) {
+          latDraft = pos.latitude;
+          lngDraft = pos.longitude;
+          resolvedAddress = value;
+        }
+        if (!mounted) return;
+        setSheetState(() => isResolving = false);
+      }
+
+      Navigator.pop(
+        context,
+        _AddressEditResult(
+          address: value,
+          latitude: latDraft,
+          longitude: lngDraft,
+        ),
+      );
+    }
+
+    final result = await (isCupertino
+        ? showCupertinoModalPopup<_AddressEditResult>(
+            context: context,
+            builder: (context) => CupertinoPopupSurface(
+              child: SafeArea(
+                top: false,
+                child: StatefulBuilder(
+                  builder: (context, setSheetState) => Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _l10n.homeAddress,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TypeAheadField<Map<String, dynamic>>(
+                            controller: controller,
+                            builder: (context, controller, focusNode) =>
+                                TextFormField(
+                              controller: controller,
+                              focusNode: focusNode,
+                              decoration:
+                                  InputDecoration(labelText: _l10n.homeAddress),
+                              onChanged: (value) {
+                                if (value.trim() != resolvedAddress) {
+                                  latDraft = null;
+                                  lngDraft = null;
+                                }
+                              },
+                            ),
+                            suggestionsCallback: (pattern) async {
+                              return LocationService.instance
+                                  .getAutocompleteSuggestions(pattern);
+                            },
+                            itemBuilder: (context, suggestion) {
+                              return ListTile(
+                                leading:
+                                    const Icon(LucideIcons.mapPin, size: 18),
+                                title: Text(
+                                  (suggestion['label'] ??
+                                          suggestion['description'] ??
+                                          '')
+                                      .toString(),
+                                ),
+                              );
+                            },
+                            onSelected: (suggestion) async {
+                              final address = (suggestion['label'] ??
+                                      suggestion['description'] ??
+                                      '')
+                                  .toString()
+                                  .trim();
+                              controller.text = address;
+                              final pos = await LocationService.instance
+                                  .getLatLngFromAddress(
+                                address,
+                              );
+                              if (pos != null) {
+                                latDraft = pos.latitude;
+                                lngDraft = pos.longitude;
+                                resolvedAddress = address;
+                              }
+                            },
+                          ),
+                          if (isResolving) ...[
+                            const SizedBox(height: 8),
+                            const CupertinoActivityIndicator(),
+                          ],
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: CupertinoButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  color: CupertinoColors.systemGrey4,
+                                  child: Text(_l10n.cancel),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: CupertinoButton.filled(
+                                  onPressed: isResolving
+                                      ? null
+                                      : () => submit(setSheetState),
+                                  child: Text(_l10n.save),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
+        : showModalBottomSheet<_AddressEditResult>(
+            context: context,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (context) => StatefulBuilder(
+              builder: (context, setSheetState) => Padding(
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  24,
+                  24,
+                  MediaQuery.of(context).viewInsets.bottom + 24,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _l10n.homeAddress,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TypeAheadField<Map<String, dynamic>>(
+                        controller: controller,
+                        builder: (context, controller, focusNode) =>
+                            TextFormField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration:
+                              InputDecoration(labelText: _l10n.homeAddress),
+                          onChanged: (value) {
+                            if (value.trim() != resolvedAddress) {
+                              latDraft = null;
+                              lngDraft = null;
+                            }
+                          },
+                        ),
+                        suggestionsCallback: (pattern) async {
+                          return LocationService.instance
+                              .getAutocompleteSuggestions(pattern);
+                        },
+                        itemBuilder: (context, suggestion) {
+                          return ListTile(
+                            leading: const Icon(LucideIcons.mapPin, size: 18),
+                            title: Text(
+                              (suggestion['label'] ??
+                                      suggestion['description'] ??
+                                      '')
+                                  .toString(),
+                            ),
+                          );
+                        },
+                        onSelected: (suggestion) async {
+                          final address = (suggestion['label'] ??
+                                  suggestion['description'] ??
+                                  '')
+                              .toString()
+                              .trim();
+                          controller.text = address;
+                          final pos = await LocationService.instance
+                              .getLatLngFromAddress(
+                            address,
+                          );
+                          if (pos != null) {
+                            latDraft = pos.latitude;
+                            lngDraft = pos.longitude;
+                            resolvedAddress = address;
+                          }
+                        },
+                      ),
+                      if (isResolving) ...[
+                        const SizedBox(height: 8),
+                        const LinearProgressIndicator(minHeight: 2),
+                      ],
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: Text(_l10n.cancel),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: isResolving
+                                  ? null
+                                  : () => submit(setSheetState),
+                              child: Text(_l10n.save),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ));
+
+    _disposeTransientController(controller);
+    return result;
+  }
+
+  String _emailEditMessage({
+    required String providersLabel,
+    required bool hasPassword,
+  }) {
+    if (hasPassword) {
+      return _l10n.profileEmailManagedByProvider(providersLabel);
+    }
+    return _l10n.profileEmailManagedByProviderWithFallback(providersLabel);
+  }
+
+  String _nameRequiredMessage() {
+    return _l10n.profileDisplayNameRequired;
+  }
+
+  Widget _buildCategoriesSection(AuthState authState) {
+    final localeCode = Localizations.localeOf(context).languageCode;
+    final selected = (authState.categories ?? const <String>[])
+        .map(FitnessCategory.fromId)
+        .whereType<FitnessCategory>()
+        .toList();
+
+    return ProfileSectionCard(
+      title: authState.role == 'instructor'
+          ? _l10n.teachingCategories
+          : _l10n.classTypes,
       children: [
-        _buildMenuItem(
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: selected.isEmpty
+              ? Text(
+                  _l10n.notSet,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: context.colors.mutedText,
+                      ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: selected
+                      .map(
+                        (cat) => ProfileChip(
+                          label: cat.displayNameWithEmoji(localeCode),
+                          color: cat.color,
+                        ),
+                      )
+                      .toList(),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSettingsSection(
+    AuthState authState, {
+    required int studioActiveJobsCount,
+  }) {
+    final providers =
+        (authState.user?.providerData ?? const <firebase_auth.UserInfo>[])
+            .map((p) => _providerLabel(p.providerId))
+            .where((label) => label.isNotEmpty)
+            .toList();
+    final hasPassword =
+        authState.user?.providerData.any((p) => p.providerId == 'password') ??
+            false;
+
+    ProfileStudioBillingBlock? studioBillingBlock;
+    if (authState.role == 'studio') {
+      studioBillingBlock = ProfileStudioBillingBlock(
+        pricingTitle: _l10n.profileStudioPricingTitle,
+        pricingSubtitle: _l10n.profileStudioPricingSubtitle,
+        pricingSummary: _studioPricingSummaryText(),
+        onOpenPricing: _openStudioPricingSheet,
+        billingTitle: _l10n.profileStudioBillingTitle,
+        billingSubtitle: _l10n.profileStudioBillingSubtitle,
+        billingSummary: _billingSummaryText(),
+        onOpenBilling: _openStudioBillingSheet,
+        publicJobsTitle: authState.convexUserId != null
+            ? _l10n.profileStudioPublicJobsTitle
+            : null,
+        publicJobsSubtitle: authState.convexUserId != null
+            ? _l10n.profileStudioPublicJobsSubtitle
+            : null,
+        publicJobsSummary: authState.convexUserId != null
+            ? _l10n.profileStudioActiveJobsCount(studioActiveJobsCount)
+            : null,
+        onOpenPublicJobs: authState.convexUserId != null
+            ? () => context.push(
+                  AppRoutes.studioPublicProfile
+                      .replaceFirst(':id', authState.convexUserId!),
+                )
+            : null,
+      );
+    }
+
+    return ProfileSettingsBlock(
+      title: _l10n.settings,
+      linkedAccountsTitle: _l10n.linkedAccounts,
+      linkedAccountsSummary:
+          providers.isNotEmpty ? providers.join(', ') : _l10n.none,
+      showAddPassword: !hasPassword,
+      addPasswordTitle: _l10n.addPassword,
+      addPasswordSubtitle: _l10n.enableEmailLogin,
+      onAddPassword: _showAddPasswordDialog,
+      notificationsTitle: _l10n.notifications,
+      notificationsSummary: _notificationLabel(),
+      onOpenNotifications: _showNotificationSettings,
+      languageTitle: _l10n.language,
+      languageSummary: _languageLabel(),
+      onOpenLanguage: _showLanguagePicker,
+      studioBillingBlock: studioBillingBlock,
+      redoOnboardingTitle: _l10n.redoOnboarding,
+      onRedoOnboarding: _confirmRedoOnboarding,
+      helpSupportTitle: _l10n.helpSupport,
+      onShowHelp: () => _showInfoSheet(
+        title: _l10n.helpSupport,
+        body: _l10n.supportPlaceholder,
+      ),
+      termsTitle: _l10n.termsOfService,
+      onShowTerms: () => _showInfoSheet(
+        title: _l10n.termsOfService,
+        body: _l10n.termsPlaceholder,
+      ),
+      privacyTitle: _l10n.privacyPolicy,
+      onShowPrivacy: () => _showInfoSheet(
+        title: _l10n.privacyPolicy,
+        body: _l10n.privacyPlaceholder,
+      ),
+    );
+  }
+
+  Widget _buildSignOutSection() {
+    return ProfileSectionCard(
+      title: '',
+      children: [
+        ProfileTile(
           icon: LucideIcons.logOut,
-          title: 'Sign Out',
-          titleColor: Colors.red,
-          onTap: () async => await ref.read(authProvider.notifier).signOut(),
+          title: _l10n.signOut,
+          danger: true,
+          showDivider: false,
+          onTap: () async => ref.read(authProvider.notifier).signOut(),
         ),
       ],
     );
@@ -460,219 +2090,64 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildVersionInfo() {
     return Center(
-      child: Text('Quickfit v1.0.0',
-          style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-    );
-  }
-
-  Widget _buildHeader(
-      BuildContext context, AuthState authState, AppColors colors) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 64, 24, 24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainer,
-        border: Border(
-          bottom: BorderSide(color: colors.divider),
-        ),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              InkWell(
-                onTap: () => _showAccountSwitcher(context),
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        authState.role == 'studio'
-                            ? 'Studio Account'
-                            : 'Instructor Profile',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(LucideIcons.chevronDown,
-                          size: 16, color: theme.colorScheme.primary),
-                    ],
-                  ),
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(LucideIcons.settings),
-                onPressed: () {
-                  // Settings logic
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: theme.colorScheme.primaryContainer,
-                backgroundImage: authState.user?.photoURL != null
-                    ? NetworkImage(authState.user!.photoURL!)
-                    : null,
-                child: authState.user?.photoURL == null
-                    ? Icon(LucideIcons.user,
-                        size: 40, color: theme.colorScheme.onPrimaryContainer)
-                    : null,
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      authState.user?.displayName ?? 'Anonymous User',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      authState.user?.email ?? '',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colors.mutedText,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+      child: Text(
+        _l10n.versionLabel('1.0.0'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: context.colors.mutedText,
+            ),
       ),
     );
   }
 
-  void _showAccountSwitcher(BuildContext context) {
+  Widget _buildVerificationCard(bool isVerified) {
     final colors = context.colors;
-    final authState = ref.read(authProvider);
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colors.cardBorder,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildAccountItem(
-              context,
-              name: authState.user?.displayName ?? 'Current Account',
-              email: authState.user?.email ?? '',
-              isSelected: true,
-              onTap: () => Navigator.pop(context),
-            ),
-            _buildAccountItem(
-              context,
-              name: 'Add Account',
-              icon: LucideIcons.plus,
-              isSelected: false,
-              onTap: () {
-                Navigator.pop(context);
-                // Trigger add account flow
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAccountItem(
-    BuildContext context, {
-    required String name,
-    String? email,
-    IconData? icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
     final theme = Theme.of(context);
+    final bg = isVerified ? colors.successBackground : colors.urgentBackground;
+    final border = isVerified ? colors.successBorder : colors.urgentBorder;
+    final fg = isVerified ? colors.successText : colors.urgentText;
 
-    return ListTile(
-      onTap: onTap,
-      leading: CircleAvatar(
-        backgroundColor: icon != null
-            ? theme.colorScheme.surfaceContainerHighest
-            : theme.colorScheme.primaryContainer,
-        child: icon != null
-            ? Icon(icon, size: 20, color: theme.colorScheme.onSurface)
-            : Text(name[0],
-                style: TextStyle(color: theme.colorScheme.onPrimaryContainer)),
-      ),
-      title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: email != null ? Text(email) : null,
-      trailing: isSelected
-          ? Icon(LucideIcons.checkCircle2, color: theme.colorScheme.primary)
-          : null,
-    );
-  }
-
-  Widget _buildVerificationCard(BuildContext context, bool isVerified) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isVerified ? Colors.green[50] : Colors.orange[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isVerified ? Colors.green[200]! : Colors.orange[200]!,
-        ),
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: isVerified ? Colors.green[100] : Colors.orange[100],
-              shape: BoxShape.circle,
+              color: fg.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
               isVerified ? LucideIcons.badgeCheck : LucideIcons.alertCircle,
-              color: isVerified ? Colors.green[700] : Colors.orange[700],
-              size: 24,
+              color: fg,
+              size: 18,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isVerified ? 'Verified Instructor' : 'Verification Pending',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: isVerified ? Colors.green[800] : Colors.orange[800],
+                  isVerified
+                      ? _l10n.profileVerifiedInstructor
+                      : _l10n.verificationPendingTitle,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: fg,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   isVerified
-                      ? 'Your credentials have been verified'
-                      : 'Upload your certification to get verified',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isVerified ? Colors.green[700] : Colors.orange[700],
-                  ),
+                      ? _l10n.verifiedCredentials
+                      : _l10n.uploadCredentials,
+                  style: theme.textTheme.bodySmall?.copyWith(color: fg),
                 ),
               ],
             ),
@@ -680,98 +2155,462 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (!isVerified)
             TextButton(
               onPressed: () => context.push(AppRoutes.verification),
-              child: const Text('Verify'),
+              child: Text(_l10n.verify),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildSection({
-    String? title,
-    required List<Widget> children,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (title != null) ...[
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[600],
+  String _providerLabel(String providerId) {
+    switch (providerId) {
+      case 'google.com':
+        return _l10n.profileProviderGoogle;
+      case 'apple.com':
+        return _l10n.profileProviderApple;
+      case 'password':
+        return _l10n.profileProviderEmail;
+      default:
+        return providerId;
+    }
+  }
+
+  String _languageLabel() {
+    switch (_settingsDraft.languageCode) {
+      case 'he':
+        return _l10n.languageHebrew;
+      case 'en':
+      default:
+        return _l10n.languageEnglish;
+    }
+  }
+
+  String _notificationLabel() {
+    if (!_settingsDraft.notificationsEnabled) {
+      return _l10n.notificationsLabelOff;
+    }
+    if (_settingsDraft.regularJobAlerts && _settingsDraft.sosJobAlerts) {
+      return _l10n.notificationsLabelAll;
+    }
+    if (_settingsDraft.sosJobAlerts && !_settingsDraft.regularJobAlerts) {
+      return _l10n.notificationsLabelSosOnly;
+    }
+    if (_settingsDraft.regularJobAlerts && !_settingsDraft.sosJobAlerts) {
+      return _l10n.notificationsLabelRegularOnly;
+    }
+    return _l10n.notificationsLabelMuted;
+  }
+
+  Future<void> _confirmRedoOnboarding() async {
+    final isCupertino = isCupertinoPlatform(context);
+    bool? confirmed;
+    if (isCupertino) {
+      confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (dialogContext) => CupertinoAlertDialog(
+          title: Text('${_l10n.redoOnboarding}?'),
+          content: Text(_l10n.redoOnboardingPrompt),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_l10n.cancel),
+            ),
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              isDestructiveAction: true,
+              child: Text(_l10n.redo),
+            ),
+          ],
+        ),
+      );
+    } else {
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('${_l10n.redoOnboarding}?'),
+          content: Text(_l10n.redoOnboardingPrompt),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_l10n.redo),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (confirmed == true) {
+      final success = await ref.read(authProvider.notifier).resetOnboarding();
+      if (!mounted) return;
+      if (success) {
+        // Let GoRouter redirect based on updated auth state.
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_l10n.somethingWentWrong)),
+        );
+      }
+    }
+  }
+
+  Future<void> _showNotificationSettings() async {
+    final current = await SettingsService.instance.load();
+    if (!mounted) return;
+
+    bool enabled = _settingsDraft.notificationsEnabled;
+    bool regular = _settingsDraft.regularJobAlerts;
+    bool sos = _settingsDraft.sosJobAlerts;
+    final isCupertino = isCupertinoPlatform(context);
+
+    Future<void> save() async {
+      final nextDraft = _settingsDraft.copyWith(
+        notificationsEnabled: enabled,
+        regularJobAlerts: regular,
+        sosJobAlerts: sos,
+      );
+      final updatedSettings = nextDraft.toSettings(current);
+      final persisted =
+          await ref.read(authProvider.notifier).updateSettingsPreferences(
+                notificationsEnabled: enabled,
+                regularJobAlerts: regular,
+                sosJobAlerts: sos,
+              );
+      if (!persisted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_l10n.somethingWentWrong)),
+          );
+        }
+        return;
+      }
+      await ref.read(settingsProvider.notifier).saveSettings(updatedSettings);
+      await NotificationService.instance.applySettings(updatedSettings);
+      if (!mounted) return;
+      setState(() => _settingsDraft = nextDraft);
+    }
+
+    if (isCupertino) {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoPopupSurface(
+          child: SafeArea(
+            top: false,
+            child: StatefulBuilder(
+              builder: (context, setSheetState) => Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _l10n.notificationsTitle,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    CupertinoFormSection.insetGrouped(
+                      children: [
+                        CupertinoFormRow(
+                          prefix: Text(_l10n.notificationsEnable),
+                          child: CupertinoSwitch(
+                            value: enabled,
+                            onChanged: (value) {
+                              setSheetState(() => enabled = value);
+                            },
+                          ),
+                        ),
+                        CupertinoFormRow(
+                          prefix: Text(_l10n.notificationsRegular),
+                          child: CupertinoSwitch(
+                            value: regular,
+                            onChanged: enabled
+                                ? (value) =>
+                                    setSheetState(() => regular = value)
+                                : null,
+                          ),
+                        ),
+                        CupertinoFormRow(
+                          prefix: Text(_l10n.notificationsSos),
+                          child: CupertinoSwitch(
+                            value: sos,
+                            onChanged: enabled
+                                ? (value) => setSheetState(() => sos = value)
+                                : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton.filled(
+                        onPressed: () async {
+                          await save();
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                        },
+                        child: Text(_l10n.save),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-        ],
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
-          ),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
           child: Column(
-            children: children,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _l10n.notificationsTitle,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile.adaptive(
+                title: Text(_l10n.notificationsEnable),
+                value: enabled,
+                onChanged: (value) => setSheetState(() => enabled = value),
+              ),
+              SwitchListTile.adaptive(
+                title: Text(_l10n.notificationsRegular),
+                value: regular,
+                onChanged: enabled
+                    ? (value) => setSheetState(() => regular = value)
+                    : null,
+              ),
+              SwitchListTile.adaptive(
+                title: Text(_l10n.notificationsSos),
+                value: sos,
+                onChanged: enabled
+                    ? (value) => setSheetState(() => sos = value)
+                    : null,
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    await save();
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                  },
+                  child: Text(_l10n.save),
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildMenuItem({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    Color? titleColor,
-    Widget? trailing,
-    VoidCallback? onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Colors.grey[100]!),
+  Future<void> _showLanguagePicker() async {
+    final current = await SettingsService.instance.load();
+    if (!mounted) return;
+    String selected = _settingsDraft.languageCode;
+    final isCupertino = isCupertinoPlatform(context);
+
+    Future<void> save(String code) async {
+      final nextDraft = _settingsDraft.copyWith(languageCode: code);
+      final updatedSettings = nextDraft.toSettings(current);
+      final persisted = await ref
+          .read(authProvider.notifier)
+          .updateSettingsPreferences(languageCode: code);
+      if (!persisted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_l10n.somethingWentWrong)),
+          );
+        }
+        return;
+      }
+      await ref.read(settingsProvider.notifier).saveSettings(updatedSettings);
+      if (!mounted) return;
+      setState(() => _settingsDraft = nextDraft);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_l10n.languageRestartPrompt)),
+      );
+    }
+
+    if (isCupertino) {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoActionSheet(
+          title: Text(_l10n.language),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () async {
+                selected = 'en';
+                await save(selected);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+              },
+              child: Text(_l10n.languageEnglish),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () async {
+                selected = 'he';
+                await save(selected);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+              },
+              child: Text(_l10n.languageHebrew),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_l10n.cancel),
           ),
         ),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: titleColor ?? Colors.grey[600]),
-            const SizedBox(width: 12),
-            Expanded(
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _l10n.language,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selected,
+                items: [
+                  DropdownMenuItem(
+                    value: 'en',
+                    child: Text(_l10n.languageEnglish),
+                  ),
+                  DropdownMenuItem(
+                    value: 'he',
+                    child: Text(_l10n.languageHebrew),
+                  ),
+                ],
+                onChanged: (value) =>
+                    setSheetState(() => selected = value ?? 'en'),
+                decoration: InputDecoration(
+                  labelText: _l10n.language,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    await save(selected);
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                  },
+                  child: Text(_l10n.save),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showInfoSheet({
+    required String title,
+    required String body,
+  }) async {
+    final isCupertino = isCupertinoPlatform(context);
+    if (isCupertino) {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (context) => CupertinoPopupSurface(
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: titleColor ?? Colors.black87,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(body, style: const TextStyle(fontSize: 14)),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton.filled(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(_l10n.close),
                     ),
                   ),
-                  if (subtitle != null)
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
-                      ),
-                    ),
                 ],
               ),
             ),
-            if (trailing != null) trailing,
-            if (onTap != null && trailing == null)
-              Icon(LucideIcons.chevronRight, size: 18, color: Colors.grey[400]),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Text(body),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(_l10n.close),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// Show dialog to add password for Google-only users.
   Future<void> _showAddPasswordDialog() async {
     final passwordController = TextEditingController();
     final confirmController = TextEditingController();
@@ -780,69 +2619,139 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final authState = ref.read(authProvider);
     final email = authState.user?.email ?? '';
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Password'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Add a password to allow signing in with email ($email)',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: Icon(LucideIcons.lock),
+    final isCupertino = isCupertinoPlatform(context);
+    final confirmed = await (isCupertino
+        ? showCupertinoDialog<bool>(
+            context: context,
+            builder: (context) {
+              String? errorText;
+              return StatefulBuilder(
+                builder: (context, setSheetState) => CupertinoAlertDialog(
+                  title: Text(_l10n.addPassword),
+                  content: Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      Text(
+                        _l10n.profileAddPasswordDescription(email),
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                      CupertinoTextField(
+                        controller: passwordController,
+                        placeholder: _l10n.profilePasswordPlaceholder,
+                        obscureText: true,
+                      ),
+                      const SizedBox(height: 8),
+                      CupertinoTextField(
+                        controller: confirmController,
+                        placeholder: _l10n.confirmPasswordLabel,
+                        obscureText: true,
+                      ),
+                      if (errorText != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          errorText!,
+                          style: const TextStyle(
+                            color: CupertinoColors.systemRed,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  actions: [
+                    CupertinoDialogAction(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: Text(_l10n.cancel),
+                    ),
+                    CupertinoDialogAction(
+                      isDefaultAction: true,
+                      onPressed: () {
+                        final password = passwordController.text.trim();
+                        final confirm = confirmController.text.trim();
+                        if (password.length < 6) {
+                          setSheetState(
+                            () => errorText = _l10n.passwordMinLength,
+                          );
+                          return;
+                        }
+                        if (password != confirm) {
+                          setSheetState(
+                              () => errorText = _l10n.passwordsDoNotMatch);
+                          return;
+                        }
+                        Navigator.pop(context, true);
+                      },
+                      child: Text(_l10n.addPassword),
+                    ),
+                  ],
                 ),
-                validator: (value) {
-                  if (value == null || value.length < 6) {
-                    return 'Password must be at least 6 characters';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: confirmController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm Password',
-                  prefixIcon: Icon(LucideIcons.lock),
-                ),
-                validator: (value) {
-                  if (value != passwordController.text) {
-                    return 'Passwords do not match';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(context, true);
-              }
+              );
             },
-            child: const Text('Add Password'),
-          ),
-        ],
-      ),
-    );
+          )
+        : showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(_l10n.addPassword),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _l10n.profileAddPasswordDescription(email),
+                      style: TextStyle(color: context.colors.mutedText),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: _l10n.passwordLabel,
+                        prefixIcon: const Icon(LucideIcons.lock),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.length < 6) {
+                          return _l10n.passwordMinLength;
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: confirmController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: _l10n.confirmPasswordLabel,
+                        prefixIcon: const Icon(LucideIcons.lock),
+                      ),
+                      validator: (value) {
+                        if (value != passwordController.text) {
+                          return _l10n.passwordsDoNotMatch;
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(_l10n.cancel),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      Navigator.pop(context, true);
+                    }
+                  },
+                  child: Text(_l10n.addPassword),
+                ),
+              ],
+            ),
+          ));
 
     if (confirmed == true) {
       final success = await ref.read(authProvider.notifier).linkEmailPassword(
@@ -855,17 +2764,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         SnackBar(
           content: Text(
             success
-                ? 'Password added! You can now sign in with email.'
-                : 'Failed to add password',
+                ? _l10n.profilePasswordAddedSuccess
+                : _l10n.profilePasswordAddFailed,
           ),
         ),
       );
-      if (success) {
-        setState(() {}); // Refresh UI
-      }
     }
 
     passwordController.dispose();
     confirmController.dispose();
   }
+}
+
+class _AddressEditResult {
+  const _AddressEditResult({
+    required this.address,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  final String address;
+  final double? latitude;
+  final double? longitude;
 }

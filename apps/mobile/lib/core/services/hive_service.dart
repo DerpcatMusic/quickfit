@@ -40,12 +40,26 @@ class HiveService {
     return cacheBox.get(key);
   }
 
-  List<PendingMutation> getPendingMutations() {
-    return mutationBox.values.where((m) => m.status == 'pending').toList();
+  List<PendingMutation> getPendingMutations({String? userUid}) {
+    return mutationBox.values.where((m) {
+      if (m.status != 'pending') return false;
+      if (userUid == null) return true;
+      return m.userUid == userUid;
+    }).toList();
   }
 
   Future<void> addMutation(PendingMutation mutation) async {
     await mutationBox.put(mutation.id, mutation);
+  }
+
+  Future<void> removeMutationsForUser(String userUid) async {
+    final ids = mutationBox.values
+        .where((m) => m.userUid == userUid)
+        .map((m) => m.id)
+        .toList(growable: false);
+    for (final id in ids) {
+      await mutationBox.delete(id);
+    }
   }
 
   Future<void> markCompleted(String id) async {
@@ -78,6 +92,52 @@ class HiveService {
     if (mutation != null) {
       mutation.status = status;
       await mutation.save();
+    }
+  }
+
+  Future<bool> acquireLock({
+    required String key,
+    required String owner,
+    Duration ttl = const Duration(seconds: 30),
+  }) async {
+    final now = DateTime.now();
+    final lock = cacheBox.get(key);
+    if (lock is Map) {
+      final lockOwner = lock['owner'] as String?;
+      final expiresAtMs = lock['expiresAt'] as int?;
+      if (lockOwner != null &&
+          expiresAtMs != null &&
+          DateTime.fromMillisecondsSinceEpoch(expiresAtMs).isAfter(now)) {
+        return false;
+      }
+    }
+
+    await cacheBox.put(key, {
+      'owner': owner,
+      'expiresAt': now.add(ttl).millisecondsSinceEpoch,
+    });
+    return true;
+  }
+
+  Future<void> refreshLock({
+    required String key,
+    required String owner,
+    Duration ttl = const Duration(seconds: 30),
+  }) async {
+    final now = DateTime.now();
+    await cacheBox.put(key, {
+      'owner': owner,
+      'expiresAt': now.add(ttl).millisecondsSinceEpoch,
+    });
+  }
+
+  Future<void> releaseLock({
+    required String key,
+    required String owner,
+  }) async {
+    final lock = cacheBox.get(key);
+    if (lock is Map && lock['owner'] == owner) {
+      await cacheBox.delete(key);
     }
   }
 }

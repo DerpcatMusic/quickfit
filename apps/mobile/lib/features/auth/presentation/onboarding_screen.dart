@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -13,6 +14,7 @@ import 'package:quickfit/core/constants/app_constants.dart';
 import 'package:quickfit/core/services/location_service.dart';
 import 'package:quickfit/core/theme/app_theme.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 import 'package:quickfit/shared/widgets/zone_selection_map.dart';
 import 'package:quickfit/shared/widgets/quickfit_map.dart';
 import 'package:quickfit/core/providers/zone_provider.dart';
@@ -42,7 +44,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // Zone selection state (default to zones mode)
   bool _useZoneMode = true; // true = select zones, false = use radius
-  final Set<String> _selectedZoneIds = {};
+  Set<String> _selectedZoneIds = {};
 
   final _storageKey = const PageStorageKey('onboarding_form');
 
@@ -83,10 +85,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'Could not get your location. Try entering your address.')),
+          SnackBar(content: Text(l10n.onboardingLocationUnavailable)),
         );
       }
     }
@@ -103,6 +104,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   void dispose() {
+    _mapVisibilityTimer?.cancel();
     _pageController.dispose();
     _nameController.dispose();
     _addressController.dispose();
@@ -149,10 +151,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           _currentLocation = LatLng(pos.latitude, pos.longitude);
         } else {
           if (mounted) {
+            final l10n = AppLocalizations.of(context)!;
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                    'Could not find location. Please select from the list or use GPS.'),
+              SnackBar(
+                content: Text(l10n.onboardingLocationNotFound),
                 backgroundColor: Colors.red,
               ),
             );
@@ -165,10 +167,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       // 2026 FIX: Prevent studios from onboarding without location
       if (_selectedRole == 'studio' && _currentLocation == null) {
         if (mounted) {
+          final l10n = AppLocalizations.of(context)!;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  'Studio location required. Please enter a valid address.'),
+            SnackBar(
+              content: Text(l10n.onboardingStudioLocationRequired),
               backgroundColor: Colors.red,
             ),
           );
@@ -187,16 +189,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             latitude: _currentLocation?.latitude,
             longitude: _currentLocation?.longitude,
             address: _addressController.text.trim(),
-            selectedZones: _selectedRole == 'instructor' && _useZoneMode
+            dispatchMode: _selectedRole == 'instructor'
+                ? (_useZoneMode ? 'zone' : 'radius')
+                : null,
+            zoneIds: _selectedRole == 'instructor' && _useZoneMode
                 ? _selectedZoneIds.toList()
                 : null,
           );
 
       if (!success && mounted) {
+        final l10n = AppLocalizations.of(context)!;
         // Show error to user - don't navigate away
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Failed to complete setup. Please try again.'),
+            content: Text(l10n.onboardingSetupFailed),
             backgroundColor: Theme.of(context).colorScheme.error,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 5),
@@ -357,9 +363,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildContextualPane(ThemeData theme, bool isDesktop) {
+    final l10n = AppLocalizations.of(context)!;
     switch (_currentPage) {
       case 0:
-        return const _TipsPanel();
+        return _TipsPanel(
+          fastMatchingTitle: l10n.onboardingTipFastMatchingTitle,
+          fastMatchingBody: l10n.onboardingTipFastMatchingBody,
+          verifiedProsTitle: l10n.onboardingTipVerifiedTitle,
+          verifiedProsBody: l10n.onboardingTipVerifiedBody,
+          localFocusTitle: l10n.onboardingTipLocalTitle,
+          localFocusBody: l10n.onboardingTipLocalBody,
+        );
       case 1:
         return _selectedRole == 'instructor'
             ? _buildMapPanel(theme)
@@ -367,6 +381,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 role: _selectedRole,
                 name: _nameController.text,
                 selectedCategories: _selectedCategories,
+                previewLabel: l10n.onboardingPreview,
+                emptyName: l10n.onboardingYourName,
+                unselectedRole: l10n.onboardingUnselected,
+                emptyCategories: l10n.onboardingSelectCategoriesHint,
               );
       default:
         return const SizedBox.shrink();
@@ -425,16 +443,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   // ---------------- STEP 1: ROLE ----------------
 
   Widget _buildRoleSelectionPage(ThemeData theme) {
+    final l10n = AppLocalizations.of(context)!;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Welcome.',
+          Text(l10n.onboardingWelcomeTitle,
               style: theme.textTheme.headlineLarge
                   ?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text('Choose your role to continue.',
+          Text(l10n.onboardingWelcomeBody,
               style: theme.textTheme.bodyLarge
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           const SizedBox(height: 32),
@@ -442,18 +461,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             theme,
             role: 'instructor',
             icon: LucideIcons.dumbbell,
-            title: 'Instructor',
-            description:
-                'Find sub jobs at studios near you and grow your network.',
+            title: l10n.onboardingRoleInstructor,
+            description: l10n.onboardingRoleInstructorBody,
           ),
           const SizedBox(height: 16),
           _buildRoleCard(
             theme,
             role: 'studio',
             icon: LucideIcons.building2,
-            title: 'Studio',
-            description:
-                'Post classes and find reliable instructors in minutes.',
+            title: l10n.onboardingRoleStudio,
+            description: l10n.onboardingRoleStudioBody,
           ),
         ],
       ),
@@ -527,12 +544,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   // ---------------- STEP 2: PROFILE ----------------
 
   Widget _buildProfilePage(ThemeData theme) {
+    final l10n = AppLocalizations.of(context)!;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Build your profile.',
+          Text(l10n.onboardingBuildProfile,
               style: theme.textTheme.headlineLarge
                   ?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 32),
@@ -540,7 +558,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             controller: _nameController,
             decoration: InputDecoration(
               labelText:
-                  _selectedRole == 'instructor' ? 'Full Name' : 'Studio Name',
+                  _selectedRole == 'instructor'
+                      ? l10n.onboardingFullName
+                      : l10n.onboardingStudioName,
               prefixIcon: const Icon(LucideIcons.user),
             ),
             onChanged: (_) => setState(() {}),
@@ -551,10 +571,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             builder: (context, controller, focusNode) => TextFormField(
               controller: controller,
               focusNode: focusNode,
-              decoration: const InputDecoration(
-                labelText: 'Address',
-                prefixIcon: Icon(LucideIcons.mapPin),
-                hintText: 'e.g., Rothschild 1, Tel Aviv',
+              decoration: InputDecoration(
+                labelText: l10n.onboardingAddress,
+                prefixIcon: const Icon(LucideIcons.mapPin),
+                hintText: l10n.onboardingAddressHint,
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -575,6 +595,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               // Geocode and update map
               final pos =
                   await LocationService.instance.getLatLngFromAddress(address);
+              if (!mounted) return;
               if (pos != null) {
                 final latLng = LatLng(pos.latitude, pos.longitude);
                 setState(() {
@@ -591,6 +612,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           OutlinedButton.icon(
             onPressed: () async {
               await _findMyLocation();
+              if (!mounted) return;
               // Reverse geocode to fill address field if possible
               if (_currentLocation != null) {
                 final address =
@@ -607,13 +629,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               }
             },
             icon: const Icon(LucideIcons.crosshair),
-            label: const Text('Use Current Location'),
+            label: Text(l10n.onboardingUseCurrentLocation),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
             ),
           ),
           const SizedBox(height: 32),
-          Text('Your Expertise',
+          Text(l10n.onboardingYourExpertise,
               style: theme.textTheme.titleSmall
                   ?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
@@ -639,7 +661,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
           if (_selectedRole == 'instructor') ...[
             const SizedBox(height: 32),
-            Text(_useZoneMode ? 'Coverage Zones' : 'Search Radius',
+            Text(_useZoneMode
+                    ? l10n.onboardingCoverageZones
+                    : l10n.onboardingSearchRadius,
                 style: theme.textTheme.titleSmall
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
@@ -658,12 +682,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${_selectedZoneIds.length} zones selected',
+                              l10n.zonesSelectedLabel(_selectedZoneIds.length),
                               style: theme.textTheme.bodyMedium
                                   ?.copyWith(fontWeight: FontWeight.bold),
                             ),
                             Text(
-                              'Tap zones on the map to select your coverage areas',
+                              l10n.onboardingZoneHint,
                               style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant),
                             ),
@@ -695,7 +719,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '${_radiusKm.round()} km',
+                      l10n.mapRadiusKm(_radiusKm.round()),
                       style: theme.textTheme.labelMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: theme.colorScheme.onPrimaryContainer,
@@ -715,6 +739,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   // ---------------- NAVIGATION ----------------
 
   Widget _buildNavigationButtons(ThemeData theme) {
+    final l10n = AppLocalizations.of(context)!;
     final isLastPage = _currentPage == 1;
 
     return Padding(
@@ -725,7 +750,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             Expanded(
               child: OutlinedButton(
                 onPressed: _previousPage,
-                child: const Text('Back'),
+                child: Text(l10n.back),
               ),
             ),
           if (_currentPage > 0) const SizedBox(width: 16),
@@ -746,7 +771,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       child: Center(
                         widthFactor: 1.0,
                         child: Text(
-                          isLastPage ? 'Get Started' : 'Next Step',
+                          isLastPage
+                              ? l10n.onboardingGetStarted
+                              : l10n.onboardingNextStep,
                           style: const TextStyle(height: 1.0),
                         ),
                       ),
@@ -763,6 +790,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   // ==============================================================================
 
   Widget _buildMapPanel(ThemeData theme) {
+    final l10n = AppLocalizations.of(context)!;
+    final media = MediaQuery.of(context);
+    final topInset = media.padding.top;
+    final bottomInset = media.padding.bottom;
     return Directionality(
       textDirection: isHebrew ? TextDirection.rtl : TextDirection.ltr,
       child: Stack(
@@ -772,32 +803,34 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
           // Mode toggle at top
           Positioned(
-            top: 16,
+            top: 16 + topInset,
             left: 16,
             right: 16,
-            child: Card(
-              color: theme.colorScheme.surface.withValues(alpha: 0.95),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildModeButton(
-                      theme,
-                      icon: LucideIcons.map,
-                      label: 'Zones',
-                      isSelected: _useZoneMode,
-                      onTap: () => setState(() => _useZoneMode = true),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildModeButton(
-                      theme,
-                      icon: LucideIcons.circle,
-                      label: 'Radius',
-                      isSelected: !_useZoneMode,
-                      onTap: () => setState(() => _useZoneMode = false),
-                    ),
-                  ],
+            child: PointerInterceptor(
+              child: Card(
+                color: theme.colorScheme.surface.withValues(alpha: 0.95),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildModeButton(
+                        theme,
+                        icon: LucideIcons.map,
+                        label: l10n.mapModeZones,
+                        isSelected: _useZoneMode,
+                        onTap: () => setState(() => _useZoneMode = true),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildModeButton(
+                        theme,
+                        icon: LucideIcons.circle,
+                        label: l10n.mapModeRadius,
+                        isSelected: !_useZoneMode,
+                        onTap: () => setState(() => _useZoneMode = false),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -805,41 +838,43 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
           // Selection info at bottom
           Positioned(
-            bottom: 16,
+            bottom: 16 + bottomInset,
             left: 16,
             right: 16,
-            child: Card(
-              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.95),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Icon(
-                      _useZoneMode ? LucideIcons.mapPin : LucideIcons.circle,
-                      size: 20,
-                      color: theme.colorScheme.onPrimaryContainer,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _useZoneMode
-                            ? '${_selectedZoneIds.length} zones selected'
-                            : '${_radiusKm.round()} km radius',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onPrimaryContainer,
+            child: PointerInterceptor(
+              child: Card(
+                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.95),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _useZoneMode ? LucideIcons.mapPin : LucideIcons.circle,
+                        size: 20,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _useZoneMode
+                              ? l10n.zonesSelectedLabel(_selectedZoneIds.length)
+                              : l10n.onboardingRadiusLabel(_radiusKm.round()),
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onPrimaryContainer,
+                          ),
                         ),
                       ),
-                    ),
-                    if (!_useZoneMode)
-                      FloatingActionButton.small(
-                        heroTag: 'findLocation',
-                        onPressed: _findMyLocation,
-                        tooltip: 'Find My Location',
-                        child: const Icon(LucideIcons.crosshair, size: 18),
-                      ),
-                  ],
+                      if (!_useZoneMode)
+                        FloatingActionButton.small(
+                          heroTag: 'findLocation',
+                          onPressed: _findMyLocation,
+                          tooltip: l10n.onboardingFindMyLocation,
+                          child: const Icon(LucideIcons.crosshair, size: 18),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -896,6 +931,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildZoneMap(ThemeData theme) {
+    final l10n = AppLocalizations.of(context)!;
     final zonesAsync = ref.watch(zonesProvider);
 
     return zonesAsync.when(
@@ -905,7 +941,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           children: [
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
-            Text('Loading zones...', style: theme.textTheme.bodyMedium),
+            Text(l10n.mapLoadingZones, style: theme.textTheme.bodyMedium),
           ],
         ),
       ),
@@ -921,16 +957,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   Icon(LucideIcons.alertCircle,
                       size: 48, color: theme.colorScheme.error),
                   const SizedBox(height: 16),
-                  Text('Could not load zones',
+                  Text(l10n.onboardingCouldNotLoadZones,
                       style: theme.textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('Try radius mode instead',
+                  Text(l10n.onboardingTryRadiusMode,
                       style: theme.textTheme.bodyMedium),
                   const SizedBox(height: 16),
                   OutlinedButton(
                     onPressed: () => ref.refresh(zonesProvider),
-                    child: const Text('Retry'),
+                    child: Text(l10n.retry),
                   ),
                 ],
               ),
@@ -946,7 +982,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 zones: zones,
                 initialSelectedZones: _selectedZoneIds,
                 onSelectionChanged: (ids) =>
-                    setState(() => _selectedZoneIds.addAll(ids)),
+                    setState(() => _selectedZoneIds = Set.from(ids)),
                 topPadding: 80,
               )
             : Container(color: theme.colorScheme.surface),
@@ -955,6 +991,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildRadiusMap(ThemeData theme) {
+    final l10n = AppLocalizations.of(context)!;
     if (!_isMapVisible) return Container(color: theme.colorScheme.surface);
     // Show helpful prompt when no location set yet
     if (_currentLocation == null) {
@@ -969,11 +1006,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 Icon(LucideIcons.mapPin,
                     size: 48, color: theme.colorScheme.primary),
                 const SizedBox(height: 16),
-                Text('Set Your Location',
+                Text(l10n.onboardingSetYourLocation,
                     style: theme.textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('Enter your address in the form, or use GPS:',
+                Text(l10n.onboardingSetYourLocationBody,
                     style: theme.textTheme.bodyMedium
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     textAlign: TextAlign.center),
@@ -981,7 +1018,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 FilledButton.icon(
                   onPressed: _findMyLocation,
                   icon: const Icon(LucideIcons.crosshair),
-                  label: const Text('Find My Location'),
+                  label: Text(l10n.onboardingFindMyLocation),
                 ),
               ],
             ),
@@ -1011,30 +1048,44 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 }
 
 class _TipsPanel extends StatelessWidget {
-  const _TipsPanel();
+  const _TipsPanel({
+    required this.fastMatchingTitle,
+    required this.fastMatchingBody,
+    required this.verifiedProsTitle,
+    required this.verifiedProsBody,
+    required this.localFocusTitle,
+    required this.localFocusBody,
+  });
+
+  final String fastMatchingTitle;
+  final String fastMatchingBody;
+  final String verifiedProsTitle;
+  final String verifiedProsBody;
+  final String localFocusTitle;
+  final String localFocusBody;
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
-        child: const Column(
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _TipItem(
                 icon: LucideIcons.zap,
-                title: "Fast Matching",
-                desc: "Connect with studios in real-time."),
-            SizedBox(height: 24),
+                title: fastMatchingTitle,
+                desc: fastMatchingBody),
+            const SizedBox(height: 24),
             _TipItem(
                 icon: LucideIcons.shieldCheck,
-                title: "Verified Pros",
-                desc: "Join a community of certified instructors."),
-            SizedBox(height: 24),
+                title: verifiedProsTitle,
+                desc: verifiedProsBody),
+            const SizedBox(height: 24),
             _TipItem(
                 icon: LucideIcons.map,
-                title: "Local Focus",
-                desc: "Work exactly where you want to."),
+                title: localFocusTitle,
+                desc: localFocusBody),
           ],
         ),
       ),
@@ -1084,11 +1135,19 @@ class _ProfilePreviewPanel extends StatelessWidget {
   final String? role;
   final String name;
   final Set<String> selectedCategories;
+  final String previewLabel;
+  final String emptyName;
+  final String unselectedRole;
+  final String emptyCategories;
 
   const _ProfilePreviewPanel({
     required this.role,
     required this.name,
     required this.selectedCategories,
+    required this.previewLabel,
+    required this.emptyName,
+    required this.unselectedRole,
+    required this.emptyCategories,
   });
 
   @override
@@ -1103,7 +1162,7 @@ class _ProfilePreviewPanel extends StatelessWidget {
             child: Center(
               widthFactor: 1.0,
               child: Text(
-                'PREVIEW',
+                previewLabel,
                 style: theme.textTheme.labelSmall?.copyWith(
                   letterSpacing: 2,
                   fontWeight: FontWeight.bold,
@@ -1132,12 +1191,12 @@ class _ProfilePreviewPanel extends StatelessWidget {
                             size: 40,
                             color: theme.colorScheme.onPrimaryContainer)),
                     const SizedBox(height: 16),
-                    Text(name.isEmpty ? 'Your Name' : name,
+                    Text(name.isEmpty ? emptyName : name,
                         style: theme.textTheme.titleLarge
                             ?.copyWith(fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center),
                     const SizedBox(height: 4),
-                    Text(role?.toUpperCase() ?? 'UNSELECTED',
+                    Text(role?.toUpperCase() ?? unselectedRole,
                         style: theme.textTheme.labelMedium?.copyWith(
                             color: theme.colorScheme.primary,
                             fontWeight: FontWeight.bold)),
@@ -1158,7 +1217,7 @@ class _ProfilePreviewPanel extends StatelessWidget {
                     ),
                     if (selectedCategories.isEmpty) ...[
                       const SizedBox(height: 8),
-                      Text('Select categories to see them here.',
+                      Text(emptyCategories,
                           style: theme.textTheme.bodySmall
                               ?.copyWith(fontStyle: FontStyle.italic),
                           textAlign: TextAlign.center),

@@ -2,17 +2,36 @@
   "name": "quickfit-backend",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "bun@1.3.6",
   "scripts": {
-    "dev": "convex dev",
-    "deploy": "convex deploy",
-    "logs": "convex logs"
+    "dev": "bunx convex dev",
+    "deploy": "bunx convex deploy",
+    "deploy:checked": "bun run ci:verify && bun run deps:scan && bun run deploy",
+    "logs": "bunx convex logs",
+    "test": "bun test ./tests",
+    "test:watch": "bun test --watch ./tests",
+    "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov ./tests",
+    "typecheck": "bunx tsc --noEmit -p ./tsconfig.json",
+    "harness:run": "bun run ./scripts/run_test_harness.mjs",
+    "dispatch:test": "bunx convex run testing/dispatchTests:runAllTests",
+    "deps:outdated": "bun outdated",
+    "deps:audit": "bun audit",
+    "deps:scan": "bun pm scan",
+    "deps:lock:check": "bun install --frozen-lockfile",
+    "deps:lock:hash": "bun pm hash-print",
+    "package:dry-run": "bun pm pack --dry-run",
+    "deps:untrusted": "bun pm untrusted",
+    "deps:trust:all": "bun pm trust --all",
+    "cache:dir": "bun pm cache",
+    "cache:clear": "bun pm cache rm",
+    "ci:verify": "bun run typecheck && bun run test"
   },
   "dependencies": {
     "@convex-dev/geospatial": "^0.2.1",
-    "convex": "^1.31.7",
-    "h3-js": "^4.4.0"
+    "convex": "^1.31.7"
   },
   "devDependencies": {
+    "bun-osv-scanner": "^2.0.0",
     "typescript": "^5.9.3"
   }
 }

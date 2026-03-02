@@ -10,12 +10,11 @@ import 'package:flutter/foundation.dart';
 class MapStyleService {
   MapStyleService._();
 
-  // Stadia Maps free tier style URLs (no API key required for basic usage)
-  // These are CORS-enabled and work reliably on web
-  static const String _stadiaLightUrl =
-      'https://tiles.stadiamaps.com/styles/alidade_smooth.json';
-  static const String _stadiaDarkUrl =
-      'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json';
+  // CARTO base styles (no API key required, reliable CORS on web)
+  static const String _lightUrl =
+      'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+  static const String _darkUrl =
+      'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
   // Alternative: MapTiler styles (requires API key for production)
   // static const String _maptilerLightUrl =
@@ -31,13 +30,10 @@ class MapStyleService {
     final isDark = brightness == Brightness.dark;
 
     if (kIsWeb) {
-      // Use hosted style URLs on web for reliability
-      return isDark ? _stadiaDarkUrl : _stadiaLightUrl;
+      return isDark ? _darkUrl : _lightUrl;
     }
 
-    // For mobile, we can use the same hosted URLs (simpler and works well)
-    // Alternatively, inline JSON could be used here if custom styling is needed
-    return isDark ? _stadiaDarkUrl : _stadiaLightUrl;
+    return isDark ? _darkUrl : _lightUrl;
   }
 
   /// Check if a style string is a URL or inline JSON.

@@ -6,6 +6,7 @@ class PendingMutation extends HiveObject {
   late String id;
   late String operation;
   late String payload;
+  String? userUid;
   late DateTime createdAt;
   late int retryCount;
   late String status;
@@ -15,6 +16,7 @@ class PendingMutation extends HiveObject {
     required this.id,
     required this.operation,
     required this.payload,
+    this.userUid,
     required this.createdAt,
     this.retryCount = 0,
     this.status = 'pending',
@@ -37,6 +39,7 @@ class PendingMutationAdapter extends TypeAdapter<PendingMutation> {
       id: fields[0] as String,
       operation: fields[1] as String,
       payload: fields[2] as String,
+      userUid: fields[7] as String?,
       createdAt: fields[3] as DateTime,
       retryCount: fields[4] as int,
       status: fields[5] as String,
@@ -47,13 +50,15 @@ class PendingMutationAdapter extends TypeAdapter<PendingMutation> {
   @override
   void write(BinaryWriter writer, PendingMutation obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
       ..write(obj.operation)
       ..writeByte(2)
       ..write(obj.payload)
+      ..writeByte(7)
+      ..write(obj.userUid)
       ..writeByte(3)
       ..write(obj.createdAt)
       ..writeByte(4)

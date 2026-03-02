@@ -30,15 +30,31 @@ export const verifyCertificate = internalAction({
       userId: verification.userId,
     });
     if (!user) throw new Error("User not found");
-    
-    // Fetch document from Convex storage
-    const docResponse = await fetch(verification.docUrl);
+
+    if (!verification.storageId) {
+      throw new Error("Verification storageId is missing");
+    }
+
+    const owner = await ctx.runQuery(internal.storage.getFileOwnerByStorageIdInternal, {
+      storageId: verification.storageId,
+    });
+    if (!owner || owner.userId !== verification.userId) {
+      throw new Error("Verification file ownership mismatch");
+    }
+
+    // Fetch document from Convex storage using a signed URL
+    const signedUrl = await ctx.storage.getUrl(verification.storageId);
+    if (!signedUrl) {
+      throw new Error("Unable to generate document URL");
+    }
+    const docResponse = await fetch(signedUrl);
+    if (!docResponse.ok) {
+      throw new Error(`Failed to fetch certificate file: ${docResponse.status}`);
+    }
     const docBuffer = await docResponse.arrayBuffer();
     const base64 = Buffer.from(docBuffer).toString("base64");
-    
-    const mimeType = verification.docUrl.endsWith(".pdf") 
-      ? "application/pdf" 
-      : "image/jpeg";
+
+    const mimeType = verification.docType || "image/jpeg";
     
     // Build Gemini prompt
     const prompt = `You are verifying an Israeli fitness instructor certificate.

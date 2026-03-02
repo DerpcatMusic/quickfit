@@ -94,7 +94,7 @@ class _JobCardState extends State<JobCard> {
         color = colors.successText;
         break;
       case 'failed':
-        text = 'Failed - will retry';
+        text = 'Failed - retry manually';
         color = colors.urgentText;
         break;
       default:
@@ -140,6 +140,7 @@ class _JobCardState extends State<JobCard> {
 
     final category = FitnessCategory.fromId(widget.job.category);
     final claimProgress = (_dragOffset / _claimThreshold).clamp(0.0, 1.0);
+    final canSwipeClaim = !widget.isLoading && widget.pendingStatus == null;
 
     return Stack(
       children: [
@@ -182,8 +183,8 @@ class _JobCardState extends State<JobCard> {
         // Main card
         GestureDetector(
           onHorizontalDragUpdate:
-              widget.isLoading ? null : _onHorizontalDragUpdate,
-          onHorizontalDragEnd: widget.isLoading ? null : _onHorizontalDragEnd,
+              canSwipeClaim ? _onHorizontalDragUpdate : null,
+          onHorizontalDragEnd: canSwipeClaim ? _onHorizontalDragEnd : null,
           onTap: widget.onTap,
           child: AnimatedValues(
             duration:

@@ -57,3 +57,58 @@ export const send = internalAction({
     }
   },
 });
+
+export const sendBatch = internalAction({
+  args: {
+    fcmTokens: v.array(v.string()),
+    title: v.string(),
+    body: v.string(),
+    data: v.optional(v.any()),
+  },
+  handler: async (_, { fcmTokens, title, body, data }) => {
+    const serverKey = process.env.FCM_SERVER_KEY;
+
+    if (!serverKey) {
+      console.warn("FCM_SERVER_KEY not set, skipping push notification");
+      return { success: false, error: "FCM_SERVER_KEY not configured" };
+    }
+
+    const tokens = fcmTokens.filter((t) => t && t.length > 0);
+    if (tokens.length === 0) {
+      return { success: false, error: "No tokens provided" };
+    }
+
+    try {
+      const response = await fetch(FCM_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `key=${serverKey}`,
+        },
+        body: JSON.stringify({
+          registration_ids: tokens,
+          notification: {
+            title,
+            body,
+            sound: "default",
+            badge: 1,
+          },
+          data: data || {},
+          priority: "high",
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error("FCM batch error:", error);
+        return { success: false, error };
+      }
+
+      const result = await response.json();
+      return { success: true, result };
+    } catch (error) {
+      console.error("FCM batch send error:", error);
+      return { success: false, error: String(error) };
+    }
+  },
+});

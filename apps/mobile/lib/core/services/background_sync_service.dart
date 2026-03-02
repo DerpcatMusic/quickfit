@@ -7,10 +7,17 @@
 // 3. Minimal battery usage - no location tracking
 
 import 'dart:async';
+import 'dart:developer' as developer;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'dart:developer' as developer;
+import 'package:convex_flutter/convex_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:quickfit/firebase_options.dart';
+import '../constants/app_constants.dart';
 import 'hive_service.dart';
+import 'offline_mutation_runner.dart';
 
 /// Ultra-lightweight background service
 /// Focused on receiving urgent notifications for last-minute replacements
@@ -65,6 +72,10 @@ class BackgroundSyncService {
 /// Background entry point
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _ensureFirebaseInitialized();
+  await _ensureConvexInitialized();
+
   // Initialize Hive for offline queue
   await HiveService().init();
 
@@ -83,19 +94,13 @@ void onStart(ServiceInstance service) async {
     service.stopSelf();
   });
 
-  // Listen for connectivity changes
+  // Listen for connectivity changes (event-based sync)
   final connectivity = Connectivity();
   connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
     if (results.isNotEmpty &&
         results.any((r) => r != ConnectivityResult.none)) {
-      // Came online - trigger sync
       _syncPendingMutations();
     }
-  });
-
-  // Periodic sync every 5 minutes (lightweight)
-  Timer.periodic(const Duration(minutes: 5), (timer) async {
-    await _syncPendingMutations();
   });
 
   // Initial sync
@@ -105,6 +110,9 @@ void onStart(ServiceInstance service) async {
 /// iOS background handler
 @pragma('vm:entry-point')
 Future<bool> onIosBackground(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _ensureFirebaseInitialized();
+  await _ensureConvexInitialized();
   await HiveService().init();
   await _syncPendingMutations();
   return true;
@@ -113,8 +121,14 @@ Future<bool> onIosBackground(ServiceInstance service) async {
 /// Sync pending mutations from offline queue
 Future<void> _syncPendingMutations() async {
   try {
-    final pending = HiveService().getPendingMutations();
-    if (pending.isEmpty) return;
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await ConvexClient.instance.setAuthWithRefresh(
+      fetchToken: () async {
+        return await user.getIdToken();
+      },
+    );
 
     // Check connectivity
     final connectivity = Connectivity();
@@ -123,23 +137,7 @@ Future<void> _syncPendingMutations() async {
       return; // No connection, skip
     }
 
-    // Process each pending mutation
-    for (final mutation in pending) {
-      if (mutation.status == 'syncing' || mutation.status == 'completed') {
-        continue;
-      }
-
-      // Update status
-      mutation.status = 'syncing';
-      await mutation.save();
-
-      // TODO: Execute mutation via Convex
-      // This would need ConvexClient initialized in background
-      // For now, just mark for foreground sync
-
-      mutation.status = 'pending';
-      await mutation.save();
-    }
+    await OfflineMutationRunner.runPending(userUid: user.uid);
   } catch (e, stack) {
     developer.log(
       'Background sync error',
@@ -148,4 +146,23 @@ Future<void> _syncPendingMutations() async {
       stackTrace: stack,
     );
   }
+}
+
+Future<void> _ensureFirebaseInitialized() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (_) {}
+}
+
+Future<void> _ensureConvexInitialized() async {
+  try {
+    await ConvexClient.initialize(
+      const ConvexConfig(
+        deploymentUrl: AppConstants.convexUrl,
+        clientId: 'quickfit-mobile-bg',
+      ),
+    );
+  } catch (_) {}
 }

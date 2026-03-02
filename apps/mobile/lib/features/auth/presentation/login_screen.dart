@@ -1,12 +1,15 @@
 /// Login Screen - Google/Apple Sign-in with responsive layout.
 library;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 
 import 'package:quickfit/core/theme/app_colors.dart';
+import 'package:quickfit/core/utils/platform.dart';
 import 'package:quickfit/features/auth/providers/auth_provider.dart';
 import 'package:quickfit/shared/widgets/google_sign_in_button.dart';
 
@@ -80,6 +83,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final error = authState.error;
     final theme = Theme.of(context);
     final colors = context.colors;
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: SafeArea(
@@ -100,7 +104,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     // Tagline
                     Text(
-                      'Find replacement instructors fast',
+                      l10n.loginTagline,
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: colors.mutedText,
                       ),
@@ -161,6 +165,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Widget _buildBranding(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Column(
       children: [
@@ -185,7 +190,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
         const SizedBox(height: 24),
         Text(
-          'Quickfit',
+          l10n.appName,
           style: theme.textTheme.displaySmall?.copyWith(
             fontWeight: FontWeight.bold,
             letterSpacing: -1,
@@ -197,6 +202,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Widget _buildSignInButtons(BuildContext context, bool isLoading) {
     final colors = context.colors;
+    final isCupertino = isCupertinoPlatform(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Column(
       children: [
@@ -209,19 +216,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           SizedBox(
             width: double.infinity,
             height: 56,
-            child: FilledButton.icon(
-              onPressed: isLoading
-                  ? null
-                  : () => ref.read(authProvider.notifier).signInWithApple(),
-              icon: const Icon(LucideIcons.apple, size: 20),
-              label: const Text(
-                'Continue with Apple',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
+            child: isCupertino
+                ? CupertinoButton.filled(
+                    onPressed: isLoading
+                        ? null
+                        : () =>
+                            ref.read(authProvider.notifier).signInWithApple(),
+                    child: Text(l10n.continueWithApple),
+                  )
+                : FilledButton.icon(
+                    onPressed: isLoading
+                        ? null
+                        : () =>
+                            ref.read(authProvider.notifier).signInWithApple(),
+                    icon: const Icon(LucideIcons.apple, size: 20),
+                    label: Text(
+                      l10n.continueWithApple,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
           ),
         ],
 
@@ -236,7 +252,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               width: 48,
               child: Center(
                 child: Text(
-                  'or',
+                  l10n.or,
                   style: TextStyle(color: colors.mutedText),
                 ),
               ),
@@ -251,17 +267,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         SizedBox(
           width: double.infinity,
           height: 56,
-          child: OutlinedButton.icon(
-            onPressed: _toggleEmailForm,
-            icon: const Icon(LucideIcons.mail, size: 20),
-            label: const Text(
-              'Continue with Email',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
+          child: isCupertino
+              ? CupertinoButton(
+                  onPressed: _toggleEmailForm,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  color: CupertinoColors.systemGrey5,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(LucideIcons.mail, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        l10n.continueWithEmail,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : OutlinedButton(
+                  onPressed: _toggleEmailForm,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.mail, size: 20),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          l10n.continueWithEmail,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
         ),
       ],
     );
@@ -270,6 +316,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildEmailForm(BuildContext context, bool isLoading) {
     final theme = Theme.of(context);
     final colors = context.colors;
+    final isCupertino = isCupertinoPlatform(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Form(
       key: _formKey,
@@ -279,18 +327,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // Back button
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _toggleEmailForm,
-              icon: const Icon(LucideIcons.arrowLeft, size: 16),
-              label: const Text('Back'),
-            ),
+            child: isCupertino
+                ? CupertinoButton(
+                    onPressed: _toggleEmailForm,
+                    padding: EdgeInsets.zero,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(LucideIcons.arrowLeft, size: 16),
+                        const SizedBox(width: 6),
+                        Text(l10n.back),
+                      ],
+                    ),
+                  )
+                : TextButton.icon(
+                    onPressed: _toggleEmailForm,
+                    icon: const Icon(LucideIcons.arrowLeft, size: 16),
+                    label: Text(l10n.back),
+                  ),
           ),
 
           const SizedBox(height: 16),
 
           // Title
           Text(
-            _isSignUp ? 'Create Account' : 'Sign In',
+            _isSignUp ? l10n.createAccount : l10n.signIn,
             style: theme.textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.bold,
             ),
@@ -302,9 +363,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           if (_isSignUp) ...[
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                prefixIcon: Icon(LucideIcons.user),
+              decoration: InputDecoration(
+                labelText: l10n.nameLabel,
+                prefixIcon: const Icon(LucideIcons.user),
               ),
               textCapitalization: TextCapitalization.words,
               enabled: !isLoading,
@@ -315,19 +376,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // Email field
           TextFormField(
             controller: _emailController,
-            decoration: const InputDecoration(
-              labelText: 'Email',
-              prefixIcon: Icon(LucideIcons.mail),
+            decoration: InputDecoration(
+              labelText: l10n.emailLabel,
+              prefixIcon: const Icon(LucideIcons.mail),
             ),
             keyboardType: TextInputType.emailAddress,
             autocorrect: false,
             enabled: !isLoading,
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Email is required';
+                return l10n.emailRequired;
               }
               if (!value.contains('@')) {
-                return 'Enter a valid email';
+                return l10n.emailInvalid;
               }
               return null;
             },
@@ -339,7 +400,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           TextFormField(
             controller: _passwordController,
             decoration: InputDecoration(
-              labelText: 'Password',
+              labelText: l10n.passwordLabel,
               prefixIcon: const Icon(LucideIcons.lock),
               suffixIcon: IconButton(
                 icon: Icon(
@@ -354,10 +415,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             enabled: !isLoading,
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Password is required';
+                return l10n.passwordRequired;
               }
               if (_isSignUp && value.length < 6) {
-                return 'Password must be at least 6 characters';
+                return l10n.passwordMinLength;
               }
               return null;
             },
@@ -368,65 +429,125 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // Submit button
           SizedBox(
             height: 56,
-            child: FilledButton(
-              onPressed: isLoading ? null : _submitEmailAuth,
-              child: isLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text(
-                      _isSignUp ? 'Create Account' : 'Sign In',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-            ),
+            child: isCupertino
+                ? CupertinoButton.filled(
+                    onPressed: isLoading ? null : _submitEmailAuth,
+                    child: isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            _isSignUp ? l10n.createAccount : l10n.signIn,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  )
+                : FilledButton(
+                    onPressed: isLoading ? null : _submitEmailAuth,
+                    child: isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            _isSignUp ? l10n.createAccount : l10n.signIn,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
           ),
 
           const SizedBox(height: 16),
 
           // Toggle sign in/sign up
-          TextButton(
-            onPressed: _toggleMode,
-            child: Text(
-              _isSignUp
-                  ? 'Already have an account? Sign In'
-                  : "Don't have an account? Sign Up",
-              style: TextStyle(color: colors.mutedText),
-            ),
-          ),
+          isCupertino
+              ? CupertinoButton(
+                  onPressed: _toggleMode,
+                  padding: EdgeInsets.zero,
+                  child: Text(
+                    _isSignUp
+                        ? l10n.alreadyHaveAccount
+                        : l10n.dontHaveAccount,
+                    style: TextStyle(color: colors.mutedText),
+                  ),
+                )
+              : TextButton(
+                  onPressed: _toggleMode,
+                  child: Text(
+                    _isSignUp
+                        ? l10n.alreadyHaveAccount
+                        : l10n.dontHaveAccount,
+                    style: TextStyle(color: colors.mutedText),
+                  ),
+                ),
 
           // Forgot password (sign in only)
           if (!_isSignUp)
-            TextButton(
-              onPressed: () {
-                final email = _emailController.text.trim();
-                if (email.isNotEmpty && email.contains('@')) {
-                  ref.read(authProvider.notifier).sendPasswordResetEmail(email);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Password reset email sent'),
+            isCupertino
+                ? CupertinoButton(
+                    onPressed: () {
+                      final email = _emailController.text.trim();
+                      if (email.isNotEmpty && email.contains('@')) {
+                        ref
+                            .read(authProvider.notifier)
+                            .sendPasswordResetEmail(email);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(l10n.passwordResetSent),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(l10n.enterEmailFirst),
+                          ),
+                        );
+                      }
+                    },
+                    padding: EdgeInsets.zero,
+                    child: Text(
+                      l10n.forgotPassword,
+                      style: TextStyle(color: theme.colorScheme.primary),
                     ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Enter your email first'),
+                  )
+                : TextButton(
+                    onPressed: () {
+                      final email = _emailController.text.trim();
+                      if (email.isNotEmpty && email.contains('@')) {
+                        ref
+                            .read(authProvider.notifier)
+                            .sendPasswordResetEmail(email);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(l10n.passwordResetSent),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(l10n.enterEmailFirst),
+                          ),
+                        );
+                      }
+                    },
+                    child: Text(
+                      l10n.forgotPassword,
+                      style: TextStyle(color: theme.colorScheme.primary),
                     ),
-                  );
-                }
-              },
-              child: Text(
-                'Forgot Password?',
-                style: TextStyle(color: theme.colorScheme.primary),
-              ),
-            ),
+                  ),
         ],
       ),
     );
@@ -435,26 +556,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildTerms(BuildContext context) {
     final colors = context.colors;
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Text.rich(
         TextSpan(
-          text: 'By continuing, you agree to our ',
+          text: l10n.termsPrefix,
           style: theme.textTheme.bodySmall?.copyWith(
             color: colors.mutedText,
           ),
           children: [
             TextSpan(
-              text: 'Terms of Service',
+              text: l10n.termsOfService,
               style: TextStyle(
                 color: theme.colorScheme.primary,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const TextSpan(text: ' and '),
+            TextSpan(text: ' ${l10n.and} '),
             TextSpan(
-              text: 'Privacy Policy',
+              text: l10n.privacyPolicy,
               style: TextStyle(
                 color: theme.colorScheme.primary,
                 fontWeight: FontWeight.w500,

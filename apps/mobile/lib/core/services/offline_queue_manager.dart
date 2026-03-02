@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:convex_flutter/convex_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:uuid/uuid.dart';
 import '../models/pending_mutation.dart';
 import 'hive_service.dart';
-import 'convex_service.dart';
+import 'offline_mutation_runner.dart';
 import '../utils/logger.dart';
 
 class OfflineQueueManager {
@@ -17,12 +19,14 @@ class OfflineQueueManager {
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _isSyncing = false;
-  bool _isOnline = true;
+  bool _isOnline = false;
 
   Function(String mutationId, String status)? onMutationStatusChange;
   Function(String message)? onShowNotification;
 
-  void initialize() {
+  Future<void> initialize() async {
+    await _checkConnectivity();
+
     _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
       final result =
           results.isNotEmpty ? results.first : ConnectivityResult.none;
@@ -34,8 +38,6 @@ class OfflineQueueManager {
         _triggerSync();
       }
     });
-
-    _checkConnectivity();
   }
 
   Future<void> _checkConnectivity() async {
@@ -49,10 +51,16 @@ class OfflineQueueManager {
     required Map<String, dynamic> payload,
     Function? optimisticUpdate,
   }) async {
+    final userUid = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    if (userUid == null || userUid.isEmpty) {
+      throw Exception('Must be signed in to queue offline operations');
+    }
+
     final mutation = PendingMutation(
       id: _uuid.v4(),
       operation: operation,
       payload: jsonEncode(payload),
+      userUid: userUid,
       createdAt: DateTime.now(),
       status: 'pending',
     );
@@ -64,6 +72,7 @@ class OfflineQueueManager {
     await HiveService().addMutation(mutation);
     onMutationStatusChange?.call(mutation.id, 'pending');
 
+    await _checkConnectivity();
     if (_isOnline) {
       _triggerSync();
     }
@@ -73,66 +82,35 @@ class OfflineQueueManager {
 
   Future<void> _triggerSync() async {
     if (_isSyncing) return;
+    await _checkConnectivity();
+    if (!_isOnline) return;
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final syncUid = user.uid;
     _isSyncing = true;
 
     try {
-      final pending = HiveService().getPendingMutations();
-
-      for (final mutation in pending) {
-        await _processMutation(mutation);
+      await ConvexClient.instance.setAuthWithRefresh(
+        fetchToken: () async => await user.getIdToken(),
+      );
+      if (!ConvexClient.instance.isConnected) {
+        await ConvexClient.instance.connectionState
+            .firstWhere((s) => s == WebSocketConnectionState.connected)
+            .timeout(const Duration(seconds: 15));
       }
+
+      final latestUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (latestUser == null || latestUser.uid != syncUid) {
+        return;
+      }
+
+      await OfflineMutationRunner.runPending(
+        userUid: syncUid,
+        onStatusChange: onMutationStatusChange,
+        onShowNotification: onShowNotification,
+      );
     } finally {
       _isSyncing = false;
-    }
-  }
-
-  Future<void> _processMutation(PendingMutation mutation) async {
-    try {
-      mutation.status = 'syncing';
-      await mutation.save();
-      onMutationStatusChange?.call(mutation.id, 'syncing');
-
-      final payload = jsonDecode(mutation.payload) as Map<String, dynamic>;
-
-      switch (mutation.operation) {
-        case 'claimJob':
-          await ConvexService.instance.mutate('jobs:claimJob', {
-            'jobId': payload['jobId'],
-            'message': payload['message'],
-          });
-          break;
-
-        case 'withdrawClaim':
-          await ConvexService.instance.mutate('jobs:withdrawClaim', {
-            'jobId': payload['jobId'],
-          });
-          break;
-
-        default:
-          throw Exception('Unknown operation: ${mutation.operation}');
-      }
-
-      mutation.status = 'completed';
-      await mutation.save();
-      onMutationStatusChange?.call(mutation.id, 'completed');
-      log.i('[OfflineQueue] Mutation ${mutation.id} completed');
-    } catch (e) {
-      log.e('[OfflineQueue] Error: $e');
-      await _handleError(mutation, e);
-    }
-  }
-
-  Future<void> _handleError(PendingMutation mutation, dynamic error) async {
-    await HiveService().incrementRetry(mutation.id);
-
-    if (mutation.retryCount >= 3) {
-      mutation.status = 'failed';
-      await mutation.save();
-      onMutationStatusChange?.call(mutation.id, 'failed');
-      onShowNotification?.call('Failed to sync. Will retry later.');
-    } else {
-      mutation.status = 'pending';
-      await mutation.save();
     }
   }
 

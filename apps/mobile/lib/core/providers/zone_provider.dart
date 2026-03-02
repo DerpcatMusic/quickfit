@@ -47,8 +47,6 @@ class ZonesNotifier extends AsyncNotifier<List<Zone>> {
     String? cursor;
     bool hasMore = true;
     const int pageSize = 200;
-    int retryCount = 0;
-    const maxRetries = 3;
 
     try {
       while (hasMore) {
@@ -74,7 +72,6 @@ class ZonesNotifier extends AsyncNotifier<List<Zone>> {
 
         cursor = continueCursor;
         hasMore = !isDone && cursor != null;
-        retryCount = 0;
 
         if (allZones.length > 5000) break;
       }

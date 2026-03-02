@@ -1,49 +1,50 @@
 name: quickfit
 description: Israeli fitness instructor marketplace - find sub instructors fast
-publish_to: 'none'
+publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.5.0 <4.0.0'
+  sdk: ">=3.5.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  
+
   # ============ STATE MANAGEMENT ============
   flutter_riverpod: ^3.1.0
   riverpod_annotation: ^4.0.0
-  
+
   # ============ ROUTING ============
   go_router: ^17.0.1
-  
+
   # ============ UI COMPONENTS ============
   lucide_icons: ^0.257.0
-  
+  url_launcher: ^6.3.1
+
   # ============ BACKEND ============
   convex_flutter: ^3.0.0
-  
+
   # ============ AUTH ============
   firebase_core: ^4.4.0
   firebase_auth: ^6.1.4
   google_sign_in: ^7.2.0
   google_sign_in_web: ^1.1.0
   sign_in_with_apple: ^7.0.1
-  
+
   # ============ PUSH NOTIFICATIONS ============
   firebase_messaging: ^16.1.1
-  flutter_local_notifications: ^19.5.0
-  
+  flutter_local_notifications: ^20.0.0
+
   # ============ LOCATION & MAPS ============
   geolocator: ^14.0.2
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
   maplibre_gl: ^0.25.0
-  
+
   # ============ FILE HANDLING ============
   image_picker: ^1.1.0
   file_picker: ^10.3.8
-  
+
   # ============ UTILITIES ============
   intl: ^0.20.2
   timeago: ^3.7.0
@@ -51,25 +52,25 @@ dependencies:
   shimmer: ^3.0.0
   flutter_animate: ^4.5.0
   uuid: ^4.5.0
-  
+
   # ============ STORAGE ============
   shared_preferences: ^2.3.0
   flutter_secure_storage: ^10.0.0
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  
+
   # ============ OFFLINE QUEUE ============
   connectivity_plus: ^7.0.0
   logger: ^2.6.2
   material_color_utilities: ^0.11.1
   time: ^2.1.6
-  
+
   # ============ BACKGROUND SYNC ============
   flutter_background_service: ^5.0.0
   flutter_background_service_android: ^6.0.0
-  
+
   dynamic_color: ^1.8.1
-  google_fonts: ^7.0.2
+  google_fonts: ^8.0.1
   # google_maps_flutter: REMOVED - using maplibre_gl instead (free tiles)
   flutter_localizations:
     sdk: flutter
@@ -77,20 +78,43 @@ dependencies:
   flutter_typeahead: 5.2.0
   flutter_keyboard_visibility: ^6.0.0
   path_provider: ^2.1.5
-  liquid_glass_widgets: ^0.2.1-dev.8
+  liquid_glass_widgets: ^0.3.0-dev.1
+  pointer_interceptor: ^0.10.1+2
+  app_links: ^6.4.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
   riverpod_generator: ^4.0.0+1
   build_runner: ^2.4.0
-  custom_lint: ^0.8.1
   riverpod_lint: ^3.1.0
 
 flutter:
+  generate: true
   uses-material-design: true
-  
+
   assets:
     - assets/images/
     - assets/icons/
+    - assets/fonts/
+
+  fonts:
+    - family: Noto Sans Hebrew
+      fonts:
+        - asset: assets/fonts/noto_sans_hebrew/NotoSansHebrew-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/noto_sans_hebrew/NotoSansHebrew-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/noto_sans_hebrew/NotoSansHebrew-Bold.ttf
+          weight: 700
+    - family: Noto Sans
+      fonts:
+        - asset: assets/fonts/noto_sans/NotoSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/noto_sans/NotoSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/noto_sans/NotoSans-Bold.ttf
+          weight: 700

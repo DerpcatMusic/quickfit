@@ -1,10 +1,25 @@
 // convex/users.ts
 // User queries and mutations
 
-import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
+import {
+  query,
+  mutation,
+  internalQuery,
+  internalMutation,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { syncInstructorLocation, removeInstructorLocation } from "./geo";
-import { latLngToHex11, getHexesInRadius } from "./h3";
+import { internal } from "./_generated/api";
+import {
+  getCurrentUserByIdentity,
+  requireCurrentUserByIdentity,
+  requireIdentitySubject,
+  requireStudioUserByIdentity,
+} from "./lib/auth";
+import { normalizeLeadTimeSurgeRules } from "./pricing";
+
+const MIN_RADIUS_KM = 0.1;
+const MAX_RADIUS_KM = 15;
 
 // ==========================================
 // QUERIES
@@ -12,15 +27,7 @@ import { latLngToHex11, getHexesInRadius } from "./h3";
 
 export const getCurrentUser = query({
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .unique();
-    
-    return user;
+    return await getCurrentUserByIdentity(ctx);
   },
 });
 
@@ -33,18 +40,15 @@ export const syncUser = mutation({
     photoUrl: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    
-    // Use identity subject if available, otherwise use provided firebaseUid
-    const uid = identity?.subject ?? args.firebaseUid;
-    
+    const uid = await requireIdentitySubject(ctx);
+
     const existing = await ctx.db
       .query("users")
       .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", uid))
       .unique();
-    
+
     const now = Date.now();
-    
+
     if (existing) {
       // Update existing user
       await ctx.db.patch(existing._id, {
@@ -55,7 +59,7 @@ export const syncUser = mutation({
       });
       return existing._id;
     }
-    
+
     // Create new user (will need to complete onboarding)
     return await ctx.db.insert("users", {
       firebaseUid: uid,
@@ -76,115 +80,106 @@ export const completeOnboarding = mutation({
     role: v.union(v.literal("studio"), v.literal("instructor")),
     name: v.string(),
     categories: v.string(), // comma separated list
-    // Accept both number and string due to convex_flutter serialization quirk
+    // Dispatch mode for instructors
+    dispatchMode: v.optional(v.union(v.literal("radius"), v.literal("zone"))),
+    // For radius mode
     radiusKm: v.optional(v.union(v.float64(), v.string())),
     latitude: v.optional(v.union(v.float64(), v.string())),
     longitude: v.optional(v.union(v.float64(), v.string())),
     address: v.optional(v.string()),
-    selectedZones: v.optional(v.array(v.string())),
+    // For zone mode
+    zoneIds: v.optional(v.array(v.id("zones"))),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
     console.log("[completeOnboarding] Called with args:", JSON.stringify(args));
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .unique();
-    
-    if (!user) throw new Error("User not found");
-    
+    const user = await requireCurrentUserByIdentity(ctx);
+
     const now = Date.now();
-    
-    const categoriesArray = args.categories.split(',').map(c => c.trim()).filter(c => c.length > 0);
-    const primaryCategory = categoriesArray.length > 0 ? categoriesArray[0] : "general";
 
-    // Validate zone IDs if provided - they should be valid Convex IDs
-    let validZoneIds: any[] | undefined = undefined;
-    if (args.selectedZones && args.selectedZones.length > 0) {
-      validZoneIds = [];
-      for (const zoneId of args.selectedZones) {
-        try {
-          // Try to fetch the zone to validate it exists
-          const zone = await ctx.db.get(zoneId as any);
-          if (zone) {
-            validZoneIds.push(zoneId);
-          } else {
-            console.warn(`[completeOnboarding] Zone not found: ${zoneId}`);
-          }
-        } catch (e) {
-          console.warn(`[completeOnboarding] Invalid zone ID format: ${zoneId}`);
-        }
-      }
-      console.log(`[completeOnboarding] Valid zones: ${validZoneIds.length}/${args.selectedZones.length}`);
-    }
+    const categoriesArray = args.categories
+      .split(",")
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0);
+    const primaryCategory =
+      categoriesArray.length > 0 ? categoriesArray[0] : "general";
 
-    // Helper to parse numbers
+    // Helper to parse numbers (handles Flutter's string serialization)
     const parseNum = (val: number | string | undefined): number | undefined => {
       if (val === undefined) return undefined;
-      const parsed = typeof val === 'string' ? parseFloat(val) : val;
+      const parsed = typeof val === "string" ? parseFloat(val) : val;
       return isNaN(parsed) ? undefined : parsed;
     };
 
     const lat = parseNum(args.latitude);
     const lng = parseNum(args.longitude);
     const rad = parseNum(args.radiusKm);
+    const clampedRadiusKm = Math.min(
+      Math.max(rad ?? user.radiusKm ?? 5, MIN_RADIUS_KM),
+      MAX_RADIUS_KM,
+    );
+
+    // Default dispatch mode based on what data is provided
+    let dispatchMode =
+      args.dispatchMode ??
+      (args.zoneIds && args.zoneIds.length > 0 ? "zone" : "radius");
+    if (
+      args.role === "instructor" &&
+      dispatchMode === "zone" &&
+      (!args.zoneIds || args.zoneIds.length === 0)
+    ) {
+      dispatchMode = "radius";
+    }
 
     await ctx.db.patch(user._id, {
       role: args.role,
       name: args.name,
       categories: categoriesArray,
       primaryCategory,
-      radiusKm: rad ?? user.radiusKm ?? 5,
+      dispatchMode: args.role === "instructor" ? dispatchMode : undefined,
+      radiusKm: clampedRadiusKm,
       latitude: lat ?? user.latitude,
       longitude: lng ?? user.longitude,
-      homeLatitude: lat ?? user.homeLatitude,
-      homeLongitude: lng ?? user.homeLongitude,
-      homeAddress: args.address ?? user.homeAddress,
-      selectedZones: validZoneIds ?? user.selectedZones,
+      homeAddress: args.address ?? user.homeAddress ?? user.address,
+      address: args.address ?? user.address ?? user.homeAddress,
+      zoneIds: args.zoneIds,
       hasCompletedOnboarding: true,
       updatedAt: now,
     });
 
-    console.log("[completeOnboarding] Successfully updated user:", user._id);
+    console.log(
+      "[completeOnboarding] Updated user:",
+      user._id,
+      "dispatchMode:",
+      dispatchMode,
+    );
 
-    // GEOSPATIAL SYNC
+    // DISPATCH SYSTEM SYNC
     const finalLat = lat ?? user.latitude;
     const finalLng = lng ?? user.longitude;
-    const finalRadiusKm = rad ?? user.radiusKm ?? 5;
+    const finalRadiusKm = clampedRadiusKm;
 
-    // H3 HEX SPATIAL INDEXING
-    // One-time calculation per address change, O(1) lookups forever
-    let homeHex11: string | undefined;
-    let workAreaHexes11: string[] | undefined;
-    
-    if (finalLat && finalLng) {
-      homeHex11 = latLngToHex11(finalLat, finalLng);
-      workAreaHexes11 = getHexesInRadius(finalLat, finalLng, finalRadiusKm);
-      
-      console.log(`[completeOnboarding] H3 computed: home=${homeHex11}, workArea=${workAreaHexes11?.length} hexes`);
-      
-      // Store H3 fields
-      await ctx.db.patch(user._id, {
-        homeHex11,
-        workAreaHexes11,
-      });
-    }
+    if (args.role === "instructor") {
+      if (finalLat && finalLng) {
+        // Sync to geospatial index (only adds if radius mode)
+        await syncInstructorLocation(
+          ctx,
+          user._id,
+          { latitude: finalLat, longitude: finalLng },
+          dispatchMode,
+          categoriesArray,
+          user.isVerified,
+          user.notificationsEnabled ?? true,
+          finalRadiusKm,
+        );
+      }
 
-    if (args.role === "instructor" && finalLat && finalLng) {
-      await syncInstructorLocation(
-        ctx,
-        user._id,
-        { 
-          latitude: finalLat, 
-          longitude: finalLng 
+      // Sync zone subscriptions (creates if zone mode, deletes if radius mode)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.zoneSubscriptions.syncZoneSubscriptions,
+        {
+          instructorId: user._id,
         },
-        primaryCategory,
-        user.isVerified,
-        user.notificationsEnabled ?? true,
-        finalRadiusKm
       );
     }
 
@@ -195,15 +190,7 @@ export const completeOnboarding = mutation({
 export const resetOnboarding = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .unique();
-
-    if (!user) throw new Error("User not found");
+    const user = await requireCurrentUserByIdentity(ctx);
 
     await ctx.db.patch(user._id, {
       hasCompletedOnboarding: false,
@@ -224,7 +211,9 @@ export const getVerifiedInstructors = internalQuery({
   handler: async (ctx) => {
     return await ctx.db
       .query("users")
-      .withIndex("by_verified", (q) => q.eq("isVerified", true).eq("role", "instructor"))
+      .withIndex("by_verified", (q) =>
+        q.eq("isVerified", true).eq("role", "instructor"),
+      )
       .collect();
   },
 });
@@ -234,7 +223,7 @@ export const getUserProfile = query({
   handler: async (ctx, { userId }) => {
     const user = await ctx.db.get(userId);
     if (!user) return null;
-    
+
     // Don't expose sensitive fields
     return {
       _id: user._id,
@@ -246,6 +235,83 @@ export const getUserProfile = query({
       ratingCount: user.ratingCount,
       categories: user.categories,
       businessName: user.businessName,
+    };
+  },
+});
+
+export const getMyStudioPricingSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireStudioUserByIdentity(ctx);
+
+    const settings = user.studioPricing;
+    return {
+      defaultBaseRate: settings?.defaultBaseRate ?? 120,
+      leadTimeSurgeRules:
+        settings?.leadTimeSurgeRules ?? [
+          { maxHoursBeforeStart: 6, boostPercent: 10 },
+          { maxHoursBeforeStart: 3, boostPercent: 15 },
+        ],
+    };
+  },
+});
+
+export const getStudioPublicProfile = query({
+  args: { studioId: v.id("users") },
+  handler: async (ctx, { studioId }) => {
+    const studio = await ctx.db.get(studioId);
+    if (!studio || studio.role !== "studio") return null;
+    const studioJobs: Array<{
+      _id: string;
+      title: string;
+      category: string;
+      status: string;
+      createdAt?: number;
+      _creationTime?: number;
+      startTime: number;
+      endTime: number;
+      currentRate: number;
+      address: string;
+      sosBoostApplied?: boolean;
+    }> = await ctx.runQuery(
+      internal.jobs.getStudioJobsForStudioInternal,
+      { studioId },
+    );
+    const openJobs = studioJobs.filter((job: (typeof studioJobs)[number]) => job.status === "open");
+    const activeJobsCount = studioJobs.filter((job) =>
+      job.status === "open" ||
+      job.status === "claimed" ||
+      job.status === "backup_claimed" ||
+      job.status === "confirmed",
+    ).length;
+
+    return {
+      studio: {
+        _id: studio._id,
+        name: studio.businessName ?? studio.name,
+        avatarUrl: studio.avatarUrl,
+        isVerified: studio.isVerified,
+        rating: studio.rating,
+        ratingCount: studio.ratingCount,
+        categories: studio.categories ?? [],
+        address: studio.address ?? studio.homeAddress,
+      },
+      counts: {
+        openJobs: openJobs.length,
+        activeJobs: activeJobsCount,
+      },
+      jobs: openJobs.map((job) => ({
+        _id: job._id,
+        title: job.title,
+        category: job.category,
+        status: job.status,
+        createdAt: job.createdAt ?? job._creationTime ?? 0,
+        startTime: job.startTime,
+        endTime: job.endTime,
+        currentRate: job.currentRate,
+        address: job.address,
+        sosBoostApplied: job.sosBoostApplied,
+      })),
     };
   },
 });
@@ -263,16 +329,15 @@ export const upsertUser = mutation({
     businessName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    
+    const uid = await requireIdentitySubject(ctx);
+
     const existing = await ctx.db
       .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", uid))
       .first();
-    
+
     const now = Date.now();
-    
+
     if (existing) {
       await ctx.db.patch(existing._id, {
         name: args.name,
@@ -283,9 +348,9 @@ export const upsertUser = mutation({
       });
       return existing._id;
     }
-    
+
     return await ctx.db.insert("users", {
-      firebaseUid: identity.subject,
+      firebaseUid: uid,
       name: args.name,
       email: args.email,
       phone: args.phone,
@@ -308,42 +373,46 @@ export const updateLocation = mutation({
     categories: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-    
-    if (!user) throw new Error("User not found");
-    
-    const radiusKm = args.radiusKm ?? user.radiusKm ?? 5;
-    const primaryCategory = (args.categories && args.categories.length > 0) 
-      ? args.categories[0] 
-      : (user.categories && user.categories.length > 0) ? user.categories[0] : "general";
+    const user = await requireCurrentUserByIdentity(ctx);
 
-    await ctx.db.patch(user._id, {
+    const radiusKm = Math.min(
+      Math.max(args.radiusKm ?? user.radiusKm ?? 5, MIN_RADIUS_KM),
+      MAX_RADIUS_KM,
+    );
+    const primaryCategory =
+      args.categories && args.categories.length > 0
+        ? args.categories[0]
+        : user.categories && user.categories.length > 0
+          ? user.categories[0]
+          : "general";
+
+    const updates: Record<string, unknown> = {
       latitude: args.latitude,
       longitude: args.longitude,
-      homeLatitude: user.homeLatitude ?? args.latitude,
-      homeLongitude: user.homeLongitude ?? args.longitude,
-      homeAddress: args.address ?? user.homeAddress,
+      homeAddress: args.address ?? user.homeAddress ?? user.address,
+      address: args.address ?? user.address ?? user.homeAddress,
       radiusKm,
-      categories: args.categories,
       primaryCategory,
       updatedAt: Date.now(),
-    });
+    };
+    if (args.categories !== undefined) {
+      updates.categories = args.categories;
+    }
+
+    await ctx.db.patch(user._id, updates);
 
     if (user.role === "instructor") {
       await syncInstructorLocation(
         ctx,
         user._id,
         { latitude: args.latitude, longitude: args.longitude },
-        primaryCategory,
+        user.dispatchMode ?? "radius",
+        args.categories && args.categories.length > 0
+          ? args.categories
+          : (user.categories ?? [primaryCategory]),
         user.isVerified,
         user.notificationsEnabled ?? true,
-        radiusKm
+        radiusKm,
       );
     }
   },
@@ -352,16 +421,8 @@ export const updateLocation = mutation({
 export const updateFcmToken = mutation({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .unique();
-    
-    if (!user) throw new Error("User not found");
-    
+    const user = await requireCurrentUserByIdentity(ctx);
+
     await ctx.db.patch(user._id, { fcmToken: token });
   },
 });
@@ -380,45 +441,54 @@ export const updateProfile = mutation({
     categories: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-    
-    if (!user) throw new Error("User not found");
-    
+    const user = await requireCurrentUserByIdentity(ctx);
+
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.name !== undefined) updates.name = args.name;
     if (args.nameHebrew !== undefined) updates.nameHebrew = args.nameHebrew;
     if (args.phone !== undefined) updates.phone = args.phone;
     if (args.avatarUrl !== undefined) updates.avatarUrl = args.avatarUrl;
-    if (args.businessName !== undefined) updates.businessName = args.businessName;
-    if (args.homeAddress !== undefined) updates.homeAddress = args.homeAddress;
+    if (args.businessName !== undefined)
+      updates.businessName = args.businessName;
+    if (args.homeAddress !== undefined) {
+      updates.homeAddress = args.homeAddress;
+      updates.address = args.homeAddress;
+    }
     if (args.latitude !== undefined) {
       updates.latitude = args.latitude;
-      updates.homeLatitude = args.latitude;
     }
     if (args.longitude !== undefined) {
       updates.longitude = args.longitude;
-      updates.homeLongitude = args.longitude;
     }
-    if (args.radiusKm !== undefined) updates.radiusKm = args.radiusKm;
+    if (args.radiusKm !== undefined) {
+      updates.radiusKm = Math.min(
+        Math.max(args.radiusKm, MIN_RADIUS_KM),
+        MAX_RADIUS_KM,
+      );
+    }
     if (args.categories !== undefined) {
       updates.categories = args.categories;
       if (args.categories.length > 0) {
         updates.primaryCategory = args.categories[0];
       }
     }
-    
+
     await ctx.db.patch(user._id, updates);
 
     // Sync to geo index if instructor location changed
     if (user.role === "instructor") {
-      const radiusKm = args.radiusKm ?? user.radiusKm ?? 5;
-      const primaryCategory = updates.primaryCategory as string ?? user.primaryCategory ?? "general";
+      const radiusKm = Math.min(
+        Math.max(args.radiusKm ?? user.radiusKm ?? 5, MIN_RADIUS_KM),
+        MAX_RADIUS_KM,
+      );
+      const primaryCategory =
+        (updates.primaryCategory as string) ??
+        user.primaryCategory ??
+        "general";
+      const categories =
+        (updates.categories as string[] | undefined) ??
+        user.categories ??
+        (primaryCategory ? [primaryCategory] : ["general"]);
       const lat = args.latitude ?? user.latitude;
       const lng = args.longitude ?? user.longitude;
 
@@ -427,13 +497,49 @@ export const updateProfile = mutation({
           ctx,
           user._id,
           { latitude: lat, longitude: lng },
-          primaryCategory,
+          user.dispatchMode ?? "radius",
+          categories,
           user.isVerified,
           user.notificationsEnabled ?? true,
-          radiusKm
+          radiusKm,
         );
       }
     }
+  },
+});
+
+export const setMyStudioPricingSettings = mutation({
+  args: {
+    defaultBaseRate: v.float64(),
+    leadTimeSurgeRules: v.optional(
+      v.array(
+        v.object({
+          maxHoursBeforeStart: v.float64(),
+          boostPercent: v.float64(),
+        }),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireStudioUserByIdentity(ctx);
+
+    const defaultBaseRate = Math.min(Math.max(args.defaultBaseRate, 1), 10000);
+    const leadTimeSurgeRules = normalizeLeadTimeSurgeRules(
+      args.leadTimeSurgeRules,
+    );
+
+    await ctx.db.patch(user._id, {
+      studioPricing: {
+        defaultBaseRate,
+        leadTimeSurgeRules,
+      },
+      updatedAt: Date.now(),
+    });
+
+    return {
+      defaultBaseRate,
+      leadTimeSurgeRules,
+    };
   },
 });
 
@@ -456,10 +562,12 @@ export const setVerified = internalMutation({
         ctx,
         userId,
         { latitude: user.latitude, longitude: user.longitude },
-        user.primaryCategory ?? "general",
+        user.dispatchMode ?? "radius",
+        user.categories ??
+          (user.primaryCategory ? [user.primaryCategory] : ["general"]),
         verified,
         user.notificationsEnabled ?? true,
-        user.radiusKm ?? 5
+        user.radiusKm ?? 5,
       );
     }
   },
@@ -472,20 +580,13 @@ export const setVerified = internalMutation({
 export const updateRadius = mutation({
   args: { radiusKm: v.float64() },
   handler: async (ctx, { radiusKm }) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    
-    if (radiusKm < 0.5 || radiusKm > 50) {
-      throw new Error("Radius must be between 0.5 and 50 km");
+    if (radiusKm < MIN_RADIUS_KM || radiusKm > MAX_RADIUS_KM) {
+      throw new Error(
+        `Radius must be between ${MIN_RADIUS_KM} and ${MAX_RADIUS_KM} km`,
+      );
     }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-    
-    if (!user) throw new Error("User not found");
-    
+    const user = await requireCurrentUserByIdentity(ctx);
+
     await ctx.db.patch(user._id, {
       radiusKm,
       updatedAt: Date.now(),
@@ -496,10 +597,12 @@ export const updateRadius = mutation({
         ctx,
         user._id,
         { latitude: user.latitude, longitude: user.longitude },
-        user.primaryCategory ?? "general",
+        user.dispatchMode ?? "radius",
+        user.categories ??
+          (user.primaryCategory ? [user.primaryCategory] : ["general"]),
         user.isVerified,
         user.notificationsEnabled ?? true,
-        radiusKm
+        radiusKm,
       );
     }
   },
@@ -512,16 +615,8 @@ export const updateRadius = mutation({
 export const updateNotificationPreferences = mutation({
   args: { enabled: v.boolean() },
   handler: async (ctx, { enabled }) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-    
-    if (!user) throw new Error("User not found");
-    
+    const user = await requireCurrentUserByIdentity(ctx);
+
     await ctx.db.patch(user._id, {
       notificationsEnabled: enabled,
       updatedAt: Date.now(),
@@ -532,36 +627,171 @@ export const updateNotificationPreferences = mutation({
         ctx,
         user._id,
         { latitude: user.latitude, longitude: user.longitude },
-        user.primaryCategory ?? "general",
+        user.dispatchMode ?? "radius",
+        user.categories ??
+          (user.primaryCategory ? [user.primaryCategory] : ["general"]),
         user.isVerified,
         enabled,
-        user.radiusKm ?? 5
+        user.radiusKm ?? 5,
       );
     }
   },
 });
 
+/**
+ * Persist app settings that are also cached client-side.
+ * This keeps preferences synchronized across devices/sessions.
+ */
+export const updateSettingsPreferences = mutation({
+  args: {
+    notificationsEnabled: v.optional(v.boolean()),
+    regularJobAlerts: v.optional(v.boolean()),
+    sosJobAlerts: v.optional(v.boolean()),
+    languageCode: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireCurrentUserByIdentity(ctx);
+
+    const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.notificationsEnabled !== undefined) {
+      updates.notificationsEnabled = args.notificationsEnabled;
+    }
+    if (args.regularJobAlerts !== undefined) {
+      updates.regularJobAlerts = args.regularJobAlerts;
+    }
+    if (args.sosJobAlerts !== undefined) {
+      updates.sosJobAlerts = args.sosJobAlerts;
+    }
+    if (args.languageCode !== undefined) {
+      updates.languageCode = args.languageCode.trim();
+    }
+
+    await ctx.db.patch(user._id, updates);
+
+    if (
+      args.notificationsEnabled !== undefined &&
+      user.role === "instructor" &&
+      user.latitude &&
+      user.longitude
+    ) {
+      await syncInstructorLocation(
+        ctx,
+        user._id,
+        { latitude: user.latitude, longitude: user.longitude },
+        user.dispatchMode ?? "radius",
+        user.categories ??
+          (user.primaryCategory ? [user.primaryCategory] : ["general"]),
+        user.isVerified,
+        args.notificationsEnabled,
+        user.radiusKm ?? 5,
+      );
+    }
+  },
+});
+
+/**
+ * Update instructor's dispatch mode and associated settings.
+ * This is the PRIMARY way for instructors to switch between radius and zone modes.
+ */
+export const updateDispatchMode = mutation({
+  args: {
+    mode: v.union(v.literal("radius"), v.literal("zone")),
+    // For radius mode
+    latitude: v.optional(v.float64()),
+    longitude: v.optional(v.float64()),
+    radiusKm: v.optional(v.float64()),
+    // For zone mode
+    zoneIds: v.optional(v.array(v.id("zones"))),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireCurrentUserByIdentity(ctx);
+    if (user.role !== "instructor")
+      throw new Error("Only instructors can set dispatch mode");
+
+    // Validate mode-specific requirements
+    if (args.mode === "radius") {
+      const lat = args.latitude ?? user.latitude;
+      const lng = args.longitude ?? user.longitude;
+      const rad = args.radiusKm ?? user.radiusKm;
+      if (!lat || !lng)
+        throw new Error(
+          "Radius mode requires a location. Please set your location first.",
+        );
+      if (!rad) throw new Error("Radius mode requires a radius.");
+    } else {
+      const zones = args.zoneIds ?? user.zoneIds;
+      if (!zones || zones.length === 0)
+        throw new Error("Zone mode requires at least one zone.");
+    }
+
+    const clampedRadius = args.radiusKm
+      ? Math.min(Math.max(args.radiusKm, MIN_RADIUS_KM), MAX_RADIUS_KM)
+      : undefined;
+
+    await ctx.db.patch(user._id, {
+      dispatchMode: args.mode,
+      latitude: args.latitude ?? user.latitude,
+      longitude: args.longitude ?? user.longitude,
+      radiusKm: clampedRadius ?? user.radiusKm,
+      zoneIds: args.zoneIds ?? user.zoneIds,
+      updatedAt: Date.now(),
+    });
+
+    const finalLat = args.latitude ?? user.latitude;
+    const finalLng = args.longitude ?? user.longitude;
+    const finalRadiusKm = clampedRadius ?? user.radiusKm ?? 5;
+
+    // Sync to appropriate dispatch system
+    if (finalLat && finalLng) {
+      await syncInstructorLocation(
+        ctx,
+        user._id,
+        { latitude: finalLat, longitude: finalLng },
+        args.mode,
+        user.categories ??
+          (user.primaryCategory ? [user.primaryCategory] : ["general"]),
+        user.isVerified,
+        user.notificationsEnabled ?? true,
+        finalRadiusKm,
+      );
+    }
+
+    // Update zone subscriptions (creates if zone mode, deletes if radius mode)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.zoneSubscriptions.syncZoneSubscriptions,
+      {
+        instructorId: user._id,
+      },
+    );
+
+    return { success: true, mode: args.mode };
+  },
+});
 
 /**
  * Update instructor's selected zones.
  * Called from the map screen zone selector.
  */
 export const updateZones = mutation({
-  args: { zoneIds: v.array(v.string()) }, // Accept strings for flexibility
+  args: { zoneIds: v.array(v.id("zones")) },
   handler: async (ctx, { zoneIds }) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", identity.subject))
-      .first();
-    
-    if (!user) throw new Error("User not found");
-    
+    const user = await requireCurrentUserByIdentity(ctx);
+
     await ctx.db.patch(user._id, {
-      selectedZones: zoneIds,
+      zoneIds,
       updatedAt: Date.now(),
     });
+
+    // If user is zone mode, resync subscriptions
+    if (user.dispatchMode === "zone") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.zoneSubscriptions.syncZoneSubscriptions,
+        {
+          instructorId: user._id,
+        },
+      );
+    }
   },
 });

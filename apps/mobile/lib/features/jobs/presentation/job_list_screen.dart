@@ -1,15 +1,18 @@
 /// Job List Screen - Instructor view with swipe-to-claim.
 library;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:quickfit/l10n/app_localizations.dart';
 
-import '../../../core/router/app_router.dart';
+import '../../../core/router/app_routes.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/platform.dart';
 import '../../../shared/widgets/job_card.dart';
 import '../../../shared/widgets/sos_badge.dart';
 import '../providers/jobs_provider.dart';
@@ -30,6 +33,33 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
   double _minRate = 0;
 
   void _showFilters() {
+    if (isCupertinoPlatform(context)) {
+      showCupertinoModalPopup(
+        context: context,
+        builder: (context) => CupertinoPopupSurface(
+          child: SafeArea(
+            top: false,
+            child: StatefulBuilder(
+              builder: (context, setState) => Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  20,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom + 24,
+                ),
+                child: _buildFilterContent(
+                  context,
+                  setState,
+                  isCupertino: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -40,79 +70,159 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
         builder: (context, setState) {
           return Padding(
             padding: EdgeInsets.fromLTRB(
-                24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 48),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Filter Jobs',
-                        style: Theme.of(context).textTheme.titleLarge),
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _selectedCategory = null;
-                          _minRate = 0;
-                        });
-                        this.setState(() {
-                          _selectedCategory = null;
-                          _minRate = 0;
-                        });
-                      },
-                      child: const Text('Reset'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                const Text('Category',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: FitnessCategory.values.map((cat) {
-                    final isSelected = _selectedCategory == cat.id;
-                    return ChoiceChip(
-                      label: Text(cat.nameEn),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(
-                            () => _selectedCategory = selected ? cat.id : null);
-                        this.setState(
-                            () => _selectedCategory = selected ? cat.id : null);
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 24),
-                Text('Minimum Rate: ₪${_minRate.toInt()}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                Slider(
-                  value: _minRate,
-                  min: 0,
-                  max: 300,
-                  divisions: 6,
-                  label: '₪${_minRate.toInt()}',
-                  onChanged: (val) {
-                    setState(() => _minRate = val);
-                    this.setState(() => _minRate = val);
-                  },
-                ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Apply Filters'),
-                  ),
-                ),
-              ],
+              24,
+              24,
+              24,
+              MediaQuery.of(context).viewInsets.bottom + 48,
+            ),
+            child: _buildFilterContent(
+              context,
+              setState,
+              isCupertino: false,
             ),
           );
         },
       ),
+    );
+  }
+
+  Widget _buildFilterContent(
+    BuildContext context,
+    void Function(VoidCallback fn) setSheetState, {
+    required bool isCupertino,
+  }) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(l10n.filterJobsTitle, style: theme.textTheme.titleLarge),
+            isCupertino
+                ? CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      setSheetState(() {
+                        _selectedCategory = null;
+                        _minRate = 0;
+                      });
+                      setState(() {
+                        _selectedCategory = null;
+                        _minRate = 0;
+                      });
+                    },
+                    child: Text(l10n.reset),
+                  )
+                : TextButton(
+                    onPressed: () {
+                      setSheetState(() {
+                        _selectedCategory = null;
+                        _minRate = 0;
+                      });
+                      setState(() {
+                        _selectedCategory = null;
+                        _minRate = 0;
+                      });
+                    },
+                    child: Text(l10n.reset),
+                  ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Text(
+          l10n.categoryLabel,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: FitnessCategory.values.map((cat) {
+            final isSelected = _selectedCategory == cat.id;
+            if (isCupertino) {
+              return CupertinoButton(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+                onPressed: () {
+                  setSheetState(
+                      () => _selectedCategory = isSelected ? null : cat.id);
+                  setState(
+                      () => _selectedCategory = isSelected ? null : cat.id);
+                },
+                child: Text(
+                  cat.nameEn,
+                  style: TextStyle(
+                    color:
+                        isSelected ? Colors.white : theme.colorScheme.onSurface,
+                  ),
+                ),
+              );
+            }
+            return ChoiceChip(
+              label: Text(cat.nameEn),
+              selected: isSelected,
+              onSelected: (selected) {
+                setSheetState(
+                    () => _selectedCategory = selected ? cat.id : null);
+                setState(() => _selectedCategory = selected ? cat.id : null);
+              },
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          l10n.minimumRateLabelWithValue(
+            _minRate.toInt().toString(),
+            l10n.currencyILS,
+          ),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        isCupertino
+            ? CupertinoSlider(
+                value: _minRate,
+                min: 0,
+                max: 300,
+                divisions: 6,
+                onChanged: (val) {
+                  setSheetState(() => _minRate = val);
+                  setState(() => _minRate = val);
+                },
+              )
+            : Slider(
+                value: _minRate,
+                min: 0,
+                max: 300,
+                divisions: 6,
+                label: l10n.currencyAmount(
+                  l10n.currencyILS,
+                  _minRate.toInt().toString(),
+                ),
+                onChanged: (val) {
+                  setSheetState(() => _minRate = val);
+                  setState(() => _minRate = val);
+                },
+              ),
+        const SizedBox(height: 32),
+        SizedBox(
+          width: double.infinity,
+          child: isCupertino
+              ? CupertinoButton.filled(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(l10n.applyFilters),
+                )
+              : FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(l10n.applyFilters),
+                ),
+        ),
+      ],
     );
   }
 
@@ -136,6 +246,7 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
       setState(() => _claimingJobId = null);
 
       if (success) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -143,8 +254,9 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                 const Icon(LucideIcons.checkCircle2, color: Colors.white),
                 const SizedBox(width: 8),
                 Expanded(
-                  child:
-                      Text('Job claimed! ${job.studioName} will be notified.'),
+                  child: Text(
+                    l10n.jobClaimedNotification(job.studioName),
+                  ),
                 ),
               ],
             ),
@@ -182,10 +294,40 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
   Widget _buildAppBar(BuildContext context) {
     final colors = context.colors;
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
+
+    if (isCupertinoPlatform(context)) {
+      return CupertinoSliverNavigationBar(
+        largeTitle: Text(l10n.availableJobsTitle),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: () async {
+                await LocationService.instance.updateLocation();
+                _onRefresh();
+              },
+              child: const Icon(CupertinoIcons.location),
+            ),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: _showFilters,
+              child: Icon(
+                CupertinoIcons.slider_horizontal_3,
+                color: (_selectedCategory != null || _minRate > 0)
+                    ? theme.colorScheme.primary
+                    : colors.mutedText,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return SliverAppBar(
       floating: true,
-      title: const Text('Available Jobs'),
+      title: Text(l10n.availableJobsTitle),
       actions: [
         IconButton(
           icon: Icon(LucideIcons.mapPin, color: colors.mutedText),
@@ -238,6 +380,8 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
   Widget _buildErrorState(BuildContext context, String error) {
     final colors = context.colors;
     final theme = Theme.of(context);
+    final isCupertino = isCupertinoPlatform(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return SliverFillRemaining(
       child: Center(
@@ -253,7 +397,7 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Something went wrong',
+                l10n.somethingWentWrong,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -267,11 +411,16 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _onRefresh,
-                icon: const Icon(LucideIcons.refreshCw),
-                label: const Text('Try Again'),
-              ),
+              isCupertino
+                  ? CupertinoButton.filled(
+                      onPressed: _onRefresh,
+                      child: Text(l10n.tryAgain),
+                    )
+                  : FilledButton.icon(
+                      onPressed: _onRefresh,
+                      icon: const Icon(LucideIcons.refreshCw),
+                      label: Text(l10n.tryAgain),
+                    ),
             ],
           ),
         ),
@@ -282,6 +431,8 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
   Widget _buildEmptyState(BuildContext context) {
     final colors = context.colors;
     final theme = Theme.of(context);
+    final isCupertino = isCupertinoPlatform(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return SliverFillRemaining(
       child: Center(
@@ -305,25 +456,31 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
               ),
               const SizedBox(height: 24),
               Text(
-                'No jobs available',
+                l10n.noJobsAvailable,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                'Check back soon or expand your search radius in settings.',
+                l10n.noJobsAvailableHint,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colors.mutedText,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              OutlinedButton.icon(
-                onPressed: _onRefresh,
-                icon: const Icon(LucideIcons.refreshCw),
-                label: const Text('Refresh'),
-              ),
+              isCupertino
+                  ? CupertinoButton(
+                      onPressed: _onRefresh,
+                      color: CupertinoColors.systemGrey5,
+                      child: Text(l10n.refresh),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: _onRefresh,
+                      icon: const Icon(LucideIcons.refreshCw),
+                      label: Text(l10n.refresh),
+                    ),
             ],
           ),
         ),
@@ -333,6 +490,7 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
 
   Widget _buildJobsList(BuildContext context, JobsState jobsState) {
     var filteredJobs = jobsState.jobs;
+    final l10n = AppLocalizations.of(context)!;
 
     if (_selectedCategory != null) {
       filteredJobs =
@@ -351,21 +509,48 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
       return _buildEmptyFiltersState(context);
     }
 
+    final rows = <_JobsListRow>[
+      if (sosJobs.isNotEmpty)
+        _JobsListRow.header(
+          icon: LucideIcons.zap,
+          title: l10n.urgentJobsTitle,
+          count: sosJobs.length,
+          isUrgent: true,
+        ),
+      if (sosJobs.isNotEmpty) const _JobsListRow.spacer(12),
+      ...sosJobs.map(_JobsListRow.job),
+      if (sosJobs.isNotEmpty) const _JobsListRow.spacer(24),
+      if (regularJobs.isNotEmpty)
+        _JobsListRow.header(
+          icon: LucideIcons.briefcase,
+          title: l10n.availableJobsTitle,
+          count: regularJobs.length,
+        ),
+      if (regularJobs.isNotEmpty) const _JobsListRow.spacer(12),
+      ...regularJobs.map(_JobsListRow.job),
+      const _JobsListRow.spacer(32),
+      const _JobsListRow.pullToRefreshHint(),
+      const _JobsListRow.spacer(16),
+    ];
+
     return SliverPadding(
       padding: const EdgeInsets.all(16),
       sliver: SliverList(
-        delegate: SliverChildListDelegate([
-          // SOS Jobs section
-          if (sosJobs.isNotEmpty) ...[
-            _buildSectionHeader(
-              context,
-              icon: LucideIcons.zap,
-              title: 'Urgent Jobs',
-              count: sosJobs.length,
-              isUrgent: true,
-            ),
-            const SizedBox(height: 12),
-            ...sosJobs.map((job) => Padding(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final row = rows[index];
+            switch (row.type) {
+              case _JobsListRowType.header:
+                return _buildSectionHeader(
+                  context,
+                  icon: row.icon!,
+                  title: row.title!,
+                  count: row.count!,
+                  isUrgent: row.isUrgent,
+                );
+              case _JobsListRowType.job:
+                final job = row.job!;
+                return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: JobCard(
                     job: job,
@@ -376,45 +561,22 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                     onTap: () => context
                         .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
                   ),
-                )),
-            const SizedBox(height: 24),
-          ],
-
-          // Regular jobs section
-          if (regularJobs.isNotEmpty) ...[
-            _buildSectionHeader(
-              context,
-              icon: LucideIcons.briefcase,
-              title: 'Available Jobs',
-              count: regularJobs.length,
-            ),
-            const SizedBox(height: 12),
-            ...regularJobs.map((job) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: JobCard(
-                    job: job,
-                    isLoading: _claimingJobId == job.id,
-                    pendingStatus:
-                        jobsState.getPendingOperation(job.id)?.status,
-                    onClaim: () => _claimJob(job),
-                    onTap: () => context
-                        .push(AppRoutes.jobDetail.replaceFirst(':id', job.id)),
+                );
+              case _JobsListRowType.pullToRefreshHint:
+                return Center(
+                  child: Text(
+                    l10n.pullToRefresh,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: context.colors.mutedText,
+                        ),
                   ),
-                )),
-          ],
-
-          // Pull to refresh hint
-          const SizedBox(height: 32),
-          Center(
-            child: Text(
-              'Pull down to refresh',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.colors.mutedText,
-                  ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ]),
+                );
+              case _JobsListRowType.spacer:
+                return SizedBox(height: row.height!);
+            }
+          },
+          childCount: rows.length,
+        ),
       ),
     );
   }
@@ -463,6 +625,7 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
   }
 
   Widget _buildEmptyFiltersState(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SliverFillRemaining(
       child: Center(
         child: Column(
@@ -470,8 +633,8 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
           children: [
             const Icon(LucideIcons.searchX, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text('No jobs match your filters',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(l10n.noJobsMatchFilters,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () {
@@ -480,11 +643,55 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
                   _minRate = 0;
                 });
               },
-              child: const Text('Clear Filters'),
+              child: Text(l10n.clearFilters),
             ),
           ],
         ),
       ),
     );
   }
+}
+
+enum _JobsListRowType { header, job, spacer, pullToRefreshHint }
+
+class _JobsListRow {
+  const _JobsListRow._({
+    required this.type,
+    this.icon,
+    this.title,
+    this.count,
+    this.isUrgent = false,
+    this.job,
+    this.height,
+  });
+
+  const _JobsListRow.header({
+    required IconData icon,
+    required String title,
+    required int count,
+    bool isUrgent = false,
+  }) : this._(
+          type: _JobsListRowType.header,
+          icon: icon,
+          title: title,
+          count: count,
+          isUrgent: isUrgent,
+        );
+
+  const _JobsListRow.job(Job job)
+      : this._(type: _JobsListRowType.job, job: job);
+
+  const _JobsListRow.spacer(double height)
+      : this._(type: _JobsListRowType.spacer, height: height);
+
+  const _JobsListRow.pullToRefreshHint()
+      : this._(type: _JobsListRowType.pullToRefreshHint);
+
+  final _JobsListRowType type;
+  final IconData? icon;
+  final String? title;
+  final int? count;
+  final bool isUrgent;
+  final Job? job;
+  final double? height;
 }

@@ -12,7 +12,7 @@ export const runGeospatialMigration = mutation({
     // 1. Migrate Instructors
     const instructors = await ctx.db
       .query("users")
-      .filter((q) => q.eq(q.field("role"), "instructor"))
+      .withIndex("by_role", (q) => q.eq("role", "instructor"))
       .collect();
     
     let instructorsSynced = 0;
@@ -22,7 +22,11 @@ export const runGeospatialMigration = mutation({
           ctx,
           instructor._id,
           { latitude: instructor.latitude, longitude: instructor.longitude },
-          instructor.primaryCategory ?? instructor.categories?.[0] ?? "general",
+          instructor.dispatchMode ?? "radius", // Default to radius for existing users
+          instructor.categories ??
+            (instructor.primaryCategory
+              ? [instructor.primaryCategory]
+              : ["general"]),
           instructor.isVerified,
           instructor.notificationsEnabled ?? true,
           instructor.radiusKm ?? 5
@@ -34,7 +38,7 @@ export const runGeospatialMigration = mutation({
     // 2. Migrate Open Jobs
     const jobs = await ctx.db
       .query("jobs")
-      .filter((q) => q.eq(q.field("status"), "open"))
+      .withIndex("by_status", (q) => q.eq("status", "open"))
       .collect();
     
     let jobsSynced = 0;
