@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  mobile:
-    name: Flutter analyze and test
+  ci:
+    name: CI
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -41,6 +41,8 @@ jobs:
           echo "$GITHUB_WORKSPACE/.ci/flutter/bin" >> "$GITHUB_PATH"
           bin/flutter --disable-analytics
           bin/flutter --version
+      - name: Supply checked-in no-secret configuration
+        run: cp lib/core/config/api_keys_local_stub.dart lib/core/config/api_keys_local.dart
       - name: Resolve committed mobile dependencies
         id: dependencies
         run: flutter pub get --enforce-lockfile
@@ -49,15 +51,3 @@ jobs:
       - name: Run existing widget tests
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: flutter test --no-pub --reporter expanded
-
-  ci:
-    name: CI
-    if: ${{ always() }}
-    needs: mobile
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    steps:
-      - name: Require Flutter checks
-        env:
-          MOBILE_RESULT: ${{ needs.mobile.result }}
-        run: test "$MOBILE_RESULT" = success
