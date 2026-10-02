@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Check out the recorded official Flutter SDK
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: flutter/flutter
+          ref: 3b62efc2a3da49882f43c372e0bc53daef7295a6 # Flutter 3.38.7
+          path: .ci/flutter
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up Flutter 3.38.7
+        working-directory: .ci/flutter
+        run: |
+          # Preserve the exact SDK release version in this shallow checkout.
+          git tag -f 3.38.7
+          echo "$GITHUB_WORKSPACE/.ci/flutter/bin" >> "$GITHUB_PATH"
+          bin/flutter --disable-analytics
+          bin/flutter --version
+      - name: Supply checked-in no-secret configuration
+        run: cp lib/core/config/api_keys_local_stub.dart lib/core/config/api_keys_local.dart
+      - name: Resolve committed mobile dependencies
+        id: dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze mobile sources
+        run: flutter analyze --no-pub
+      - name: Run existing widget tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: flutter test --no-pub --reporter expanded
